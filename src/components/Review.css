@@ -1,0 +1,180 @@
+/* src/components/Review.css */
+
+.review-page {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.review-header {
+  margin-bottom: 32px;
+}
+
+.review-header h1 {
+  color: white;
+  font-size: 36px;
+  margin-top: 20px;
+}
+
+.review-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+/* Task Summary */
+.task-summary {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.task-summary h2 {
+  color: #111827;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.task-description {
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1.8;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-row .label {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-row span:last-child {
+  color: #111827;
+  font-weight: 500;
+}
+
+/* Review Form */
+.review-form {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.rating-section h3,
+.feedback-section h3 {
+  color: #111827;
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+/* Star Rating */
+.stars {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.star {
+  background: none;
+  border: none;
+  font-size: 48px;
+  cursor: pointer;
+  color: #e5e7eb;
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+.star:hover,
+.star.active {
+  color: #fbbf24;
+  transform: scale(1.2);
+}
+
+.rating-text {
+  color: #6b7280;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Feedback Textarea */
+.feedback-section textarea {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.3s ease;
+}
+
+.feedback-section textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+/* Review Actions */
+.review-actions {
+  display: flex;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 2px solid #e5e7eb;
+}
+
+.review-actions button {
+  flex: 1;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+/* Responsive */
+@media (max-width: 968px) {
+  .review-content {
+    grid-template-columns: 1fr;
+  }
+
+  .review-header h1 {
+    font-size: 28px;
+  }
+
+  .task-summary h2 {
+    font-size: 24px;
+  }
+
+  .stars {
+    justify-content: center;
+  }
+
+  .star {
+    font-size: 40px;
+  }
+
+  .review-actions {
+    flex-direction: column;
+  }
+}
