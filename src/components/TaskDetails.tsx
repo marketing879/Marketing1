@@ -42,7 +42,7 @@ const TaskDetails: React.FC = () => {
   const handleStatusChange = (newStatus: typeof task.status) => {
     const updated = { ...editedTask, status: newStatus };
     setEditedTask(updated);
-    updateTask(id!, { status: newStatus });
+    updateTask(id!, updated); // ← FIXED: pass full task object, not just { status }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -121,9 +121,10 @@ const TaskDetails: React.FC = () => {
                     {(
                       [
                         "pending",
-                        "in-progress",
-                        "under-review",
+                        "in_progress",
                         "completed",
+                        "approved",
+                        "rework",
                       ] as const
                     ).map((status) => (
                       <button
@@ -134,7 +135,7 @@ const TaskDetails: React.FC = () => {
                         onClick={() => handleStatusChange(status)}
                       >
                         {status
-                          .split("-")
+                          .split("_")
                           .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                           .join(" ")}
                       </button>

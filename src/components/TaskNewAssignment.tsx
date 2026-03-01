@@ -3,10 +3,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { useUser, Task } from "../contexts/UserContext";
 import "./AddTaskForm.css";
 
+// ============ FIXED: Updated status values to match Task interface ============
 interface NewTask {
   title: string;
   description: string;
-  status: "pending" | "in-progress" | "completed" | "on-hold";
+  status: "pending" | "in_progress" | "completed" | "approved" | "rework"; // ← FIXED: Changed from "in-progress" to "in_progress"
   priority: "low" | "medium" | "high";
   dueDate: string;
   projectId: string;
@@ -42,7 +43,7 @@ const TaskNewAssignment: React.FC<TaskNewAssignmentProps> = ({
   onTaskCreated,
   taskToEdit,
 }) => {
-  const { addTask, updateTask, teamMembers, projects } = useUser();
+  const { user, addTask, updateTask, teamMembers, projects } = useUser();
 
   const [newTask, setNewTask] = useState<NewTask>(EMPTY_TASK);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -126,7 +127,11 @@ const TaskNewAssignment: React.FC<TaskNewAssignmentProps> = ({
         updateTask(taskToEdit.id, newTask);
         setSuccessMessage("Task updated successfully!");
       } else {
-        addTask(newTask);
+        addTask({
+          ...newTask,
+          assignedBy: user?.email || "",
+          approvalStatus: "assigned",
+        });
         setSuccessMessage("Task created successfully!");
       }
 
@@ -152,8 +157,8 @@ const TaskNewAssignment: React.FC<TaskNewAssignmentProps> = ({
     onCancel();
   };
 
-  // ✅ Updated Filtering Logic
-  const doers = teamMembers.filter((member) => member.role === "staff");
+  // ============ FIXED: Updated filtering logic to use isDoer ============
+  const doers = teamMembers.filter((member) => member.isDoer); // ← FIXED: Now uses isDoer instead of role === "staff"
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -231,7 +236,7 @@ const TaskNewAssignment: React.FC<TaskNewAssignmentProps> = ({
           >
             <option value="">Select a team member</option>
             {doers.map((member) => (
-              <option key={member.id} value={member.id}>
+              <option key={member.id} value={member.name}>
                 {member.name} ({member.role})
               </option>
             ))}
@@ -280,9 +285,10 @@ const TaskNewAssignment: React.FC<TaskNewAssignmentProps> = ({
             onChange={handleChange}
           >
             <option value="pending">Pending</option>
-            <option value="in-progress">In Progress</option>
+            <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
-            <option value="on-hold">On Hold</option>
+            <option value="approved">Approved</option>
+            <option value="rework">Rework</option>
           </select>
         </div>
 

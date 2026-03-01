@@ -6,7 +6,7 @@ import { useUser } from "../contexts/UserContext";
 const Review: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getTaskById, updateTask } = useUser();
+  const { getTaskById, updateTaskStatus } = useUser(); // ← use updateTaskStatus instead of updateTask
 
   const task = getTaskById(id!);
   const [feedback, setFeedback] = useState("");
@@ -35,7 +35,7 @@ const Review: React.FC = () => {
       alert("Please provide a rating before approving");
       return;
     }
-    updateTask(task.id, { status: "completed" });
+    updateTaskStatus(task.id, "completed"); // ← FIXED: use updateTaskStatus with correct signature
     alert("Task approved and marked as completed!");
     navigate("/");
   };
@@ -45,7 +45,7 @@ const Review: React.FC = () => {
       alert("Please provide feedback for the required changes");
       return;
     }
-    updateTask(task.id, { status: "in-progress" });
+    updateTaskStatus(task.id, "rework"); // ← FIXED: "in-progress" → "rework" to match Task type
     alert("Task sent back for revisions");
     navigate("/");
   };

@@ -2,14 +2,14 @@
  * ExportCredentialsButton
  *
  * Superadmin-only button that downloads all users + their OTP passwords
- * as a formatted .xlsx file using the SheetJS (xlsx) library.
+ * as a formatted .xlsx file using exceljs library.
  *
  * Installation (if not already installed):
- *   npm install xlsx
+ *   npm install exceljs
  */
 
 import React, { useState } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { useUser } from "../contexts/UserContext";
 
 // ── Types mirroring what's stored in UserContext ──────────────────────────
@@ -55,47 +55,60 @@ const ExportCredentialsButton: React.FC = () => {
   // Only superadmins should see/use this button
   if (user?.role !== "superadmin") return null;
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setExporting(true);
 
-    // Sort: superadmin → admin → staff
-    const sorted = [...teamMembers].sort(
-      (a, b) => (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9)
-    );
+    try {
+      // Sort: superadmin → admin → staff
+      const sorted = [...teamMembers].sort(
+        (a, b) => (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9)
+      );
 
-    // Build row data
-    const rows: StoredUserRow[] = sorted.map((member, idx) => ({
-      "#": String(idx + 1),
-      "Full Name": member.name,
-      Email: member.email,
-      Role: member.role.charAt(0).toUpperCase() + member.role.slice(1),
-      "OTP / Password": DEFAULT_PASSWORDS[member.email.toLowerCase()] ?? "—",
-    }));
+      // Build row data
+      const rows: StoredUserRow[] = sorted.map((member, idx) => ({
+        "#": String(idx + 1),
+        "Full Name": member.name,
+        Email: member.email,
+        Role: member.role.charAt(0).toUpperCase() + member.role.slice(1),
+        "OTP / Password": DEFAULT_PASSWORDS[member.email.toLowerCase()] ?? "—",
+      }));
 
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows, {
-      header: ["#", "Full Name", "Email", "Role", "OTP / Password"],
-    });
+      // Create workbook and worksheet
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("User Credentials");
 
-    // Column widths
-    ws["!cols"] = [
-      { wch: 5 },
-      { wch: 30 },
-      { wch: 36 },
-      { wch: 14 },
-      { wch: 18 },
-    ];
+      // Add headers
+      ws.columns = [
+        { header: "#", key: "#", width: 5 },
+        { header: "Full Name", key: "Full Name", width: 30 },
+        { header: "Email", key: "Email", width: 36 },
+        { header: "Role", key: "Role", width: 14 },
+        { header: "OTP / Password", key: "OTP / Password", width: 18 },
+      ];
 
-    XLSX.utils.book_append_sheet(wb, ws, "User Credentials");
+      // Add rows
+      rows.forEach((row) => {
+        ws.addRow(row);
+      });
 
-    // Download
-    XLSX.writeFile(
-      wb,
-      `Roswalt_Credentials_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+      // Style headers
+      ws.getRow(1).font = { bold: true };
+      ws.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFC9A96E" },
+      };
+      ws.getRow(1).font = { bold: true, color: { argb: "FF050510" } };
 
-    setExporting(false);
+      // Download
+      await wb.xlsx.writeFile(
+        `Roswalt_Credentials_${new Date().toISOString().slice(0, 10)}.xlsx`
+      );
+    } catch (error) {
+      console.error("Export error:", error);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (

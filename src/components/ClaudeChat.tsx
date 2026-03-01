@@ -1,11 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic({
-  apiKey: process.env.REACT_APP_ANTHROPIC_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
-
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -19,7 +14,9 @@ const ClaudeChat: React.FC<ClaudeChatProps> = ({ theme = "dark" }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const clientRef = useRef<Anthropic | null>(null);
 
   const isAmber = theme === "amber";
 
@@ -29,12 +26,33 @@ const ClaudeChat: React.FC<ClaudeChatProps> = ({ theme = "dark" }) => {
     ? "rgba(245,158,11,0.25)"
     : "rgba(102,126,234,0.25)";
 
+  // Initialize client inside component with proper error handling
+  useEffect(() => {
+    try {
+      const apiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
+      if (!apiKey || apiKey.trim() === "") {
+        setHasApiKey(false);
+        console.warn("⚠ REACT_APP_ANTHROPIC_API_KEY is not set");
+        return;
+      }
+      clientRef.current = new Anthropic({
+        apiKey: apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+      setHasApiKey(true);
+    } catch (error) {
+      setHasApiKey(false);
+      console.error("Failed to initialize Anthropic client:", error);
+    }
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !clientRef.current || !hasApiKey) return;
+    
     const userMsg: Message = { role: "user", content: input.trim() };
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
@@ -42,22 +60,39 @@ const ClaudeChat: React.FC<ClaudeChatProps> = ({ theme = "dark" }) => {
     setLoading(true);
 
     try {
-      const res = await client.messages.create({
-        model: "claude-sonnet-4-6",
+      const res = await clientRef.current.messages.create({
+        model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
         messages: updatedMessages,
       });
+      
       const assistantMsg: Message = {
         role: "assistant",
         content: res.content[0].type === "text" ? res.content[0].text : "",
       };
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
+    } catch (error) {
+      console.error("Claude API Error:", error);
+      
+      let errorMessage = "⚠ Error reaching Claude. Please try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes("401") || error.message.includes("unauthorized")) {
+          errorMessage = "⚠ API key is invalid. Check your REACT_APP_ANTHROPIC_API_KEY environment variable.";
+        } else if (error.message.includes("429")) {
+          errorMessage = "⚠ Rate limit exceeded. Please wait a moment and try again.";
+        } else if (error.message.includes("500")) {
+          errorMessage = "⚠ Claude API server error. Please try again later.";
+        } else {
+          errorMessage = `⚠ Error: ${error.message}`;
+        }
+      }
+      
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "⚠ Error reaching Claude. Please try again.",
+          content: errorMessage,
         },
       ]);
     }
@@ -70,6 +105,55 @@ const ClaudeChat: React.FC<ClaudeChatProps> = ({ theme = "dark" }) => {
       sendMessage();
     }
   };
+
+  // Show API key setup message if not configured
+  if (!hasApiKey) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 400,
+          background: "rgba(255,255,255,0.02)",
+          border: `1px solid ${accentBorder}`,
+          borderRadius: 16,
+          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "32px",
+        }}
+      >
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)" }}>
+          <div style={{ fontSize: 32, marginBottom: 16 }}>⚠</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+            API Key Not Found
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.6, maxWidth: 300 }}>
+            To use Claude AI, please set up your environment variable:
+            <div style={{ marginTop: 12, fontFamily: "monospace", fontSize: 11, background: "rgba(255,255,255,0.05)", padding: "10px", borderRadius: 8 }}>
+              REACT_APP_ANTHROPIC_API_KEY=sk-ant-your-key
+            </div>
+            <div style={{ marginTop: 12, fontSize: 11 }}>
+              1. Create/edit <strong>.env</strong> in your project root
+              <br />
+              2. Add your API key from{" "}
+              <a
+                href="https://console.anthropic.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: accent, textDecoration: "none" }}
+              >
+                console.anthropic.com
+              </a>
+              <br />
+              3. Restart your dev server
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -225,6 +309,7 @@ const ClaudeChat: React.FC<ClaudeChatProps> = ({ theme = "dark" }) => {
                   msg.role === "user" ? "#f0e6d3" : "rgba(255,255,255,0.75)",
                 lineHeight: 1.6,
                 whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
               }}
             >
               {msg.content}
