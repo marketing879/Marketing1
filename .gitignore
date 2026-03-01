@@ -1,2 +1,11 @@
-node_modules
-backend/.wa_auth/session/Default/Cache/Cache_Data/sqlDb0
+node_modules/
+.env
+src/.env
+backend/.env
+backend/.wa_auth/
+backend/.wwebjs_cache/
+build/
+dist/
+*.log
+*.db
+*.sqlite

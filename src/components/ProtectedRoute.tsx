@@ -8,11 +8,7 @@ interface Props {
 }
 
 const ProtectedRoute: React.FC<Props> = ({ children, role }) => {
-  const { user, authLoading } = useUser();
-
-  if (authLoading) {
-    return <div style={{ padding: 40 }}>Loading...</div>;
-  }
+  const { user } = useUser(); // ← removed authLoading, not in UserContextType
 
   if (!user) {
     return <Navigate to="/login" />;

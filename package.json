@@ -2,20 +2,29 @@
   "name": "task-management-dashboard",
   "version": "1.0.0",
   "private": true,
+  "homepage": "/",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.76.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
+    "crypto-js": "4.2.0",
+    "eslint": "^8.0.0",
+    "eslint-plugin-flowtype": "^8.0.3",
+    "eslint-plugin-jsx-a11y": "^6.4.1",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "lucide-react": "0.568.0",
+    "puppeteer": "^24.37.5",
+    "qrcode-terminal": "^0.12.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.3",
-    "react-scripts": "5.0.1",
-    "typescript": "^5.3.3",
+    "recharts": "^3.7.0",
+    "sheetjs-style": "^0.15.8",
+    "twilio": "^5.12.2",
     "web-vitals": "^3.5.1",
-    "crypto-js": "4.2.0",
-    "lucide-react": "0.568.0",
-    "@anthropic-ai/sdk": "0.76.0",
-    "xlsx": "0.18.5"
+    "whatsapp-web.js": "^1.34.6"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -41,6 +50,27 @@
     ]
   },
   "devDependencies": {
-    "@types/react-router-dom": "^5.3.3"
+    "@types/dotenv": "^6.1.1",
+    "@types/react-router-dom": "^5.3.3",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint-plugin-jest": "^25.7.0",
+    "eslint-plugin-react": "^7.22.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "react-scripts": "^5.0.1",
+    "typescript": "^4.9.5"
+  },
+  "description": "Created with CodeSandbox",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marketing879/Marketing1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/marketing879/Marketing1/issues"
   }
 }

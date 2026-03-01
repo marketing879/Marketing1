@@ -158,6 +158,7 @@ const AddNewUserForm: React.FC<AddNewUserFormProps> = ({
       name: formData.name,
       email: formData.email,
       role: formData.systemRole,
+      isDoer: formData.isDoer, // ← FIXED: was missing, required by User type
       password: otp,
     });
 
