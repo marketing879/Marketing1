@@ -12,13 +12,14 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: transparent;
   min-height: 100vh;
 }
 
 .app {
   min-height: 100vh;
   padding: 20px;
+  background: transparent;
 }
 
 /* Common Button Styles */

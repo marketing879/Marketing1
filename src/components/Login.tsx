@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser, Role } from "../contexts/UserContext";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
-
+import { greetUser, setElevenLabsVoice, announceVoice } from "../services/VoiceModule"; 
+let _welcomeLoginPlayed = false;
 const Login: React.FC = () => {
-  const { login, teamMembers } = useUser();
+  const { validateLogin, commitLogin, teamMembers } = useUser();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("staff");
   const [password, setPassword] = useState("");
-  const [step, setStep] = useState<"email" | "password">("email");
+  const [step, setStep] = useState<"email" | "password" | "granted">("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mounted, setMounted] = useState(false);
   const [taglineIndex, setTaglineIndex] = useState(0);
   const [logoError, setLogoError] = useState(false);
+  const [grantedRole, setGrantedRole] = useState<Role>("staff");
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
   const proverbs = [
     "Powered by Insight, Driven by Action",
@@ -44,8 +47,26 @@ const Login: React.FC = () => {
     return () => clearInterval(interval);
   }, [proverbs.length]);
 
-  const handleGenerateOTP = (e: React.FormEvent) => {
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const welcomeRef = useRef(false);
+
+  useEffect(() => {
+    if (_welcomeLoginPlayed) return;
+    _welcomeLoginPlayed = true;
+    setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh"); // ← voice ID restored
+    setTimeout(() => {
+      announceVoice("Welcome_Login").catch(() => {});
+    }, 600);
+  }, [])
+
+  const handleGenerateOTP = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setError("");
     const foundUser = teamMembers.find(
       (u) => u.email.toLowerCase() === email.toLowerCase() && u.role === role
@@ -55,28 +76,59 @@ const Login: React.FC = () => {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       setLoading(false);
       setStep("password");
       setPassword("");
     }, 800);
-  };
+  }, [email, role, teamMembers]);
 
-  const handleVerifyPassword = (e: React.FormEvent) => {
+  // ── handleVerifyPassword ──────────────────────────────────────────────────
+  // Sequence:
+  //   1. validateLogin()  — checks creds only, sets NO state (no redirect)
+  //   2. Wrong → Access_Denied voice, show error
+  //   3. Right → show granted screen + progress bar (2.5s CSS)
+  //   4. After 2.5s → await announceVoice("Access_Granted") — audio plays fully
+  //   5. commitLogin()    — NOW sets user state, triggers route guard
+  //   6. navigate()       — redirect happens here, after voice is done
+  const handleVerifyPassword = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      const success = login(email, password);
-      if (!success) {
+
+    timeoutRef.current = setTimeout(() => {
+      const valid = validateLogin(email, password);
+
+      if (!valid) {
         setError("Invalid password. Please try again.");
         setPassword("");
         setLoading(false);
+        announceVoice("Access_Denied").catch(() => {});
         return;
       }
-      navigate("/" + role);
+
+      // Find name for personalised greeting
+      const foundUser = teamMembers.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase()
+      );
+      setGrantedRole(role);
+      setLoading(false);
+      setStep("granted"); // show screen — no user state set yet, no redirect yet
+
+      // Bar fills for 2.5s (CSS animation), then voice fires
+      timeoutRef.current = setTimeout(async () => {
+        try {
+          await announceVoice("Access_Granted"); // wait for full audio playback
+              } catch (err) {
+          console.error("Voice failed:", err);
+        }
+        // Only NOW set user state — route guard fires here, not before
+        commitLogin(email, password);
+        navigate("/" + role);
+      }, 2500);
     }, 600);
-  };
+  }, [email, password, role, validateLogin, commitLogin, navigate, teamMembers]);
 
   const roles: { value: Role; label: string; icon: string }[] = [
     { value: "staff", label: "Staff", icon: "◈" },
@@ -429,21 +481,89 @@ const Login: React.FC = () => {
           0%, 100% { opacity: 0.3; }
           50% { opacity: 1; }
         }
+
+        /* ── ACCESS GRANTED ── */
+        .access-granted-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 24px;
+          animation: fadeInGranted 0.5s ease both;
+        }
+
+        @keyframes fadeInGranted {
+          from { opacity: 0; transform: scale(0.92); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+
+        .access-granted-icon {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, rgba(201,169,110,0.15), rgba(201,169,110,0.05));
+          border: 2px solid #c9a96e;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 36px;
+          box-shadow: 0 0 40px rgba(201,169,110,0.35), 0 0 80px rgba(201,169,110,0.15);
+          animation: glowPulse 1.8s ease infinite;
+        }
+
+        @keyframes glowPulse {
+          0%, 100% { box-shadow: 0 0 30px rgba(201,169,110,0.35), 0 0 60px rgba(201,169,110,0.10); }
+          50%       { box-shadow: 0 0 50px rgba(201,169,110,0.60), 0 0 100px rgba(201,169,110,0.25); }
+        }
+
+        .access-granted-title {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 32px;
+          font-weight: 500;
+          letter-spacing: 4px;
+          color: #c9a96e;
+          text-align: center;
+          text-transform: uppercase;
+        }
+
+        .access-granted-sub {
+          font-size: 11px;
+          color: #a89968;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          text-align: center;
+        }
+
+        .access-granted-bar {
+          width: 180px;
+          height: 2px;
+          background: rgba(201,169,110,0.15);
+          border-radius: 99px;
+          overflow: hidden;
+        }
+
+        .access-granted-bar-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #c9a96e, #f5e6c8, #c9a96e);
+          border-radius: 99px;
+          animation: barFill 2.5s ease forwards;
+        }
+
+        @keyframes barFill {
+          from { width: 0%; }
+          to   { width: 100%; }
+        }
       `}</style>
 
       <div className="login-root">
 
-        {/* ── FIX 1: URL-encode the space in the video filename ── */}
         <video autoPlay muted loop playsInline className="background-video">
           <source src="/videos/roswalt%20logo%20animation.mp4" type="video/mp4" />
-          {/* Fallback: rename the file to remove the space and use the line below instead */}
-          {/* <source src="/videos/roswalt-logo-animation.mp4" type="video/mp4" /> */}
         </video>
 
-        {/* DARK OVERLAY */}
         <div className="video-overlay" />
 
-        {/* LOGIN CARD */}
         <div
           className="card"
           style={{
@@ -454,8 +574,6 @@ const Login: React.FC = () => {
         >
           {/* HEADER */}
           <div className="card-header">
-
-            {/* ── FIX 2: onError fallback if the imported logo fails to load ── */}
             {!logoError ? (
               <img
                 src={roswaltLogo}
@@ -464,24 +582,50 @@ const Login: React.FC = () => {
                 onError={() => setLogoError(true)}
               />
             ) : (
-              // Fallback: golden "R" monogram shown if image is missing
               <div className="logo-fallback">R</div>
             )}
-
             <h2>SmartCue</h2>
             <p key={taglineIndex} className="tagline">
               {proverbs[taglineIndex]}
             </p>
           </div>
 
-          {/* PROGRESS */}
-          <div className="progress-indicator">
-            <div className={"progress-dot" + (step === "email" ? " active" : "")} />
-            <div className={"progress-dot" + (step === "password" ? " active" : "")} />
-          </div>
+          {/* PROGRESS DOTS */}
+          {step !== "granted" && (
+            <div className="progress-indicator">
+              <div className={"progress-dot" + (step === "email" ? " active" : "")} />
+              <div className={"progress-dot" + (step === "password" ? " active" : "")} />
+            </div>
+          )}
 
           <div className="form-container">
-            {step === "email" ? (
+
+            {/* ── ACCESS GRANTED SCREEN ── */}
+            {step === "granted" && (
+              <div className="access-granted-container">
+                <div className="access-granted-icon">
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Shackle */}
+                    <path d="M11 16V11C11 7.134 14.134 4 18 4C21.866 4 25 7.134 25 11V16" stroke="#c9a96e" strokeWidth="2" strokeLinecap="round"/>
+                    {/* Body */}
+                    <rect x="7" y="16" width="22" height="16" rx="3" stroke="#c9a96e" strokeWidth="2"/>
+                    {/* Keyhole circle */}
+                    <circle cx="18" cy="24" r="2.5" stroke="#c9a96e" strokeWidth="1.5"/>
+                    {/* Keyhole stem */}
+                    <line x1="18" y1="26.5" x2="18" y2="29.5" stroke="#c9a96e" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <div className="access-granted-title">Access Granted</div>
+                <div className="access-granted-sub">
+                  Welcome · {grantedRole.toUpperCase()} PORTAL
+                </div>
+                <div className="access-granted-bar">
+                  <div className="access-granted-bar-fill" />
+                </div>
+              </div>
+            )}
+
+            {step === "email" && (
               <form onSubmit={handleGenerateOTP}>
                 <div className="form-group">
                   <label>Email Address</label>
@@ -528,7 +672,9 @@ const Login: React.FC = () => {
                   </button>
                 </div>
               </form>
-            ) : (
+            )}
+
+            {step === "password" && (
               <form onSubmit={handleVerifyPassword}>
                 <div className="form-group">
                   <label>Password (6 Digits)</label>
@@ -579,6 +725,7 @@ const Login: React.FC = () => {
                 </div>
               </form>
             )}
+
           </div>
 
           {/* FOOTER */}

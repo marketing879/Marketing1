@@ -11,10 +11,11 @@ const { Client, LocalAuth } = pkg;
 
 dotenv.config();
 
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true })); // ← fixed warning
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANTHROPIC CLIENT
@@ -91,7 +92,7 @@ const Task    = mongoose.model("Task",    taskSchema);
 let inMemoryProjects = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEAM DIRECTORY  (backend only — fill in real 10-digit numbers)
+// TEAM DIRECTORY
 // ─────────────────────────────────────────────────────────────────────────────
 const TEAM_DIRECTORY = {
   // ── Doers ──────────────────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ const TEAM_DIRECTORY = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHATSAPP CLIENT  (fixed puppeteer args for Windows)
+// WHATSAPP CLIENT
 // ─────────────────────────────────────────────────────────────────────────────
 let waReady  = false;
 let waClient = null;
@@ -130,8 +131,6 @@ function initWhatsApp() {
     authStrategy: new LocalAuth({ dataPath: "./.wa_auth" }),
     puppeteer: {
       headless: true,
-      // ── Removed --single-process / --no-zygote / --no-first-run
-      // ── These caused "Navigating frame was detached" on Windows
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -164,13 +163,11 @@ function initWhatsApp() {
   waClient.initialize().catch((e) => console.error("❌ WA init error:", e.message));
 }
 
-// ── normalize phone → WhatsApp chat ID ───────────────────────────────────────
 function toWhatsAppId(phone) {
   const digits = phone.replace(/\D/g, "");
   return `${digits.length === 10 ? "91" + digits : digits}@c.us`;
 }
 
-// ── send a WhatsApp message, returns true/false ───────────────────────────────
 async function sendWhatsApp(phone, message) {
   if (!waReady) {
     console.warn(`⚠️  WA not ready — skipping ${phone}`);
@@ -187,7 +184,7 @@ async function sendWhatsApp(phone, message) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BACKEND TAT MONITOR  (fully independent — no frontend involvement)
+// BACKEND TAT MONITOR
 // ─────────────────────────────────────────────────────────────────────────────
 function getDelayString(deadline, now) {
   const diffMs      = now.getTime() - deadline.getTime();
@@ -220,7 +217,6 @@ async function runTATMonitor() {
       const deadline = new Date(task.dueDate + "T18:00:00");
       if (now < deadline) continue;
 
-      // Avoid spamming — only send once per hour per task
       if (task.lastReminderAt) {
         const minsSince = (now - new Date(task.lastReminderAt)) / 60000;
         if (minsSince < 60) continue;
@@ -468,6 +464,105 @@ app.post("/api/review-attachments", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SCORE CONTENT  (AI 5-category marketing quality scorer)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/score-content", async (req, res) => {
+  const { systemPrompt, userContent } = req.body;
+  if (!systemPrompt || !userContent) {
+    return res.status(400).json({ success: false, message: "Missing systemPrompt or userContent" });
+  }
+  try {
+    const imageCount = userContent.filter(c => c.type === "image").length;
+    console.log(`[INFO] 🎯 Scoring content — ${imageCount} image(s)...`);
+
+    const message = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2500,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userContent }],
+      })
+    );
+
+    const rawText = message.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("");
+
+    // Strip accidental markdown fences
+    const clean = rawText.replace(/```json|```/g, "").trim();
+
+    let result;
+    try {
+      result = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("[ERROR] score-content JSON parse failed:", clean.slice(0, 300));
+      return res.status(500).json({
+        success: false,
+        message: "AI returned invalid JSON — please try again",
+        raw: clean.slice(0, 300),
+      });
+    }
+
+    console.log("[INFO] ✓ Content scored successfully");
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error("[ERROR] score-content:", error);
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) {
+      return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
+    }
+    res.status(500).json({ success: false, message: "Failed to score content: " + error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELEVENLABS TEXT-TO-SPEECH (SECURE BACKEND PROXY)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/tts", async (req, res) => {
+  try {
+    const { text, voiceId } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ message: "Text is required" });
+    }
+
+    const selectedVoice = voiceId || "21m00Tcm4TlvDq8ikWAM";
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": process.env.ELEVEN_LABS_API_KEY,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("ElevenLabs error:", errorText);
+      return res.status(response.status).send(errorText);
+    }
+
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
+    res.set("Content-Type", "audio/mpeg");
+    res.send(audioBuffer);
+  } catch (error) {
+    console.error("TTS error:", error);
+    res.status(500).json({ message: "Failed to generate speech" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WHATSAPP STATUS & TEST
 // ─────────────────────────────────────────────────────────────────────────────
 app.get("/api/whatsapp/status", (req, res) => {
@@ -505,10 +600,12 @@ app.listen(PORT, () => {
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
   console.log(`║  AI:         POST /api/draft-notes                   ║`);
   console.log(`║              POST /api/review-attachments            ║`);
+  console.log(`║              POST /api/score-content                 ║`);
   console.log(`║  WhatsApp:   GET  /api/whatsapp/status               ║`);
   console.log(`║              POST /api/whatsapp/test                 ║`);
   console.log(`║  Health:     GET  /health                            ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✓ Loaded" : "✗ Missing");
 
   // 1. Start WhatsApp
   initWhatsApp();

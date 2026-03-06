@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { announceVoice } from "../services/VoiceModule";
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -26,7 +27,6 @@ export interface User {
   phone?: string;
 }
 
-// ── FIX 1: Added all missing fields used by AdminDashboard & StaffDashboard ──
 export interface HistoryEntry {
   id: string;
   timestamp: string;
@@ -58,7 +58,6 @@ export interface Task {
   adminComments?: string;
   adminReviewedBy?: string;
   createdAt?: string;
-  // Previously missing — caused silent data loss
   timeSlot?:      string;
   exactDeadline?: string;
   history?:       HistoryEntry[];
@@ -90,13 +89,16 @@ export const getDoerForProject = (
   );
 };
 
-// ── FIX 2 & 3: Updated addTask and updateTask signatures ─────────────────────
 interface UserContextType {
   user: User | null;
   teamMembers: User[];
   tasks: Task[];
   projects: Project[];
-  login: (email: string, password: string) => boolean;
+  voiceAccessGranted: boolean;
+  // Step 1 — validate only, sets NO state (no redirect triggered)
+  validateLogin: (email: string, password: string) => boolean;
+  // Step 2 — called by Login.tsx AFTER voice finishes, sets user + opens gate
+  commitLogin: (email: string, password: string) => void;
   loginAsUser: (user: User) => void;
   logout: () => void;
   addUser: (user: Omit<User, "id"> & { password: string }) => {
@@ -135,19 +137,19 @@ const defaultUsers: StoredUser[] = [
   { id: "5",  name: "Nidhi Mehta",                 email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
   { id: "6",  name: "Keerti Barua",                email: "keerti.barua@roswalt.com",        role: "admin",      isDoer: false, password: "100006" },
   { id: "7",  name: "Hetal Makwana",               email: "hetal.makwana@roswalt.com",       role: "admin",      isDoer: false, password: "100007" },
-  { id: "8",  name: "Prathamesh Vijay Chile",      email: "prathamesh.chile@roswalt.com",    role: "staff",      isDoer: true,  password: "100008" },
-  { id: "9",  name: "Samruddhi C Shivgan",         email: "samruddhi.shivgan@roswalt.com",   role: "staff",      isDoer: true,  password: "100009" },
-  { id: "10", name: "Irfan S. Ansari",             email: "irfan.ansari@roswalt.com",        role: "staff",      isDoer: true,  password: "100010" },
-  { id: "11", name: "Vishal Chaudhary",            email: "vishal.chaudhary@roswalt.com",    role: "staff",      isDoer: true,  password: "100011" },
-  { id: "12", name: "Mithilesh Viinayak Menge",    email: "mithilesh.menge@roswalt.com",     role: "staff",      isDoer: true,  password: "100012" },
-  { id: "13", name: "Jai Bhojwani",                email: "jai.bhojwani@roswalt.com",        role: "staff",      isDoer: true,  password: "100013" },
-  { id: "14", name: "Vikrant Swami Pabrekar",      email: "vikrant.pabrekar@roswalt.com",    role: "staff",      isDoer: true,  password: "100014" },
-  { id: "15", name: "Gaurav Waman Chavan",         email: "gaurav.chavan@roswalt.com",       role: "staff",      isDoer: true,  password: "100015" },
-  { id: "16", name: "Harish Swami Utkam",          email: "harish.utkam@roswalt.com",        role: "staff",      isDoer: true,  password: "100016" },
-  { id: "17", name: "Siddhesh Santosh Achari",     email: "siddhesh.achari@roswalt.com",     role: "staff",      isDoer: true,  password: "100017" },
-  { id: "18", name: "Raj Sachin Vichare",          email: "raj.vichare@roswalt.com",         role: "staff",      isDoer: true,  password: "100018" },
-  { id: "19", name: "Rohan Fernandes",             email: "rohan.fernandes@roswalt.com",     role: "staff",      isDoer: true,  password: "100019" },
-  { id: "20", name: "Vaibhavi Gujjeti",            email: "vaibhavi.gujjeti@roswalt.com",    role: "staff",      isDoer: true,  password: "100020" },
+  { id: "8",  name: "Prathamesh Vijay Chile",      email: "prathamesh.chile@roswalt.com",    role: "staff",      isDoer: true,  password: "100008", phone: "+91XXXXXXXXXX" },
+  { id: "9",  name: "Samruddhi C Shivgan",         email: "samruddhi.shivgan@roswalt.com",   role: "staff",      isDoer: true,  password: "100009", phone: "+91XXXXXXXXXX" },
+  { id: "10", name: "Irfan S. Ansari",             email: "irfan.ansari@roswalt.com",        role: "staff",      isDoer: true,  password: "100010", phone: "+91XXXXXXXXXX" },
+  { id: "11", name: "Vishal Chaudhary",            email: "vishal.chaudhary@roswalt.com",    role: "staff",      isDoer: true,  password: "100011", phone: "+91XXXXXXXXXX" },
+  { id: "12", name: "Mithilesh Viinayak Menge",    email: "mithilesh.menge@roswalt.com",     role: "staff",      isDoer: true,  password: "100012", phone: "+91XXXXXXXXXX" },
+  { id: "13", name: "Jai Bhojwani",                email: "jai.bhojwani@roswalt.com",        role: "staff",      isDoer: true,  password: "100013", phone: "+91XXXXXXXXXX" },
+  { id: "14", name: "Vikrant Swami Pabrekar",      email: "vikrant.pabrekar@roswalt.com",    role: "staff",      isDoer: true,  password: "100014", phone: "+91XXXXXXXXXX" },
+  { id: "15", name: "Gaurav Waman Chavan",         email: "gaurav.chavan@roswalt.com",       role: "staff",      isDoer: true,  password: "100015", phone: "+91XXXXXXXXXX" },
+  { id: "16", name: "Harish Swami Utkam",          email: "harish.utkam@roswalt.com",        role: "staff",      isDoer: true,  password: "100016", phone: "+91XXXXXXXXXX" },
+  { id: "17", name: "Siddhesh Santosh Achari",     email: "siddhesh.achari@roswalt.com",     role: "staff",      isDoer: true,  password: "100017", phone: "+91XXXXXXXXXX" },
+  { id: "18", name: "Raj Sachin Vichare",          email: "raj.vichare@roswalt.com",         role: "staff",      isDoer: true,  password: "100018", phone: "+919321181236" },
+  { id: "19", name: "Rohan Fernandes",             email: "rohan.fernandes@roswalt.com",     role: "staff",      isDoer: true,  password: "100019", phone: "+91XXXXXXXXXX" },
+  { id: "20", name: "Vaibhavi Gujjeti",            email: "vaibhavi.gujjeti@roswalt.com",    role: "staff",      isDoer: true,  password: "100020", phone: "+91XXXXXXXXXX" },
 ];
 
 const defaultProjects: Project[] = [
@@ -185,6 +187,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   });
 
+  const [voiceAccessGranted, setVoiceAccessGranted] = useState<boolean>(false);
+  const welcomeSpoken = useRef(false);
+
   useEffect(() => { saveToStorage("tf_user",     user);     }, [user]);
   useEffect(() => {
     const addedUsers = storedUsers.filter(
@@ -194,6 +199,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [storedUsers]);
   useEffect(() => { saveToStorage("tf_tasks",    tasks);    }, [tasks]);
   useEffect(() => { saveToStorage("tf_projects", projects); }, [projects]);
+  useEffect(() => {
+    if (welcomeSpoken.current) return;
+    welcomeSpoken.current = true;
+    announceVoice("Welcome_Login");
+  }, []);
 
   useEffect(() => {
     fetch("http://localhost:5000/api/projects")
@@ -214,27 +224,37 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
         if (normalised.length > 0) setProjects(normalised);
       })
-      .catch(() => {
-        // Backend unreachable — keep localStorage state
-      });
+      .catch(() => {});
   }, []);
 
   const teamMembers: User[] = storedUsers.map(({ password: _pw, ...rest }) => rest);
 
-  const login = (email: string, password: string): boolean => {
+  // ── STEP 1: validate only — no state changes, no redirect triggered ─────
+  const validateLogin = (email: string, password: string): boolean => {
+    return !!storedUsers.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+    );
+  };
+
+  // ── STEP 2: called by Login.tsx AFTER "Access Granted" voice finishes ────
+  // Only now does user state get set, which triggers route guards.
+  const commitLogin = (email: string, password: string): void => {
     const found = storedUsers.find(
       (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
     );
-    if (!found) return false;
+    if (!found) return;
     const { password: _pw, ...publicUser } = found;
+    setVoiceAccessGranted(true);
     setUser(publicUser);
-    return true;
   };
 
-  const loginAsUser = (u: User) => { setUser(u); };
+  const loginAsUser = (u: User) => {
+    setUser(u);
+  };
 
   const logout = () => {
     setUser(null);
+    setVoiceAccessGranted(false);
     saveToStorage("tf_user", null);
   };
 
@@ -262,8 +282,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // ── FIX 2: Only auto-generates id and createdAt ────────────────────────────
-  // Caller must supply: assignedBy, approvalStatus, and all other fields.
   const addTask = (task: Omit<Task, "id" | "createdAt">) => {
     const newTask: Task = {
       ...task,
@@ -273,7 +291,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTasks((prev) => [...prev, newTask]);
   };
 
-  // ── FIX 3: Accepts Partial<Task> — all fields including history/attachments
   const updateTask = (taskId: string, updatedTaskData: Partial<Task>) => {
     setTasks((prev) =>
       prev.map((task) =>
@@ -282,11 +299,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
-  const updateTaskStatus = (
-    taskId: string,
-    status: Task["status"],
-    notes?: string
-  ) => {
+  const updateTaskStatus = (taskId: string, status: Task["status"], notes?: string) => {
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
@@ -346,10 +359,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getTasksForAdminReview = (): Task[] =>
-    tasks.filter(
-      (t) =>
-        t.approvalStatus === "in-review" &&
-        (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+    tasks.filter((t) =>
+      t.approvalStatus === "in-review" &&
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
 
   const getTasksForSuperadminReview = (): Task[] =>
@@ -360,9 +372,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getAssignedTasks = (): Task[] => {
     if (!user) return [];
-    return tasks.filter(
-      (t) => (t.assignedTo ?? "").toLowerCase() === user.email.toLowerCase()
-    );
+    return tasks.filter((t) => (t.assignedTo ?? "").toLowerCase() === user.email.toLowerCase());
   };
 
   const getProjectById = (id: string): Project | undefined =>
@@ -381,14 +391,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addProject = (project: Omit<Project, "id">) => {
     const newProject: Project = {
-      id:                 Date.now().toString(),
-      name:               project.name,
-      description:        project.description ?? "",
-      color:              project.color ?? "#c9a96e",
-      projectCode:        project.projectCode ?? "",
+      id: Date.now().toString(),
+      name: project.name,
+      description: project.description ?? "",
+      color: project.color ?? "#c9a96e",
+      projectCode: project.projectCode ?? "",
       concernedDoerEmail: project.concernedDoerEmail ?? "",
-      launchDate:         project.launchDate ?? "",
-      status:             project.status ?? "active",
+      launchDate: project.launchDate ?? "",
+      status: project.status ?? "active",
     };
     setProjects((prev) => [...prev, newProject]);
   };
@@ -400,7 +410,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         teamMembers,
         tasks,
         projects,
-        login,
+        voiceAccessGranted,
+        validateLogin,
+        commitLogin,
         loginAsUser,
         logout,
         addUser,
