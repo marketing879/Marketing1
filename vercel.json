@@ -1,1 +1,1 @@
-{"buildCommand": null, "outputDirectory": "build", "framework": null, "installCommand": null}
+{"buildCommand": "npm run build", "outputDirectory": "build", "framework": null, "rewrites": [{"source": "/(.*)", "destination": "/index.html"}]}
