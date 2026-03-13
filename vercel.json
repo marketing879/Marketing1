@@ -1,1 +1,1 @@
-{"buildCommand": "npm run build", "outputDirectory": "build", "framework": null, "rewrites": [{"source": "/(.*)", "destination": "/index.html"}]}
+{"buildCommand": "CI=false npm run build", "outputDirectory": "build", "framework": null, "rewrites": [{"source": "/(.*)", "destination": "/index.html"}]}
