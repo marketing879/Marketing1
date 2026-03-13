@@ -11,3 +11,5 @@ dist/
 *.sqlite
 .vercel
 .env*.local
+
+public/videos/
