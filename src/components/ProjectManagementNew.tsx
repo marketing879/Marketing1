@@ -2,7 +2,6 @@
 // ── REPLACE your existing ProjectManagement component with this file ──────────
 import React, { useState } from "react";
 import { useUser } from "../contexts/UserContext";
-import type { Project } from "../contexts/UserContext";
 
 // ─── Design tokens (mirrors AdminDashboard golden theme) ─────────────────────
 const G = {
@@ -41,56 +40,32 @@ const CSS = `
   .pm-fade-up  { animation: fadeUp  0.45s ease both; }
   .pm-scale-in { animation: scaleIn 0.3s  ease both; }
 
-  /* calendar icon — dark-mode aware */
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(0.8) sepia(1) hue-rotate(5deg) saturate(3);
-    cursor: pointer;
-    opacity: 0.7;
+    cursor: pointer; opacity: 0.7;
   }
   input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
   .pm-input {
-    width: 100%;
-    background: ${G.bgDeep};
-    border: 1px solid ${G.border};
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: ${G.textPrimary};
-    font-size: 13px;
-    font-family: 'DM Sans', sans-serif;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    colorScheme: dark;
+    width: 100%; background: ${G.bgDeep}; border: 1px solid ${G.border}; border-radius: 8px;
+    padding: 12px 14px; color: ${G.textPrimary}; font-size: 13px;
+    font-family: 'DM Sans', sans-serif; transition: border-color 0.2s, box-shadow 0.2s; colorScheme: dark;
   }
-  .pm-input:focus {
-    outline: none;
-    border-color: ${G.goldBorder};
-    box-shadow: 0 0 0 3px ${G.goldDim};
-  }
+  .pm-input:focus { outline: none; border-color: ${G.goldBorder}; box-shadow: 0 0 0 3px ${G.goldDim}; }
   .pm-input::placeholder { color: ${G.textMuted}; }
-  .pm-input option       { background: ${G.surfaceMid}; color: ${G.textPrimary}; }
+  .pm-input option { background: ${G.surfaceMid}; color: ${G.textPrimary}; }
 
   .pm-label {
-    display: block;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: ${G.textSecondary};
-    margin-bottom: 8px;
+    display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: ${G.textSecondary}; margin-bottom: 8px;
     font-family: 'DM Mono', monospace;
   }
 
   .pm-card {
-    background: ${G.surface};
-    border: 1px solid ${G.border};
-    border-radius: 14px;
-    padding: 24px;
-    transition: border-color 0.2s, transform 0.2s;
+    background: ${G.surface}; border: 1px solid ${G.border}; border-radius: 14px;
+    padding: 24px; transition: border-color 0.2s, transform 0.2s;
   }
-  .pm-card:hover {
-    border-color: ${G.goldBorder};
-    transform: translateY(-2px);
-  }
+  .pm-card:hover { border-color: ${G.goldBorder}; transform: translateY(-2px); }
 
   .pm-btn-gold {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -106,8 +81,7 @@ const CSS = `
 
   .pm-btn-ghost {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 11px 22px;
-    background: ${G.surfaceHigh}; color: ${G.textPrimary};
+    padding: 11px 22px; background: ${G.surfaceHigh}; color: ${G.textPrimary};
     border: 1px solid ${G.border}; border-radius: 8px;
     font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer;
     transition: all 0.2s ease;
@@ -117,8 +91,7 @@ const CSS = `
   .pm-badge-active   { background: ${G.successDim}; color: ${G.success}; border: 1px solid ${G.successBorder}; }
   .pm-badge-inactive { background: ${G.dangerDim};  color: ${G.danger};  border: 1px solid ${G.dangerBorder}; }
   .pm-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 10px; border-radius: 99px;
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px;
     font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
     font-family: 'DM Mono', monospace; text-transform: uppercase;
   }
@@ -143,14 +116,8 @@ const CSS = `
   }
 
   .pm-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-  .pm-stat-top::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg, transparent, ${G.gold}, transparent); opacity: 0.5;
-  }
 `;
 
-// ─── Color palette for project swatches ──────────────────────────────────────
 const COLOR_OPTIONS = [
   { value: "#c9a96e", name: "Gold"    },
   { value: "#6ee7b7", name: "Mint"    },
@@ -163,30 +130,26 @@ const COLOR_OPTIONS = [
 ];
 
 const EMPTY_PROJECT = {
-  name:                "",
-  description:         "",
-  color:               "#c9a96e",
-  projectCode:         "",
-  concernedDoerEmail:  "",
-  launchDate:          "",
-  status:              "active" as "active" | "inactive",
+  name:               "",
+  description:        "",
+  color:              "#c9a96e",
+  projectCode:        "",
+  concernedDoerEmail: "",
+  launchDate:         "",
+  status:             "active" as "active" | "inactive",
 };
 
-// ─── ProjectManagement (default export) ───────────────────────────────────────
 const ProjectManagementNew: React.FC = () => {
   const { user, projects, teamMembers, addProject } = useUser();
   const isSuperAdmin = user?.role === "superadmin";
 
-  const [showForm, setShowForm]   = useState(false);
-  const [form,     setForm]       = useState(EMPTY_PROJECT);
-  const [errors,   setErrors]     = useState<Record<string, string>>({});
-  const [loading,  setLoading]    = useState(false);
-  const [toast,    setToast]      = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form,     setForm]     = useState(EMPTY_PROJECT);
+  const [errors,   setErrors]   = useState<Record<string, string>>({});
+  const [loading,  setLoading]  = useState(false);
+  const [toast,    setToast]    = useState<string | null>(null);
 
-  // Only staff/admins who are "doers" appear in the doer dropdown
-  const doers = teamMembers.filter(
-    (m) => m.role === "staff" || m.isDoer
-  );
+  const doers = teamMembers.filter((m) => m.role === "staff" || m.isDoer);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -195,41 +158,28 @@ const ProjectManagementNew: React.FC = () => {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.name.trim())              e.name              = "Project name is required.";
-    if (!form.projectCode.trim())       e.projectCode       = "Project code is required.";
-    if (!form.concernedDoerEmail)       e.concernedDoerEmail= "Please select a concerned doer.";
-    if (!form.launchDate)               e.launchDate        = "Launch date is required.";
+    if (!form.name.trim())        e.name               = "Project name is required.";
+    if (!form.projectCode.trim()) e.projectCode        = "Project code is required.";
+    if (!form.concernedDoerEmail) e.concernedDoerEmail = "Please select a concerned doer.";
+    if (!form.launchDate)         e.launchDate         = "Launch date is required.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  // ── FIX: just call addProject — UserContext handles the backend POST ────────
   const handleSubmit = () => {
     if (!validate()) return;
     setLoading(true);
-
-    // ── POST to backend + update context ──────────────────────────────────
-     fetch(`${process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app"}/api/projects`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ ...form, createdBy: user?.email }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Server error");
-        const saved: Project = await res.json();
-        // Optimistically reflect in context (addProject should accept full obj)
-        addProject(saved);
-        showToast("✓ Project created successfully!");
-        setForm(EMPTY_PROJECT);
-        setShowForm(false);
-      })
-      .catch(() => {
-        // If backend not yet updated, fall back to local context
-        addProject({ ...form } as any);
-        showToast("✓ Project saved locally (backend unreachable).");
-        setForm(EMPTY_PROJECT);
-        setShowForm(false);
-      })
-      .finally(() => setLoading(false));
+    try {
+      addProject({ ...form, description: form.description ?? "" });
+      showToast("✓ Project created successfully!");
+      setForm(EMPTY_PROJECT);
+      setShowForm(false);
+    } catch {
+      showToast("✗ Failed to create project.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const field = (key: keyof typeof form, val: string) => {
@@ -267,7 +217,7 @@ const ProjectManagementNew: React.FC = () => {
           )}
         </div>
 
-        {/* ── Access Denied Banner (non-superadmin) ── */}
+        {/* ── Access Denied Banner ── */}
         {!isSuperAdmin && (
           <div style={{
             padding: "12px 18px", background: G.dangerDim,
@@ -298,7 +248,6 @@ const ProjectManagementNew: React.FC = () => {
                 className="pm-card pm-fade-up"
                 style={{ animationDelay: `${idx * 60}ms`, position: "relative", overflow: "hidden" }}
               >
-                {/* colour accent bar */}
                 <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: project.color ?? G.gold, borderRadius: "14px 14px 0 0" }} />
 
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 6, marginBottom: 14 }}>
@@ -306,8 +255,8 @@ const ProjectManagementNew: React.FC = () => {
                     <div style={{ width: 10, height: 10, borderRadius: "50%", background: project.color ?? G.gold, flexShrink: 0 }} />
                     <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 18, fontWeight: 500, color: G.textPrimary }}>{project.name}</span>
                   </div>
-                  <span className={`pm-badge ${(project as any).status === "inactive" ? "pm-badge-inactive" : "pm-badge-active"}`}>
-                    {(project as any).status ?? "active"}
+                  <span className={`pm-badge ${project.status === "inactive" ? "pm-badge-inactive" : "pm-badge-active"}`}>
+                    {project.status ?? "active"}
                   </span>
                 </div>
 
@@ -318,19 +267,19 @@ const ProjectManagementNew: React.FC = () => {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 11, fontFamily: "'DM Mono', monospace" }}>
                   <div>
                     <div style={{ color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>Code</div>
-                    <div style={{ color: G.gold }}>{(project as any).projectCode || "—"}</div>
+                    <div style={{ color: G.gold }}>{project.projectCode || "—"}</div>
                   </div>
                   <div>
                     <div style={{ color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>Launch</div>
                     <div style={{ color: G.textSecondary }}>
-                      {(project as any).launchDate
-                        ? new Date((project as any).launchDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      {project.launchDate
+                        ? new Date(project.launchDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : "—"}
                     </div>
                   </div>
                   <div style={{ gridColumn: "1 / -1" }}>
                     <div style={{ color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>Doer</div>
-                    <div style={{ color: G.textSecondary }}>{(project as any).concernedDoerEmail ? getDoerName((project as any).concernedDoerEmail) : "—"}</div>
+                    <div style={{ color: G.textSecondary }}>{project.concernedDoerEmail ? getDoerName(project.concernedDoerEmail) : "—"}</div>
                   </div>
                 </div>
               </div>
@@ -339,12 +288,11 @@ const ProjectManagementNew: React.FC = () => {
         )}
       </div>
 
-      {/* ══════════ CREATE PROJECT MODAL (SuperAdmin only) ══════════ */}
+      {/* ══════════ CREATE PROJECT MODAL ══════════ */}
       {showForm && isSuperAdmin && (
         <div className="pm-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="pm-modal">
 
-            {/* Modal Header */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "24px 28px 20px", borderBottom: `1px solid ${G.border}` }}>
               <div>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: G.textSecondary, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Super Admin · New Entry</div>
@@ -356,10 +304,8 @@ const ProjectManagementNew: React.FC = () => {
               >×</button>
             </div>
 
-            {/* Form Body */}
             <div style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
 
-              {/* Name + Code */}
               <div className="pm-grid-2">
                 <div>
                   <label className="pm-label">Project Name *</label>
@@ -373,13 +319,11 @@ const ProjectManagementNew: React.FC = () => {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="pm-label">Description</label>
                 <textarea className="pm-input" value={form.description} onChange={(e) => field("description", e.target.value)} placeholder="Short project description…" style={{ minHeight: 72, resize: "vertical" }} />
               </div>
 
-              {/* Concerned Doer */}
               <div>
                 <label className="pm-label">Concerned Doer *</label>
                 <select className="pm-input" value={form.concernedDoerEmail} onChange={(e) => field("concernedDoerEmail", e.target.value)}>
@@ -391,17 +335,10 @@ const ProjectManagementNew: React.FC = () => {
                 {errors.concernedDoerEmail && <div style={{ color: G.danger, fontSize: 11, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>{errors.concernedDoerEmail}</div>}
               </div>
 
-              {/* Launch Date + Status */}
               <div className="pm-grid-2">
                 <div>
                   <label className="pm-label">Launch Date *</label>
-                  <input
-                    type="date"
-                    className="pm-input"
-                    value={form.launchDate}
-                    onChange={(e) => field("launchDate", e.target.value)}
-                    style={{ colorScheme: "dark" }}
-                  />
+                  <input type="date" className="pm-input" value={form.launchDate} onChange={(e) => field("launchDate", e.target.value)} style={{ colorScheme: "dark" }} />
                   {errors.launchDate && <div style={{ color: G.danger, fontSize: 11, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>{errors.launchDate}</div>}
                 </div>
                 <div>
@@ -413,7 +350,6 @@ const ProjectManagementNew: React.FC = () => {
                 </div>
               </div>
 
-              {/* Color picker */}
               <div>
                 <label className="pm-label">Project Color</label>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -424,8 +360,8 @@ const ProjectManagementNew: React.FC = () => {
                       title={c.name}
                       onClick={() => field("color", c.value)}
                       style={{
-                        width: 34, height: 34, borderRadius: "50%",
-                        background: c.value, border: form.color === c.value ? `3px solid #fff` : `2px solid rgba(255,255,255,0.15)`,
+                        width: 34, height: 34, borderRadius: "50%", background: c.value,
+                        border: form.color === c.value ? `3px solid #fff` : `2px solid rgba(255,255,255,0.15)`,
                         cursor: "pointer",
                         transform: form.color === c.value ? "scale(1.18)" : "scale(1)",
                         transition: "all 0.2s ease",
@@ -435,7 +371,6 @@ const ProjectManagementNew: React.FC = () => {
                 </div>
               </div>
 
-              {/* Actions */}
               <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
                 <button className="pm-btn-gold" onClick={handleSubmit} disabled={loading} style={{ flex: 1 }}>
                   {loading ? "Saving…" : "Create Project"}
@@ -447,7 +382,6 @@ const ProjectManagementNew: React.FC = () => {
         </div>
       )}
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
