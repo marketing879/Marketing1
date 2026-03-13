@@ -507,7 +507,7 @@ const SADashboard: React.FC = () => {
         if (photo.startsWith("data:")) { const m = photo.match(/data:([^;]+);base64,(.+)/); if (m) { mime = m[1]; base64 = m[2]; } }
         contentArray.push({ type:"image", source:{ type:"base64", media_type:mime, data:base64 } });
       }
-      const res = await fetch("http://localhost:5000/api/review-attachments", {
+      const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
         method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ taskId: selectedTask?.id, contentArray }),
       });
