@@ -353,9 +353,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(payload),
     })
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((r) => r.ok ? r.json() : r.json().then(e => Promise.reject(e)))
       .then((saved: any) => setProjects((prev) => [normalizeProject(saved), ...prev]))
-      .catch((err) => console.error("[UserContext] addProject failed:", err));
+      .catch((err) => console.error("[UserContext] addProject failed:", JSON.stringify(err)));
   };
 
   // ── Assistance Tickets (in-memory only — no backend endpoint yet) ─────────

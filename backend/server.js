@@ -246,7 +246,10 @@ const requireRole = (...roles) => (req, res, next) => {
 };
 
 const validateProject = (req, res, next) => {
-  const { name, projectCode, concernedDoerEmail, launchDate } = req.body;
+  let { name, projectCode, concernedDoerEmail, launchDate } = req.body;
+  // Normalize ISO datetime → YYYY-MM-DD (handles date picker returning full ISO string)
+  if (launchDate && launchDate.length > 10) launchDate = launchDate.slice(0, 10);
+  req.body.launchDate = launchDate; // update for downstream handlers
   const missing = [
     !name               && "name",
     !projectCode        && "projectCode",
@@ -271,7 +274,7 @@ app.get("/api/projects", async (req, res) => {
   } catch (e) { res.status(500).json({ message: "Failed to fetch projects." }); }
 });
 
-app.post("/api/projects", requireRole("superadmin"), validateProject, async (req, res) => {
+app.post("/api/projects", requireRole("superadmin", "supremo"), validateProject, async (req, res) => {
   try {
     const { name, description, color, projectCode, concernedDoerEmail, launchDate, status, createdBy } = req.body;
     if (mongoose.connection.readyState === 1) {
@@ -295,7 +298,7 @@ app.post("/api/projects", requireRole("superadmin"), validateProject, async (req
   } catch (e) { res.status(500).json({ message: "Failed to create project." }); }
 });
 
-app.put("/api/projects/:id", requireRole("superadmin"), validateProject, async (req, res) => {
+app.put("/api/projects/:id", requireRole("superadmin", "supremo"), validateProject, async (req, res) => {
   try {
     const { name, description, color, projectCode, concernedDoerEmail, launchDate, status } = req.body;
     if (mongoose.connection.readyState === 1) {
