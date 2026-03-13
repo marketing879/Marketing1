@@ -11,14 +11,13 @@ import Login from "./components/Login";
 import StaffDashboard from "./components/StaffDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SADashboard from "./components/SADashboard";
+// ── CHANGE 1: Import SupremoDashboard ────────────────────────────────────────
+import SupremoDashboard from "./components/Supremodashboard";
 
-// ============================================
-// Protected Route
-// ============================================
-
+// ── CHANGE 2: role prop now accepts "supremo" ────────────────────────────────
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
-  role: "staff" | "admin" | "superadmin";
+  role: "staff" | "admin" | "superadmin" | "supremo";
 }> = ({ children, role }) => {
   const { user } = useUser();
 
@@ -32,10 +31,6 @@ const ProtectedRoute: React.FC<{
 
   return <>{children}</>;
 };
-
-// ============================================
-// Routes
-// ============================================
 
 const AppRoutes: React.FC = () => {
   const { user } = useUser();
@@ -78,7 +73,17 @@ const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* DEFAULT */}
+      {/* ── CHANGE 3: Supremo route ──────────────────────────────────────── */}
+      <Route
+        path="/supremo"
+        element={
+          <ProtectedRoute role="supremo">
+            <SupremoDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* DEFAULT — falls through to /{role} which covers /supremo too */}
       <Route
         path="*"
         element={
@@ -92,10 +97,6 @@ const AppRoutes: React.FC = () => {
     </Routes>
   );
 };
-
-// ============================================
-// MAIN APP
-// ============================================
 
 const App: React.FC = () => {
   return (

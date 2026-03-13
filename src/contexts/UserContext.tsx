@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { announceVoice } from "../services/VoiceModule";
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -16,7 +15,8 @@ function saveToStorage<T>(key: string, value: T) {
   } catch {}
 }
 
-export type Role = "staff" | "admin" | "superadmin";
+// ── CHANGE 1: Added "supremo" to the Role type ───────────────────────────────
+export type Role = "staff" | "admin" | "superadmin" | "supremo";
 
 export interface User {
   id: string;
@@ -25,6 +25,22 @@ export interface User {
   role: Role;
   isDoer: boolean;
   phone?: string;
+}
+
+export interface AssistanceTicket {
+  id:           string;
+  taskId:       string;
+  taskTitle:    string;
+  taskDueDate:  string;
+  assignedTo:   string;
+  assignedBy:   string;
+  raisedAt:     string;
+  status:       "open" | "pending-admin" | "admin-approved" | "resolved";
+  reason:       string;
+  staffNote:    string;
+  adminComment?: string;
+  approvedAt?:  string;
+  approvedBy?:  string;
 }
 
 export interface HistoryEntry {
@@ -66,6 +82,8 @@ export interface Task {
   completedAt?:   string;
   forwardedFrom?: string;
   attachments?:   string[];
+  isFrozen?:      boolean;
+  frozenTicketId?: string;
 }
 
 export interface Project {
@@ -95,9 +113,7 @@ interface UserContextType {
   tasks: Task[];
   projects: Project[];
   voiceAccessGranted: boolean;
-  // Step 1 — validate only, sets NO state (no redirect triggered)
   validateLogin: (email: string, password: string) => boolean;
-  // Step 2 — called by Login.tsx AFTER voice finishes, sets user + opens gate
   commitLogin: (email: string, password: string) => void;
   loginAsUser: (user: User) => void;
   logout: () => void;
@@ -106,7 +122,7 @@ interface UserContextType {
     message: string;
   };
   deleteTeamMember: (memberId: string) => void;
-  addTask: (task: Omit<Task, "id" | "createdAt">) => void;
+  addTask: (task: Omit<Task, "id" | "createdAt"> & { id?: string; createdAt?: string }) => void;
   updateTask: (taskId: string, task: Partial<Task>) => void;
   updateTaskStatus: (taskId: string, status: Task["status"], notes?: string) => void;
   adminReviewTask: (taskId: string, approved: boolean, comments: string) => void;
@@ -121,6 +137,11 @@ interface UserContextType {
   deleteTask: (id: string) => void;
   deleteAllTasks: () => void;
   addProject: (project: Omit<Project, "id">) => void;
+  assistanceTickets: AssistanceTicket[];
+  raiseAssistanceTicket: (ticket: Omit<AssistanceTicket, "id" | "raisedAt" | "status">) => void;
+  updateAssistanceTicket: (ticketId: string, updates: Partial<AssistanceTicket>) => void;
+  submitTicketToAdmin: (ticketId: string) => void;
+  approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -129,7 +150,16 @@ interface StoredUser extends User {
   password: string;
 }
 
+// ── CHANGE 2: Added Supremo user (id "0", role "supremo", password "000000") ─
 const defaultUsers: StoredUser[] = [
+  {
+    id: "0",
+    name: "Supremo",
+    email: "supremo@roswalt.com",
+    role: "supremo",
+    isDoer: false,
+    password: "000000",
+  },
   { id: "1",  name: "Pushkaraj Gore",            email: "pushkaraj.gore@roswalt.com",      role: "superadmin", isDoer: false, password: "100001" },
   { id: "2",  name: "Aziz Ashfaq Khan",           email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
   { id: "3",  name: "Vinay Dinkar Vanmali",        email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "100003" },
@@ -177,129 +207,103 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadFromStorage<Task[]>("tf_tasks", [])
   );
   const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = loadFromStorage<Project[]>("tf_projects", defaultProjects);
-    return saved.map((p) => ({
-      ...p,
-      projectCode:        p.projectCode        ?? "",
-      concernedDoerEmail: p.concernedDoerEmail ?? "",
-      launchDate:         p.launchDate         ?? "",
-      status:             (p.status            ?? "active") as "active" | "inactive",
-    }));
+    const saved = loadFromStorage<Project[]>("tf_projects", []);
+    return saved.length > 0 ? saved : defaultProjects;
   });
-
+  const [assistanceTickets, setAssistanceTickets] = useState<AssistanceTicket[]>(() =>
+    loadFromStorage<AssistanceTicket[]>("tf_tickets", [])
+  );
   const [voiceAccessGranted, setVoiceAccessGranted] = useState<boolean>(false);
-  const welcomeSpoken = useRef(false);
 
-  useEffect(() => { saveToStorage("tf_user",     user);     }, [user]);
+  // Persist state
+  useEffect(() => { saveToStorage("tf_user",     user);             }, [user]);
+  useEffect(() => { saveToStorage("tf_tasks",    tasks);            }, [tasks]);
+  useEffect(() => { saveToStorage("tf_projects", projects);         }, [projects]);
+  useEffect(() => { saveToStorage("tf_tickets",  assistanceTickets);}, [assistanceTickets]);
   useEffect(() => {
-    const addedUsers = storedUsers.filter(
+    const nonDefault = storedUsers.filter(
       (u) => !defaultUsers.find((d) => d.email.toLowerCase() === u.email.toLowerCase())
     );
-    saveToStorage("tf_users", addedUsers);
+    saveToStorage("tf_users", nonDefault);
   }, [storedUsers]);
-  useEffect(() => { saveToStorage("tf_tasks",    tasks);    }, [tasks]);
-  useEffect(() => { saveToStorage("tf_projects", projects); }, [projects]);
-  useEffect(() => {
-    if (welcomeSpoken.current) return;
-    welcomeSpoken.current = true;
-    announceVoice("Welcome_Login");
-  }, []);
 
-  useEffect(() => {
-    fetch("http://localhost:5000/api/projects")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed");
-        return res.json();
-      })
-      .then((data: any[]) => {
-        const normalised: Project[] = data.map((p) => ({
-          id:                 p._id ?? p.id,
-          name:               p.name,
-          description:        p.description ?? "",
-          color:              p.color ?? "#c9a96e",
-          projectCode:        p.projectCode ?? "",
-          concernedDoerEmail: p.concernedDoerEmail ?? "",
-          launchDate:         p.launchDate ?? "",
-          status:             p.status ?? "active",
-        }));
-        if (normalised.length > 0) setProjects(normalised);
-      })
-      .catch(() => {});
-  }, []);
+  const teamMembers: User[] = storedUsers.map(({ password: _p, ...u }) => u);
 
-  const teamMembers: User[] = storedUsers.map(({ password: _pw, ...rest }) => rest);
-
-  // ── STEP 1: validate only — no state changes, no redirect triggered ─────
+  // ── Auth ──────────────────────────────────────────────────────────────────
   const validateLogin = (email: string, password: string): boolean => {
-    return !!storedUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+    const found = storedUsers.find(
+      (u) =>
+        u.email.toLowerCase() === email.toLowerCase() &&
+        u.password === password
     );
+    return !!found;
   };
 
-  // ── STEP 2: called by Login.tsx AFTER "Access Granted" voice finishes ────
-  // Only now does user state get set, which triggers route guards.
   const commitLogin = (email: string, password: string): void => {
     const found = storedUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      (u) =>
+        u.email.toLowerCase() === email.toLowerCase() &&
+        u.password === password
     );
-    if (!found) return;
-    const { password: _pw, ...publicUser } = found;
-    setVoiceAccessGranted(true);
-    setUser(publicUser);
+    if (found) {
+      const { password: _p, ...userWithoutPassword } = found;
+      setUser(userWithoutPassword);
+      setVoiceAccessGranted(true);
+    }
   };
 
-  const loginAsUser = (u: User) => {
+  const loginAsUser = (u: User): void => {
     setUser(u);
+    setVoiceAccessGranted(true);
   };
 
-  const logout = () => {
+  const logout = (): void => {
     setUser(null);
     setVoiceAccessGranted(false);
-    saveToStorage("tf_user", null);
   };
 
   const addUser = (
     newUser: Omit<User, "id"> & { password: string }
   ): { success: boolean; message: string } => {
-    const exists = storedUsers.some(
+    const exists = storedUsers.find(
       (u) => u.email.toLowerCase() === newUser.email.toLowerCase()
     );
-    if (exists) return { success: false, message: "A user with this email already exists." };
-    if (!newUser.password || newUser.password.length < 6)
-      return { success: false, message: "Password must be at least 6 characters." };
-    setStoredUsers((prev) => [...prev, { ...newUser, id: Date.now().toString() }]);
-    return { success: true, message: `${newUser.name} added successfully.` };
+    if (exists) return { success: false, message: "Email already exists." };
+    const created: StoredUser = {
+      ...newUser,
+      id: Date.now().toString(),
+    };
+    setStoredUsers((prev) => [...prev, created]);
+    return { success: true, message: "User created successfully." };
   };
 
-  const deleteTeamMember = (memberId: string) => {
+  const deleteTeamMember = (memberId: string): void => {
     setStoredUsers((prev) => prev.filter((u) => u.id !== memberId));
-    setTasks((prev) => {
-      const member = storedUsers.find((u) => u.id === memberId);
-      if (!member) return prev;
-      return prev.map((task) =>
-        task.assignedTo === member.email ? { ...task, assignedTo: "" } : task
-      );
-    });
   };
 
-  const addTask = (task: Omit<Task, "id" | "createdAt">) => {
+  // ── Tasks ─────────────────────────────────────────────────────────────────
+  const addTask = (
+    task: Omit<Task, "id" | "createdAt"> & { id?: string; createdAt?: string }
+  ): void => {
     const newTask: Task = {
       ...task,
-      id:        Date.now().toString(),
-      createdAt: new Date().toISOString(),
+      id:        task.id        ?? Date.now().toString(),
+      createdAt: task.createdAt ?? new Date().toISOString(),
     };
     setTasks((prev) => [...prev, newTask]);
   };
 
-  const updateTask = (taskId: string, updatedTaskData: Partial<Task>) => {
+  const updateTask = (taskId: string, updates: Partial<Task>): void => {
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, ...updatedTaskData } : task
-      )
+      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
     );
   };
 
-  const updateTaskStatus = (taskId: string, status: Task["status"], notes?: string) => {
+  const updateTaskStatus = (
+    taskId: string,
+    status: Task["status"],
+    notes?: string
+  ): void => {
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
@@ -389,16 +393,83 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTasks([]);
   };
 
+  // ── Assistance Tickets ───────────────────────────────────────────────────
+  const raiseAssistanceTicket = (
+    ticket: Omit<AssistanceTicket, "id" | "raisedAt" | "status">
+  ) => {
+    const existing = assistanceTickets.find(
+      (t) => t.taskId === ticket.taskId && t.status !== "resolved"
+    );
+    if (existing) return;
+    const newTicket: AssistanceTicket = {
+      ...ticket,
+      id:       "TKT-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      raisedAt: new Date().toISOString(),
+      status:   "open",
+    };
+    setAssistanceTickets((prev) => [...prev, newTicket]);
+  };
+
+  const updateAssistanceTicket = (
+    ticketId: string,
+    updates: Partial<AssistanceTicket>
+  ) => {
+    setAssistanceTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, ...updates } : t))
+    );
+  };
+
+  const submitTicketToAdmin = (ticketId: string) => {
+    setAssistanceTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, status: "pending-admin" } : t))
+    );
+    const ticket = assistanceTickets.find((t) => t.id === ticketId);
+    if (ticket) {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === ticket.taskId
+            ? { ...t, isFrozen: true, frozenTicketId: ticketId }
+            : t
+        )
+      );
+    }
+  };
+
+  const approveAssistanceTicket = (ticketId: string, adminComment: string) => {
+    const ticket = assistanceTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    setAssistanceTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticketId
+          ? {
+              ...t,
+              status:     "admin-approved",
+              adminComment,
+              approvedAt: new Date().toISOString(),
+              approvedBy: user?.name ?? "Admin",
+            }
+          : t
+      )
+    );
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === ticket.taskId
+          ? { ...t, isFrozen: false, frozenTicketId: undefined }
+          : t
+      )
+    );
+  };
+
   const addProject = (project: Omit<Project, "id">) => {
     const newProject: Project = {
-      id: Date.now().toString(),
-      name: project.name,
-      description: project.description ?? "",
-      color: project.color ?? "#c9a96e",
-      projectCode: project.projectCode ?? "",
+      id:                 Date.now().toString(),
+      name:               project.name,
+      description:        project.description        ?? "",
+      color:              project.color              ?? "#c9a96e",
+      projectCode:        project.projectCode        ?? "",
       concernedDoerEmail: project.concernedDoerEmail ?? "",
-      launchDate: project.launchDate ?? "",
-      status: project.status ?? "active",
+      launchDate:         project.launchDate         ?? "",
+      status:             project.status             ?? "active",
     };
     setProjects((prev) => [...prev, newProject]);
   };
@@ -432,6 +503,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteTask,
         deleteAllTasks,
         addProject,
+        assistanceTickets,
+        raiseAssistanceTicket,
+        updateAssistanceTicket,
+        submitTicketToAdmin,
+        approveAssistanceTicket,
       }}
     >
       {children}

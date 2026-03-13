@@ -1,4 +1,4 @@
-  import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
   import { useNavigate } from "react-router-dom";
   import { useUser } from "../contexts/UserContext";
   import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -8,14 +8,14 @@
     FileText, MessageSquare, Shield, Sparkles, Loader,
     TrendingUp, Clock, Activity, BarChart3,
     GitBranch, ListTree,
-    AlertTriangle, History, Radio, Share2, RotateCw, Trash2,
+    AlertTriangle, AlertCircle, History, Radio, Share2, RotateCw, Trash2,
   } from "lucide-react";
   import ClaudeChat from "./ClaudeChat";
   import HistoryTimeline from "./Historytimeline";
   import SmartAssistModal from "./Smartassistmodal";
   import ProgressTracker from "./Progresstracker";
   import { sendTaskWhatsApp } from "../services/WhatsAppService";
-  import { greetUser, setElevenLabsVoice, announceVoice } from "../services/VoiceModule";
+  import { greetUser, setElevenLabsVoice, announceVoice, speakText } from "../services/VoiceModule";
 
 
   void Sparkles; void RotateCw; void Radio;
@@ -95,6 +95,36 @@
     notes?: string;
   }
 
+  // ── Persistent History Store ─────────────────────────────────────────────────
+  // UserContext.updateTask may not persist the history field reliably.
+  // We keep a separate localStorage store keyed by taskId so history is never lost.
+  const HISTORY_STORE_KEY = "smartcue_task_history";
+
+  function loadHistoryStore(): Record<string, HistoryEntry[]> {
+    try { return JSON.parse(localStorage.getItem(HISTORY_STORE_KEY) ?? "{}"); } catch { return {}; }
+  }
+
+  function saveHistoryStore(store: Record<string, HistoryEntry[]>): void {
+    try { localStorage.setItem(HISTORY_STORE_KEY, JSON.stringify(store)); } catch {}
+  }
+
+  function appendHistoryEntry(taskId: string, entry: HistoryEntry): void {
+    const store = loadHistoryStore();
+    store[taskId] = [...(store[taskId] ?? []), entry];
+    saveHistoryStore(store);
+  }
+
+  function getTaskHistory(taskId: string): HistoryEntry[] {
+    return loadHistoryStore()[taskId] ?? [];
+  }
+
+  function getAllHistoryEntries(): (HistoryEntry & { taskId: string })[] {
+    const store = loadHistoryStore();
+    return Object.entries(store).flatMap(([taskId, entries]) =>
+      entries.map(e => ({ ...e, taskId }))
+    );
+  }
+
   interface AIReviewResult {
     image: number;
     status: "CLEAN" | "MINOR" | "ERROR";
@@ -138,6 +168,21 @@
     completedAt?: string;
     createdAt?: string;
     forwardedFrom?: string;
+    purpose?: string;
+    // ── Reassignment ──────────────────────────────────────────────────────────
+    previousAssignee?: string;          // email of the doer who was cancelled
+    reassignedAt?: string;              // ISO timestamp of reassignment
+    handoverRequested?: boolean;        // admin has triggered handover voice call
+    // ── TAT Extension request ─────────────────────────────────────────────────
+    tatExtensionRequest?: {
+      requestedAt: string;
+      reason: string;
+      requestedNewDate: string;
+      requestedNewTimeSlot: string;
+      status: "pending" | "approved" | "denied";
+      adminResponse?: string;
+      respondedAt?: string;
+    };
   }
 
   type TeamMember = { id: string; name: string; email: string; role: string; phone?: string };
@@ -290,7 +335,11 @@
 
     .neon-divider { height: 1px; background: linear-gradient(90deg, transparent, ${G.cyan}, ${G.purple}, ${G.cyan}, transparent); opacity: 0.6; margin: 0; }
 
-    /* Confirm delete overlay */
+    .g-btn-reassign { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 14px; background: rgba(0,212,255,0.10); color:${G.cyan}; border: 1px solid rgba(0,212,255,0.35); border-radius:8px; font-family:'Poppins',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+    .g-btn-reassign:hover { background:rgba(0,212,255,0.22); border-color:${G.cyan}; transform:translateY(-1px); box-shadow: 0 0 14px ${G.cyan}44; }
+    .tat-ext-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.07em; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; background:rgba(255,159,10,0.14); color:${G.amber}; border:1px solid rgba(255,159,10,0.45); animation:shimmer 2s ease infinite; }
+    .handover-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(191,95,255,0.10); border:1px solid rgba(191,95,255,0.35); border-radius:8px; font-size:12px; color:${G.purple}; font-family:'IBM Plex Mono',monospace; margin-bottom:10px; }
+
     .g-confirm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(20px); z-index:200; display:flex; align-items:center; justify-content:center; animation:fadeIn 0.2s ease; }
     .g-confirm-box { background:linear-gradient(160deg,rgba(20,8,28,0.98),rgba(10,4,20,0.99)); border:1px solid ${G.dangerBorder}; border-radius:20px; padding:36px 40px; max-width:440px; width:100%; text-align:center; box-shadow:0 0 60px ${G.danger}22, 0 40px 80px rgba(0,0,0,0.9); animation:scaleIn 0.25s ease; }
   `;
@@ -463,15 +512,208 @@
     </div>
   );
 
+  // ── Admin Flash Briefing Panel ────────────────────────────────────────────────
+  interface AdminFlashPanelProps {
+    adminName: string;
+    allTasks: Task[];
+    pendingTickets: import("../contexts/UserContext").AssistanceTicket[];
+    onClose: () => void;
+    onNavigate: (tab: string) => void;
+  }
+
+  const AdminFlashPanel: React.FC<AdminFlashPanelProps> = ({ adminName, allTasks, pendingTickets, onClose, onNavigate }) => {
+    const [visible, setVisible] = useState(false);
+
+    const pendingReview = allTasks.filter(t => t.approvalStatus === "assigned" || (t.approvalStatus as string) === "pending");
+    const inProgress    = allTasks.filter(t => t.approvalStatus === "in-review" || t.approvalStatus === "admin-approved");
+    const approved      = allTasks.filter(t => t.approvalStatus === "superadmin-approved");
+    const tatBreached   = allTasks.filter(t => (t as any).tatBreached);
+    const frozenTasks   = allTasks.filter(t => (t as any).isFrozen);
+
+    useEffect(() => { setTimeout(() => setVisible(true), 80); }, []);
+
+    const handleClose = () => { setVisible(false); setTimeout(onClose, 320); };
+    const handleNav   = (tab: string) => { handleClose(); setTimeout(() => onNavigate(tab), 340); };
+
+    const stats = [
+      { label: "All Tasks",      value: allTasks.length,       color: G.cyan,    icon: "◈" },
+      { label: "Pending Review", value: pendingReview.length,  color: G.gold,    icon: "⏳" },
+      { label: "In Progress",    value: inProgress.length,     color: G.purple,  icon: "⚡" },
+      { label: "Approved",       value: approved.length,       color: G.success, icon: "✓" },
+      { label: "TAT Breached",   value: tatBreached.length,    color: G.danger,  icon: "⚠" },
+      { label: "Frozen",         value: frozenTasks.length,    color: "#b06af3", icon: "🔒" },
+      { label: "Tickets",        value: pendingTickets.length, color: G.amber,   icon: "🎫" },
+    ];
+
+    return (
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 9000, background: "rgba(0,0,0,0.82)", backdropFilter: "blur(18px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, opacity: visible ? 1 : 0, transition: "opacity 0.32s ease" }}
+        onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
+      >
+        <div style={{
+          background: "rgba(4,8,22,0.98)", border: `1px solid ${G.cyan}33`, borderRadius: 22,
+          padding: 0, maxWidth: 660, width: "100%", maxHeight: "90vh", overflowY: "auto",
+          boxShadow: `0 40px 100px rgba(0,0,0,0.95), 0 0 80px ${G.cyan}0d, inset 0 1px 0 rgba(255,255,255,0.05)`,
+          transform: visible ? "translateY(0) scale(1)" : "translateY(28px) scale(0.96)",
+          transition: "transform 0.34s cubic-bezier(0.34,1.56,0.64,1)",
+        }}>
+          {/* Header */}
+          <div style={{ padding: "24px 28px 20px", borderBottom: `1px solid rgba(255,255,255,0.06)`, background: `linear-gradient(135deg,${G.cyan}08,${G.purple}08)`, borderRadius: "22px 22px 0 0", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: -40, right: -40, width: 130, height: 130, borderRadius: "50%", background: `${G.cyan}08`, filter: "blur(35px)", pointerEvents: "none" }} />
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 6, background: `${G.cyan}18`, border: `1px solid ${G.cyan}40`, fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "1.2px", marginBottom: 12 }}>
+                  <Zap size={8} /> Admin Live Briefing
+                </div>
+                <div style={{ fontSize: 23, fontWeight: 800, color: G.textPrimary, letterSpacing: "-0.5px", fontFamily: "'Oswald',sans-serif", lineHeight: 1.15 }}>
+                  Welcome back, <span style={{ color: G.cyan }}>{adminName}</span>
+                </div>
+                <div style={{ fontSize: 12, color: G.textMuted, marginTop: 7 }}>Here's your team's workload snapshot — act on urgent items first.</div>
+              </div>
+              <button onClick={handleClose}
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, width: 34, height: 34, color: G.textMuted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, transition: "all 0.18s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = G.danger; (e.currentTarget as HTMLButtonElement).style.borderColor = `${G.danger}55`; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = G.textMuted; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.1)"; }}
+              >✕</button>
+            </div>
+            {/* Stat pills */}
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, marginTop: 20 }}>
+              {stats.map(s => (
+                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 10, background: `${s.color}12`, border: `1px solid ${s.color}38` }}>
+                  <span style={{ fontSize: 11, color: s.color }}>{s.icon}</span>
+                  <span style={{ fontSize: 19, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif", lineHeight: 1 }}>{s.value}</span>
+                  <span style={{ fontSize: 9, color: G.textMuted, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pending Tickets */}
+          {pendingTickets.length > 0 && (
+            <div style={{ padding: "20px 28px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${G.amber}22` }}>
+                <span style={{ fontSize: 14 }}>🎫</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: G.amber, textTransform: "uppercase" as const, letterSpacing: "0.8px" }}>Assistance Tickets — Awaiting Your Review</span>
+                <span style={{ minWidth: 18, height: 18, borderRadius: 9, background: `${G.amber}22`, border: `1px solid ${G.amber}55`, fontSize: 9, color: G.amber, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, padding: "0 4px", animation: "pulse-dot 1.5s ease-in-out infinite" }}>{pendingTickets.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
+                {pendingTickets.slice(0, 5).map(ticket => (
+                  <div key={ticket.id} style={{ padding: "12px 14px", borderRadius: 11, background: `${G.amber}08`, border: `1px solid ${G.amber}22`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: `${G.amber}18`, color: G.amber, fontWeight: 700, textTransform: "uppercase" as const, border: `1px solid ${G.amber}40` }}>{ticket.id}</span>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: `${G.purple}18`, color: G.purple, fontWeight: 700, textTransform: "uppercase" as const, border: `1px solid ${G.purple}40` }}>Pending Review</span>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: G.textPrimary, marginBottom: 2 }}>{ticket.taskTitle}</div>
+                      <div style={{ fontSize: 10, color: G.textMuted }}>Staff: <span style={{ color: G.textSecondary }}>{ticket.assignedTo}</span> · Raised: <span style={{ color: G.textSecondary }}>{new Date(ticket.raisedAt).toLocaleDateString()}</span></div>
+                      {ticket.staffNote && <div style={{ marginTop: 5, fontSize: 10, color: G.textSecondary, fontStyle: "italic", borderLeft: `2px solid ${G.amber}44`, paddingLeft: 8 }}>"{ticket.staffNote.slice(0, 100)}{ticket.staffNote.length > 100 ? "…" : ""}"</div>}
+                    </div>
+                    <button onClick={() => handleNav("tickets")}
+                      style={{ padding: "6px 12px", background: `${G.amber}18`, border: `1px solid ${G.amber}44`, borderRadius: 7, color: G.amber, fontSize: 10, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" as const, letterSpacing: "0.4px", flexShrink: 0, transition: "all 0.18s" }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${G.amber}30`; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `${G.amber}18`; }}
+                    >Review →</button>
+                  </div>
+                ))}
+                {pendingTickets.length > 5 && <div style={{ textAlign: "center" as const, fontSize: 11, color: G.textMuted, padding: "4px 0" }}>+{pendingTickets.length - 5} more tickets awaiting review</div>}
+              </div>
+            </div>
+          )}
+
+          {/* TAT Breached */}
+          {tatBreached.length > 0 && (
+            <div style={{ padding: pendingTickets.length > 0 ? "0 28px 20px" : "20px 28px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingTop: pendingTickets.length > 0 ? 14 : 0, borderTop: pendingTickets.length > 0 ? `1px solid ${G.danger}18` : "none", paddingBottom: 10, borderBottom: `1px solid ${G.danger}18` }}>
+                <AlertTriangle size={13} color={G.danger} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: G.danger, textTransform: "uppercase" as const, letterSpacing: "0.8px" }}>TAT Breached — Urgent</span>
+                <span style={{ minWidth: 18, height: 18, borderRadius: 9, background: `${G.danger}20`, border: `1px solid ${G.danger}55`, fontSize: 9, color: G.danger, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, padding: "0 4px" }}>{tatBreached.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" as const, gap: 7 }}>
+                {tatBreached.slice(0, 4).map(task => (
+                  <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: `${G.danger}07`, border: `1px solid ${G.danger}20` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: G.danger, boxShadow: `0 0 8px ${G.danger}` }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: G.textPrimary }}>{task.title}</div>
+                      <div style={{ fontSize: 10, color: G.textMuted }}>Assigned to: <span style={{ color: G.textSecondary }}>{task.assignedTo}</span> · Due: <span style={{ color: G.danger }}>{new Date(task.dueDate).toLocaleDateString()}</span></div>
+                    </div>
+                    <span style={{ fontSize: 8, padding: "2px 6px", borderRadius: 3, background: `${G.danger}18`, color: G.danger, fontWeight: 700, textTransform: "uppercase" as const, border: `1px solid ${G.danger}35`, flexShrink: 0 }}>BREACH</span>
+                  </div>
+                ))}
+                {tatBreached.length > 4 && <div style={{ textAlign: "center" as const, fontSize: 11, color: G.textMuted, padding: "4px 0" }}>+{tatBreached.length - 4} more</div>}
+              </div>
+            </div>
+          )}
+
+          {/* All Tasks list */}
+          <div style={{ padding: "0 28px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingTop: 16, borderTop: `1px solid rgba(255,255,255,0.05)`, paddingBottom: 10, borderBottom: `1px solid rgba(255,255,255,0.05)` }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.8px" }}>All Assigned Tasks</span>
+            </div>
+            {allTasks.filter(t => t.approvalStatus !== "superadmin-approved").length === 0 ? (
+              <div style={{ textAlign: "center" as const, padding: 24, fontSize: 13, color: G.textMuted }}>🎉 All tasks approved — team is caught up!</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" as const, gap: 7 }}>
+                {allTasks.filter(t => t.approvalStatus !== "superadmin-approved").slice(0, 8).map(task => {
+                  const isTat = (task as any).tatBreached;
+                  const isFrz = (task as any).isFrozen;
+                  const dot   = isTat ? G.danger : isFrz ? "#b06af3" : task.approvalStatus === "in-review" ? G.purple : G.gold;
+                  return (
+                    <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, background: isTat ? `${G.danger}06` : isFrz ? "rgba(176,106,243,0.06)" : "rgba(255,255,255,0.02)", border: `1px solid ${isTat ? `${G.danger}20` : isFrz ? "rgba(176,106,243,0.2)" : "rgba(255,255,255,0.05)"}` }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: dot, boxShadow: `0 0 7px ${dot}` }} />
+                      <div style={{ flex: 1, fontSize: 12, color: G.textSecondary, fontWeight: 500 }}>{task.title}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                        {isFrz && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: "rgba(176,106,243,0.14)", color: "#b06af3", fontWeight: 700, textTransform: "uppercase" as const, border: "1px solid rgba(176,106,243,0.3)" }}>FROZEN</span>}
+                        {isTat && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: `${G.danger}14`, color: G.danger, fontWeight: 700, textTransform: "uppercase" as const, border: `1px solid ${G.danger}35` }}>BREACH</span>}
+                        <span style={{ fontSize: 10, color: G.textMuted }}>{new Date(task.dueDate).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {allTasks.filter(t => t.approvalStatus !== "superadmin-approved").length > 8 && (
+                  <div style={{ textAlign: "center" as const, fontSize: 11, color: G.textMuted, padding: "4px 0" }}>+{allTasks.filter(t => t.approvalStatus !== "superadmin-approved").length - 8} more tasks</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: "16px 28px", borderTop: `1px solid rgba(255,255,255,0.05)`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 10, color: G.textMuted }}>
+              {pendingTickets.length > 0
+                ? <span style={{ color: G.amber }}>⚠ {pendingTickets.length} ticket{pendingTickets.length > 1 ? "s" : ""} need your attention</span>
+                : <span style={{ color: G.success }}>✓ No pending tickets</span>}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {pendingTickets.length > 0 && (
+                <button onClick={() => handleNav("tickets")}
+                  style={{ padding: "10px 18px", background: `linear-gradient(135deg,${G.amber}22,${G.amber}10)`, border: `1px solid ${G.amber}44`, borderRadius: 9, color: G.amber, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+                  Review Tickets
+                </button>
+              )}
+              <button onClick={handleClose}
+                style={{ padding: "10px 22px", background: `linear-gradient(135deg,${G.purple},${G.cyan})`, border: "none", borderRadius: 9, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase" as const, letterSpacing: "0.6px", boxShadow: `0 0 24px ${G.cyan}30` }}>
+                Let's Go →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Main Component ─────────────────────────────────────────────────────────────
   const AdminDashboard: React.FC = () => {
     const {
       getTasksForAdminReview, getAssignedTasks, submitTaskCompletion,
       adminReviewTask, logout, user, teamMembers, addTask, projects, updateTask,
-      deleteTask, deleteAllTasks,
+      deleteTask, deleteAllTasks, tasks: allContextTasks,
+      assistanceTickets, approveAssistanceTicket,
     } = useUser() as ReturnType<typeof useUser> & {
       deleteTask: (id: string) => void;
       deleteAllTasks: () => void;
+      tasks: Task[];
+      assistanceTickets: import("../contexts/UserContext").AssistanceTicket[];
+      approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
     };
     const navigate = useNavigate();
 
@@ -543,7 +785,7 @@
 
     const [newTask, setNewTask] = useState({
       title: "", description: "", priority: "medium", dueDate: "",
-      assignedTo: "", projectId: "", timeSlot: "PM",
+      assignedTo: "", projectId: "", timeSlot: "PM", purpose: "",
     });
 
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -551,12 +793,28 @@
     const [forwardTo,        setForwardTo]        = useState("");
     const [forwardNotes,     setForwardNotes]     = useState("");
 
+    // ── Reassign modal state ──────────────────────────────────────────────────
+    const [showReassignModal,  setShowReassignModal]  = useState(false);
+    const [reassignTask,       setReassignTask]       = useState<Task | null>(null);
+    const [reassignTo,         setReassignTo]         = useState("");
+    const [reassignReason,     setReassignReason]     = useState("");
+
+    // ── TAT Extension review state ────────────────────────────────────────────
+    const [showTatExtModal,    setShowTatExtModal]    = useState(false);
+    const [tatExtTask,         setTatExtTask]         = useState<Task | null>(null);
+    const [tatExtResponse,     setTatExtResponse]     = useState("");
+
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [historyTask,      setHistoryTask]      = useState<Task | null>(null);
 
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [selectedTask,    setSelectedTask]    = useState<Task | null>(null);
     const [reviewComments,  setReviewComments]  = useState("");
+
+    // ── Assistance Ticket review state ────────────────────────────────────────
+    const [selectedTicket,     setSelectedTicket]     = useState<import("../contexts/UserContext").AssistanceTicket | null>(null);
+    const [ticketReviewNote,   setTicketReviewNote]   = useState("");
+    const [showTicketModal,    setShowTicketModal]    = useState(false);
 
     const [showSubmitModal,  setShowSubmitModal]  = useState(false);
     const [submitTask,       setSubmitTask]       = useState<Task | null>(null);
@@ -569,10 +827,19 @@
     const [aiReviewResults,  setAiReviewResults]  = useState<AIReviewResults | null>(null);
     const [reviewPanelOpen,  setReviewPanelOpen]  = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [showFlashPanel,   setShowFlashPanel]   = useState(false);
 
-    const [backgroundImage,    setBackgroundImage]    = useState<string | null>(null);
-    const [useImageBackground, setUseImageBackground] = useState(false);
-    const backgroundInputRef = useRef<HTMLInputElement | null>(null);
+    const [backgroundImage,    setBackgroundImage]    = useState<string | null>(() => {
+      try { return localStorage.getItem("ad_bg_image") || null; } catch { return null; }
+    });
+    const [useImageBackground, setUseImageBackground] = useState(() => {
+      try { return localStorage.getItem("ad_bg_type") === "image"; } catch { return false; }
+    });
+    const [backgroundVideo,    setBackgroundVideo]    = useState<string | null>(() => {
+      try { return localStorage.getItem("ad_bg_video") || null; } catch { return null; }
+    });
+    const backgroundInputRef    = useRef<HTMLInputElement | null>(null);
+    const backgroundVideoInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
       const loadRoswalLogo = async () => {
@@ -591,21 +858,97 @@
       loadRoswalLogo();
     }, []);
 
-  const greetedRef = useRef(false);
+  const greetedRef   = useRef(false);
+  const flashVoiceRef = useRef(false);
 
   useEffect(() => {
-      if (greetedRef.current) return;
-      greetedRef.current = true;
-      setElevenLabsVoice("EXAVITQu4vr4xnSDxMaL");
-     const fullName = (user as { name?: string }).name 
-  || localStorage.getItem("fullName") 
-  || "there";
-setTimeout(() => {
-  greetUser(fullName);
-}, 800);
-    }, []);
+    if (greetedRef.current) return;
+    if (!user) return;
+    greetedRef.current = true;
+    setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh");
 
-    const tasksToReview = (getTasksForAdminReview() as unknown as Task[]).filter(t =>
+    const fullName = (user as { name?: string }).name
+      || localStorage.getItem("fullName")
+      || "there";
+
+    // Cancel any browser speech — ElevenLabs only
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+
+    setTimeout(async () => {
+      // 1. ElevenLabs time-of-day greeting
+      await greetUser(fullName);
+
+      // 2. Task-aware briefing summary
+      const allTasks       = allContextTasks as Task[];
+      const pendingCount   = allTasks.filter(t =>
+        t.approvalStatus === "in-review" &&
+        (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+      ).length;
+      const tatCount       = allTasks.filter(t => (t as any).tatBreached).length;
+      const frozenCount    = allTasks.filter(t => (t as any).isFrozen).length;
+      const ticketCount    = (assistanceTickets ?? []).filter(
+        t => t.status === "pending-admin" &&
+             (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+      ).length;
+
+      const parts: string[] = [];
+      if (pendingCount > 0)
+        parts.push(`You have ${pendingCount} task${pendingCount !== 1 ? "s" : ""} pending your review.`);
+      if (tatCount > 0)
+        parts.push(`${tatCount} task${tatCount !== 1 ? "s have" : " has"} breached the turnaround time.`);
+      if (frozenCount > 0)
+        parts.push(`${frozenCount} task${frozenCount !== 1 ? "s are" : " is"} frozen pending ticket approval.`);
+      if (ticketCount > 0)
+        parts.push(`${ticketCount} assistance ticket${ticketCount !== 1 ? "s are" : " is"} waiting for your review.`);
+      if (parts.length === 0)
+        parts.push("Your team is fully on track. No immediate action required.");
+
+      await speakText(parts.join(" "));
+    }, 800);
+
+    setTimeout(() => setShowFlashPanel(true), 1400);
+  }, [user]);
+
+  // ── Voice: speak ticket briefing when flash panel opens ──────────────────
+  useEffect(() => {
+    if (!showFlashPanel) return;
+    if (flashVoiceRef.current) return;
+
+    const pendingTickets = (assistanceTickets ?? []).filter(
+      t => t.status === "pending-admin" &&
+           (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+    );
+    if (pendingTickets.length === 0) return;
+
+    flashVoiceRef.current = true;
+
+    const ticketNames = pendingTickets.map(t => t.taskTitle);
+    let script = "";
+
+    if (pendingTickets.length === 1) {
+      script =
+        `Attention. A staff member has submitted an assistance ticket for the task: ${ticketNames[0]}. ` +
+        `Please review the ticket, read the staff explanation, and approve or reject accordingly. ` +
+        `The task will remain frozen until you take action.`;
+    } else {
+      const listed = ticketNames.length > 2
+        ? ticketNames.slice(0, -1).join(", ") + ", and " + ticketNames[ticketNames.length - 1]
+        : ticketNames.join(" and ");
+      script =
+        `Attention. ${pendingTickets.length} assistance tickets are waiting for your review. ` +
+        `The affected tasks are: ${listed}. ` +
+        `Each task is frozen until you approve the corresponding ticket. ` +
+        `Please navigate to the Tickets tab to review and take action.`;
+    }
+
+    setTimeout(async () => {
+      await speakText(script);
+    }, 3500);
+  }, [showFlashPanel]);
+
+    const tasksToReview = (allContextTasks as Task[]).filter(t =>
+      t.approvalStatus === "in-review" &&
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
@@ -663,9 +1006,21 @@ setTimeout(() => {
 
     const allTasksCombined = useMemo<Task[]>(() => {
       const map = new Map<string, Task>();
-      [...tasksToReview, ...myAssignedTasks].forEach((t) => map.set(t.id, t));
+      // Include ALL tasks this admin created (assignedBy) + tasks assigned to them
+      // Not just in-review ones — so Overview/Analytics shows everything
+      const adminEmail = (user?.email ?? "").toLowerCase();
+      const allFiltered = (allContextTasks as Task[]).filter(t =>
+        t.title && t.description &&
+        !t.title.toLowerCase().includes("test") &&
+        !t.description.toLowerCase().includes("test") &&
+        (
+          (t.assignedBy ?? "").toLowerCase() === adminEmail ||
+          (t.assignedTo ?? "").toLowerCase() === adminEmail
+        )
+      );
+      allFiltered.forEach((t) => map.set(t.id, t));
       return Array.from(map.values());
-    }, [tasksToReview, myAssignedTasks]);
+    }, [allContextTasks, user]);
 
     const analytics = useMemo(() => {
       const allTasks        = allTasksCombined;
@@ -758,7 +1113,30 @@ setTimeout(() => {
       if (!file.type.startsWith("image/")) { toast("⚠ Please upload an image file."); return; }
       const reader = new FileReader();
       reader.onload = (e) => {
-        if (typeof e.target?.result === "string") { setBackgroundImage(e.target.result); setUseImageBackground(true); toast("✓ Background image set"); }
+        if (typeof e.target?.result === "string") {
+          setBackgroundImage(e.target.result);
+          setUseImageBackground(true);
+          try { localStorage.setItem("ad_bg_image", e.target.result); localStorage.setItem("ad_bg_type", "image"); } catch {}
+          toast("✓ Background image set");
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const handleBackgroundVideoUpload = (files: FileList | null): void => {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      if (!file.type.startsWith("video/")) { toast("⚠ Please upload a video file (MP4, WebM, MOV)."); return; }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (typeof e.target?.result === "string") {
+          setBackgroundVideo(e.target.result);
+          setUseImageBackground(false);
+          try { localStorage.setItem("ad_bg_video", e.target.result); localStorage.setItem("ad_bg_type", "video"); } catch {
+            toast("⚠ Video too large to persist — will reset on refresh. Use a smaller file.");
+          }
+          toast("✓ Background video updated");
+        }
       };
       reader.readAsDataURL(file);
     };
@@ -843,18 +1221,21 @@ setTimeout(() => {
         id: `hist_${Date.now()}`, timestamp: new Date().toISOString(),
         action: "completed", by: user?.email ?? "", notes: submitNotes,
       };
-      const updatedTask = {
-        ...submitTask, completionNotes: submitNotes, attachments: submitPhotos,
-        timeSlot: submitTimeSlot, exactDeadline: computeExactDeadline(submitTask.dueDate, submitTimeSlot),
-        history: [...(submitTask.history ?? []), histEntry], completedAt: new Date().toISOString(),
+      appendHistoryEntry(submitTask.id, histEntry); // persist independently
+      // Single merged update — prevents submitTaskCompletion from overwriting history
+      const updatedTask: Task = {
+        ...submitTask,
+        completionNotes: submitNotes,
+        attachments: submitPhotos,
+        timeSlot: submitTimeSlot,
+        exactDeadline: computeExactDeadline(submitTask.dueDate, submitTimeSlot),
+        approvalStatus: "in-review",
+        history: [...(submitTask.history ?? []), histEntry],
+        completedAt: new Date().toISOString(),
       };
-      updateTask(submitTask.id, {
-        ...submitTask, completionNotes: submitNotes, attachments: submitPhotos,
-        timeSlot: submitTimeSlot, exactDeadline: computeExactDeadline(submitTask.dueDate, submitTimeSlot),
-        history: [...(submitTask.history ?? []), histEntry], completedAt: new Date().toISOString(),
-      } as never);
+      updateTask(submitTask.id, updatedTask as never);
+      syncTaskToBackend(updatedTask);
       setSmartAssistTickets(resolveTicket(smartAssistTickets, submitTask.id));
-      submitTaskCompletion(submitTask.id, submitNotes);
       closeSubmitModal();
       toast("✓ Task submitted for review.");
     };
@@ -906,6 +1287,7 @@ setTimeout(() => {
     const handleForwardTask = (): void => {
       if (!forwardTask || !forwardTo) { toast("⚠ Please select a team member."); return; }
       const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "forwarded", by: user?.email ?? "", to: forwardTo, notes: forwardNotes };
+      appendHistoryEntry(forwardTask.id, h); // persist independently
       const updatedTask = { ...forwardTask, assignedTo: forwardTo, assignedBy: user?.email, forwardedFrom: forwardTask.assignedTo, history: [...(forwardTask.history ?? []), h] };
       updateTask(forwardTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask as Task);
@@ -916,27 +1298,33 @@ setTimeout(() => {
   const handleApprove = (): void => {
     if (!selectedTask) return;
     const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: reviewComments };
-    const updatedTask = { ...selectedTask, history: [...(selectedTask.history ?? []), h] };
+    appendHistoryEntry(selectedTask.id, h); // persist independently
+    // Merge history + approvalStatus in ONE update so adminReviewTask can't overwrite history
+    const updatedTask: Task = {
+      ...selectedTask,
+      approvalStatus: "admin-approved",
+      adminComments: reviewComments,
+      history: [...(selectedTask.history ?? []), h],
+    };
     updateTask(selectedTask.id, updatedTask as never);
-    syncTaskToBackend(updatedTask as Task);
+    syncTaskToBackend(updatedTask);
 
-    // ── ADD THIS ──
     const assignee = allMembers.find((m) => m.email === selectedTask.assignedTo);
-    sendTaskWhatsApp({
-      recipientPhone:  assignee?.phone ?? "",
-      taskTitle:       selectedTask.title,
-      taskDescription: `✅ Your task has been APPROVED by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}. ${reviewComments ? "Notes: " + reviewComments : ""}`,
-      priority:        selectedTask.priority,
-      dueDate:         selectedTask.dueDate,
-    timeSlot: selectedTask.timeSlot ?? "",
-      assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
-      projectName:     activeProjects.find((p) => p.id === selectedTask.projectId)?.name ?? "—",
-      taskId:          selectedTask.id,
-    });
-    // ── END ADD ──
-
-    adminReviewTask(selectedTask.id, true, reviewComments);
+    if (assignee?.phone) {
+      sendTaskWhatsApp({
+        recipientPhone:  assignee.phone,
+        taskTitle:       selectedTask.title,
+        taskDescription: `✅ Your task has been APPROVED by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}. ${reviewComments ? "Notes: " + reviewComments : ""}`,
+        priority:        selectedTask.priority,
+        dueDate:         selectedTask.dueDate,
+        timeSlot:        selectedTask.timeSlot ?? "",
+        assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
+        projectName:     activeProjects.find((p) => p.id === selectedTask.projectId)?.name ?? "—",
+        taskId:          selectedTask.id,
+      });
+    }
     setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
+    speakText("Task approved and forwarded to Superadmin for final sign-off.");
     toast("✓ Approved — forwarded to Superadmin.");
   };
 
@@ -951,17 +1339,198 @@ setTimeout(() => {
         by: user?.email ?? "",
         notes: reviewComments,
       };
-      const updatedTask = {
+      appendHistoryEntry(selectedTask.id, h); // persist independently
+      // Single update with full state — no second context call that could overwrite history
+      const updatedTask: Task = {
         ...selectedTask,
-        approvalStatus: "rejected" as const,
+        approvalStatus: "rejected",
         adminComments: reviewComments,
         history: [...(selectedTask.history ?? []), h],
       };
       updateTask(selectedTask.id, updatedTask as never);
-      syncTaskToBackend(updatedTask as Task);
-      adminReviewTask(selectedTask.id, false, reviewComments);
+      syncTaskToBackend(updatedTask);
       setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
+      speakText("Task sent back for rework. The staff member has been notified.");
       toast("↩ Sent back for rework.");
+    };
+
+    // ── handleReassignTask ────────────────────────────────────────────────────
+    // Cancels the task for the current doer, reassigns to new doer,
+    // and fires a handover voice call to the original doer.
+    const handleReassignTask = (): void => {
+      if (!reassignTask || !reassignTo) { toast("⚠ Select a new assignee."); return; }
+      if (reassignTo === reassignTask.assignedTo) { toast("⚠ New assignee is the same as current."); return; }
+
+      const previousAssignee = reassignTask.assignedTo;
+      const previousName     = getName(previousAssignee);
+      const newName          = getName(reassignTo);
+      const now              = new Date().toISOString();
+
+      const histEntry: HistoryEntry = {
+        id:        crypto.randomUUID(),
+        timestamp: now,
+        action:    `reassigned — cancelled for ${previousName}, handed over to ${newName}${reassignReason ? ` · Reason: ${reassignReason}` : ""}`,
+        by:        user?.email ?? "",
+        to:        reassignTo,
+        notes:     reassignReason,
+      };
+      appendHistoryEntry(reassignTask.id, histEntry);
+
+      const updatedTask: Task = {
+        ...reassignTask,
+        assignedTo:          reassignTo,
+        assignedBy:          user?.email ?? "",
+        previousAssignee,
+        reassignedAt:        now,
+        handoverRequested:   true,
+        approvalStatus:      "assigned",       // reset to assigned for new doer
+        completionNotes:     undefined,        // clear old submission data
+        attachments:         reassignTask.attachments ?? [], // preserve any existing attachments for handover reference
+        adminComments:       reassignReason || undefined,
+        history:             [...(reassignTask.history ?? []), histEntry],
+      };
+
+      updateTask(reassignTask.id, updatedTask as never);
+      syncTaskToBackend(updatedTask);
+
+      // ── Voice: handover callout to the ORIGINAL doer ──────────────────────
+      const adminName = (user as { name?: string }).name ?? user?.email ?? "Your admin";
+      const taskTitle = reassignTask.title;
+      speakText(
+        `Attention ${previousName}. ${adminName} has reassigned the task "${taskTitle}" to ${newName}. ` +
+        `Please hand over all your completed creatives, drafts, and working files for this task to ${newName} immediately. ` +
+        `Your assignment for this task has been cancelled. Coordinate with ${newName} to ensure a smooth handover.`
+      );
+
+      // ── WhatsApp to new doer ──────────────────────────────────────────────
+      const newMember = allMembers.find(m => m.email === reassignTo);
+      if (newMember?.phone) {
+        try {
+          sendTaskWhatsApp({
+            recipientPhone:  newMember.phone,
+            taskTitle,
+            taskDescription: `🔄 This task has been REASSIGNED to you from ${previousName}. ${reassignReason ? "Reason: " + reassignReason + ". " : ""}Please coordinate with ${previousName} for handover of any existing creatives.`,
+            priority:        reassignTask.priority,
+            dueDate:         reassignTask.dueDate,
+            timeSlot:        reassignTask.timeSlot ?? "",
+            assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
+            projectName:     activeProjects.find(p => p.id === reassignTask.projectId)?.name ?? "—",
+            taskId:          reassignTask.id,
+          });
+        } catch { /* WhatsApp failure is non-blocking */ }
+      }
+
+      // ── WhatsApp to original doer (cancellation notice) ──────────────────
+      const prevMember = allMembers.find(m => m.email === previousAssignee);
+      if (prevMember?.phone) {
+        try {
+          sendTaskWhatsApp({
+            recipientPhone:  prevMember.phone,
+            taskTitle,
+            taskDescription: `⚠️ Your assignment for this task has been CANCELLED and reassigned to ${newName}. Please hand over all your work-in-progress creatives and files to ${newName} immediately.`,
+            priority:        reassignTask.priority,
+            dueDate:         reassignTask.dueDate,
+            timeSlot:        reassignTask.timeSlot ?? "",
+            assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
+            projectName:     activeProjects.find(p => p.id === reassignTask.projectId)?.name ?? "—",
+            taskId:          reassignTask.id,
+          });
+        } catch { /* WhatsApp failure is non-blocking */ }
+      }
+
+      setShowReassignModal(false);
+      setReassignTask(null);
+      setReassignTo("");
+      setReassignReason("");
+      toast(`✓ Task reassigned to ${newName} — ${previousName} notified for handover.`);
+    };
+
+    // ── handleApproveTatExtension ─────────────────────────────────────────────
+    const handleApproveTatExtension = (): void => {
+      if (!tatExtTask?.tatExtensionRequest) return;
+      const ext    = tatExtTask.tatExtensionRequest;
+      const doerName = getName(tatExtTask.assignedTo);
+      const now    = new Date().toISOString();
+
+      const histEntry: HistoryEntry = {
+        id:        crypto.randomUUID(),
+        timestamp: now,
+        action:    `TAT extension APPROVED — new deadline: ${ext.requestedNewDate} ${ext.requestedNewTimeSlot}${tatExtResponse ? ` · Admin note: ${tatExtResponse}` : ""}`,
+        by:        user?.email ?? "",
+        notes:     tatExtResponse,
+      };
+      appendHistoryEntry(tatExtTask.id, histEntry);
+
+      const updatedTask: Task = {
+        ...tatExtTask,
+        dueDate:       ext.requestedNewDate,
+        timeSlot:      ext.requestedNewTimeSlot,
+        exactDeadline: computeExactDeadline(ext.requestedNewDate, ext.requestedNewTimeSlot),
+        tatBreached:   false,
+        tatExtensionRequest: {
+          ...ext,
+          status:       "approved",
+          adminResponse: tatExtResponse,
+          respondedAt:   now,
+        },
+        history: [...(tatExtTask.history ?? []), histEntry],
+      };
+
+      updateTask(tatExtTask.id, updatedTask as never);
+      syncTaskToBackend(updatedTask);
+
+      speakText(
+        `TAT extension approved for ${doerName} on the task "${tatExtTask.title}". ` +
+        `New deadline is ${new Date(ext.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })} at ${ext.requestedNewTimeSlot}. ` +
+        `${tatExtResponse ? tatExtResponse : "Please ensure timely delivery."}`
+      );
+
+      setShowTatExtModal(false);
+      setTatExtTask(null);
+      setTatExtResponse("");
+      toast(`✓ TAT extension approved for ${doerName}.`);
+    };
+
+    // ── handleDenyTatExtension ────────────────────────────────────────────────
+    const handleDenyTatExtension = (): void => {
+      if (!tatExtTask?.tatExtensionRequest) return;
+      if (!tatExtResponse.trim()) { toast("⚠ Provide a reason for denial."); return; }
+      const doerName = getName(tatExtTask.assignedTo);
+      const now      = new Date().toISOString();
+
+      const histEntry: HistoryEntry = {
+        id:        crypto.randomUUID(),
+        timestamp: now,
+        action:    `TAT extension DENIED · Reason: ${tatExtResponse}`,
+        by:        user?.email ?? "",
+        notes:     tatExtResponse,
+      };
+      appendHistoryEntry(tatExtTask.id, histEntry);
+
+      const updatedTask: Task = {
+        ...tatExtTask,
+        tatExtensionRequest: {
+          ...tatExtTask.tatExtensionRequest!,
+          status:        "denied",
+          adminResponse: tatExtResponse,
+          respondedAt:   now,
+        },
+        history: [...(tatExtTask.history ?? []), histEntry],
+      };
+
+      updateTask(tatExtTask.id, updatedTask as never);
+      syncTaskToBackend(updatedTask);
+
+      speakText(
+        `TAT extension request for "${tatExtTask.title}" has been denied. ` +
+        `${doerName} has been notified. Reason: ${tatExtResponse}. ` +
+        `Note: If the deadline is not met, the task will be frozen automatically.`
+      );
+
+      setShowTatExtModal(false);
+      setTatExtTask(null);
+      setTatExtResponse("");
+      toast(`↩ TAT extension denied — ${doerName} notified.`);
     };
 
     // ── handleCreateTask ──────────────────────────────────────────────────────
@@ -988,9 +1557,11 @@ setTimeout(() => {
         { id: crypto.randomUUID(), timestamp: now, action: "created",  by: user?.email ?? "", to: newTask.assignedTo },
         { id: crypto.randomUUID(), timestamp: now, action: "assigned", by: user?.email ?? "", to: newTask.assignedTo },
       ];
+      // Persist history independently of UserContext
+      history.forEach(e => appendHistoryEntry(taskId, e));
 
   // ── Voice callout to doer ──
-      announceVoice("task_assigned");
+      speakText(`New task assigned. ${newTask.title} has been assigned to ${allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo}.`);
 
       const newTaskObj: Task = {
         id:             taskId,
@@ -1004,6 +1575,7 @@ setTimeout(() => {
         assignedBy:     user?.email ?? "",
         projectId:      newTask.projectId,
         timeSlot:       newTask.timeSlot,
+        purpose:        newTask.purpose,
         exactDeadline,
         history,
         createdAt:      now,
@@ -1042,7 +1614,7 @@ setTimeout(() => {
         console.warn(`WhatsApp skipped: "${member.name}" (${member.email}) has no phone number.`);
       }
 
-      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "PM" });
+      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "PM", purpose: "" });
       setShowCreateModal(false);
     };  // ← this closing brace for handleCreateTask MUST be here
 
@@ -1052,14 +1624,20 @@ setTimeout(() => {
     };
 
     const activeSmartAssistCount = countActiveTickets(smartAssistTickets);
+    // Assistance tickets sent to THIS admin for review
+    const pendingAssistanceTickets = (assistanceTickets ?? []).filter(
+      t => t.status === "pending-admin" &&
+           (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+    );
 
     const TABS = [
-      { id: "analytics", label: "Analytics", icon: TrendingUp },
-      { id: "overview",  label: "Overview",  icon: BarChart3 },
-      { id: "review",    label: "Review",    icon: Eye },
-      { id: "mytasks",   label: "My Tasks",  icon: User },
-      { id: "progress",  label: "Progress",  icon: Activity },
-      { id: "taskmap",   label: "Task Map",  icon: GitBranch },
+      { id: "analytics",  label: "Analytics",  icon: TrendingUp  },
+      { id: "overview",   label: "Overview",   icon: BarChart3   },
+      { id: "review",     label: "Review",     icon: Eye         },
+      { id: "tickets",    label: "Tickets",    icon: AlertCircle },
+      { id: "mytasks",    label: "My Tasks",   icon: User        },
+      { id: "progress",   label: "Progress",   icon: Activity    },
+      { id: "taskmap",    label: "Task Map",   icon: GitBranch   },
     ];
 
     const statCards = [
@@ -1090,17 +1668,35 @@ setTimeout(() => {
       <>
         <style>{CSS}</style>
 
+        {/* ── Admin Flash Briefing Panel ── */}
+        {showFlashPanel && (
+          <AdminFlashPanel
+            adminName={(user as { name?: string }).name || user?.email?.split("@")[0] || "Admin"}
+            allTasks={allTasksCombined}
+            pendingTickets={pendingAssistanceTickets}
+            onClose={() => setShowFlashPanel(false)}
+            onNavigate={(tab) => setActiveTab(tab)}
+          />
+        )}
+
         {/* Background layer */}
         {useImageBackground && backgroundImage ? (
           <img src={backgroundImage} alt="Background" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 0.45 }} />
         ) : (
-          <video style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 1 }}
-            autoPlay muted loop playsInline preload="auto">
-            <source src="/videos/5658021_Coll_wavebreak_Animation_1280x720.mp4" type="video/mp4" />
+          <video
+            key={backgroundVideo ?? "default"}
+            style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 1 }}
+            autoPlay muted loop playsInline preload="auto"
+          >
+            {backgroundVideo
+              ? <source src={backgroundVideo} />
+              : <source src="https://res.cloudinary.com/donsrpgw3/video/upload/v1773314238/0_Hologram_Technology_3840x2160_vzvhd5.mp4" type="video/mp4" />
+            }
           </video>
         )}
 
-        <input ref={backgroundInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleBackgroundImageUpload(e.target.files)} />
+        <input ref={backgroundInputRef}      type="file" accept="image/*"       style={{ display: "none" }} onChange={(e) => handleBackgroundImageUpload(e.target.files)} />
+        <input ref={backgroundVideoInputRef} type="file" accept="video/*"       style={{ display: "none" }} onChange={(e) => handleBackgroundVideoUpload(e.target.files)} />
 
         <div style={{ minHeight: "100vh", position: "relative" }}>
           <div style={{ position: "relative", zIndex: 1, maxWidth: 1280, margin: "0 auto", padding: "0 28px" }}>
@@ -1118,14 +1714,26 @@ setTimeout(() => {
 
                 {/* BG Toggle */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: 3 }}>
-                  <button onClick={() => { if (useImageBackground) setUseImageBackground(false); else backgroundInputRef.current?.click(); }}
-                    style={{ padding: "5px 10px", background: !useImageBackground ? "rgba(0,212,255,0.15)" : "transparent", border: !useImageBackground ? `1px solid ${G.cyan}44` : "1px solid transparent", borderRadius: 5, color: !useImageBackground ? G.cyan : G.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const }}>
-                    🎬 Video
+                  <button onClick={() => backgroundVideoInputRef.current?.click()}
+                    style={{ padding: "5px 10px", background: !useImageBackground ? "rgba(0,212,255,0.15)" : "transparent", border: !useImageBackground ? `1px solid ${G.cyan}44` : "1px solid transparent", borderRadius: 5, color: !useImageBackground ? G.cyan : G.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const }}
+                    title="Upload a custom background video">
+                    🎬 Video {backgroundVideo ? "✓" : ""}
                   </button>
                   <button onClick={() => backgroundInputRef.current?.click()}
                     style={{ padding: "5px 10px", background: useImageBackground ? "rgba(255,224,102,0.15)" : "transparent", border: useImageBackground ? `1px solid ${G.gold}44` : "1px solid transparent", borderRadius: 5, color: useImageBackground ? G.gold : G.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const }}>
                     🖼️ Image {backgroundImage ? "✓" : ""}
                   </button>
+                  {(backgroundVideo || backgroundImage) && (
+                    <button
+                      onClick={() => {
+                        setBackgroundVideo(null); setBackgroundImage(null); setUseImageBackground(false);
+                        try { localStorage.removeItem("ad_bg_video"); localStorage.removeItem("ad_bg_image"); localStorage.setItem("ad_bg_type", "video"); } catch {}
+                        toast("↺ Background reset to default");
+                      }}
+                      style={{ padding: "5px 8px", background: "rgba(255,45,85,0.10)", border: "1px solid rgba(255,45,85,0.25)", borderRadius: 5, color: G.danger, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace" }}
+                      title="Reset to default video"
+                    >✕</button>
+                  )}
                 </div>
 
                 {/* Title */}
@@ -1173,8 +1781,9 @@ setTimeout(() => {
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                       style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", background: activeTab === tab.id ? "rgba(0,212,255,0.14)" : "transparent", color: activeTab === tab.id ? G.cyan : G.textSecondary, border: activeTab === tab.id ? `1px solid ${G.cyan}44` : "1px solid transparent", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600, transition: "all 0.2s", position: "relative" as const }}>
                       <tab.icon size={12} />{tab.label}
-                      {tab.id === "review"  && tasksToReview.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger, borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{tasksToReview.length}</span>}
-                      {tab.id === "mytasks" && myPendingTasks.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger, borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{myPendingTasks.length}</span>}
+                      {tab.id === "review"   && tasksToReview.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{tasksToReview.length}</span>}
+                      {tab.id === "tickets"  && pendingAssistanceTickets.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#ff9500", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pendingAssistanceTickets.length}</span>}
+                      {tab.id === "mytasks"  && myPendingTasks.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{myPendingTasks.length}</span>}
                     </button>
                   ))}
                 </div>
@@ -1453,10 +2062,40 @@ setTimeout(() => {
                     </div>
                   )}
                 </div>
+                {/* ── PENDING ASSISTANCE TICKETS — Quick Review (Analytics) ── */}
+                {pendingAssistanceTickets.length > 0 && (
+                  <div className="fade-up" style={{ background: "rgba(255,149,0,0.05)", border: "1px solid rgba(255,149,0,0.25)", borderRadius: 16, padding: "20px 24px", marginTop: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
+                        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, color: G.textPrimary }}>
+                          {pendingAssistanceTickets.length} Assistance Ticket{pendingAssistanceTickets.length !== 1 ? "s" : ""} <span style={{ color: "#ff9500" }}>Awaiting Your Review</span>
+                        </span>
+                      </div>
+                      <button onClick={() => setActiveTab("tickets")} style={{ padding: "5px 12px", background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 7, color: "#ff9500", fontSize: 10, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                        Manage All <ChevronRight size={10} />
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {pendingAssistanceTickets.slice(0, 3).map(ticket => {
+                        const sName = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
+                        return (
+                          <div key={ticket.id} onClick={() => { setSelectedTicket(ticket); setTicketReviewNote(""); setShowTicketModal(true); }}
+                            style={{ flex: "1 1 200px", padding: "12px 14px", background: "rgba(10,14,28,0.80)", border: "1px solid rgba(255,149,0,0.22)", borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,149,0,0.5)"}
+                            onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,149,0,0.22)"}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700, color: G.textPrimary, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{ticket.taskTitle}</div>
+                            <div style={{ fontSize: 10, color: G.textMuted }}>👤 {sName} · 📅 {new Date(ticket.taskDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+                            <div style={{ marginTop: 6, fontSize: 9, color: "#ff9500", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>⚡ Click to Review →</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
-
-            {/* ══ OVERVIEW TAB ══ */}
             {activeTab === "overview" && (
               <>
                 <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginTop: 32 }}>
@@ -1489,6 +2128,65 @@ setTimeout(() => {
                     </div>
                     <button onClick={() => setActiveTab("progress")} className="g-btn-ghost" style={{ fontSize: 12, padding: "8px 14px" }}>View Progress <ChevronRight size={13} /></button>
                   </div>
+                )}
+
+                {/* ── PENDING ASSISTANCE TICKETS — Quick Review ── */}
+                {pendingAssistanceTickets.length > 0 && (
+                  <section className="fade-up" style={{ marginTop: 28, paddingBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 10px #ff9500", animation: "pulse 1.5s infinite" }} />
+                      <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 700, color: G.textPrimary }}>
+                        Assistance Tickets <em style={{ color: "#ff9500" }}>Pending Review</em>
+                      </h3>
+                      <span style={{ padding: "3px 10px", background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.35)", borderRadius: 99, fontSize: 10, color: "#ff9500", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 800 }}>
+                        {pendingAssistanceTickets.length} ACTION REQUIRED
+                      </span>
+                      <button onClick={() => setActiveTab("tickets")} style={{ marginLeft: "auto", padding: "6px 14px", background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 8, color: "#ff9500", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                        View All <ChevronRight size={11} />
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {pendingAssistanceTickets.slice(0, 5).map(ticket => {
+                        const staffName = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
+                        return (
+                          <div key={ticket.id} style={{
+                            background: "rgba(10,14,28,0.80)",
+                            border: "1px solid rgba(255,149,0,0.30)",
+                            borderRadius: 14, padding: "16px 20px",
+                            display: "flex", alignItems: "center", gap: 18,
+                            backdropFilter: "blur(16px)",
+                            boxShadow: "0 4px 20px rgba(255,149,0,0.06)",
+                          }}>
+                            <div style={{ width: 4, alignSelf: "stretch", background: "linear-gradient(180deg,#ff9500,#ff6b35)", borderRadius: 99, flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                                <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(255,149,0,0.1)", color: "#ff9500", fontWeight: 800, textTransform: "uppercase" as const, border: "1px solid rgba(255,149,0,0.25)", fontFamily: "'IBM Plex Mono',monospace" }}>{ticket.id}</span>
+                                <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(255,51,102,0.08)", color: "#ff3366", fontWeight: 700, textTransform: "uppercase" as const, border: "1px solid rgba(255,51,102,0.2)" }}>Delayed Task</span>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>{ticket.taskTitle}</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 10, color: G.textMuted }}>
+                                <span>👤 <span style={{ color: G.textSecondary, fontWeight: 600 }}>{staffName}</span></span>
+                                <span>📅 Due: <span style={{ color: "#ff3366", fontWeight: 600 }}>{new Date(ticket.taskDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span></span>
+                                <span>🕐 Raised: {new Date(ticket.raisedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                              </div>
+                              {ticket.staffNote && (
+                                <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.12)", borderRadius: 8, fontSize: 11, color: G.textSecondary, lineHeight: 1.5 }}>
+                                  <span style={{ fontSize: 9, color: G.cyan, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.5px", marginRight: 6 }}>Staff Note:</span>
+                                  {ticket.staffNote.length > 120 ? ticket.staffNote.slice(0, 120) + "…" : ticket.staffNote}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => { setSelectedTicket(ticket); setTicketReviewNote(""); setShowTicketModal(true); }}
+                              style={{ flexShrink: 0, padding: "10px 18px", background: "linear-gradient(135deg, rgba(255,149,0,0.18), rgba(255,107,53,0.12))", border: "1px solid rgba(255,149,0,0.42)", borderRadius: 9, color: "#ff9500", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7, boxShadow: "0 0 14px rgba(255,149,0,0.12)", transition: "all 0.2s", whiteSpace: "nowrap" as const }}
+                            >
+                              <Eye size={13} /> Review
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
                 )}
 
                 <section style={{ marginTop: 32, paddingBottom: 60 }}>
@@ -1568,6 +2266,11 @@ setTimeout(() => {
                                   <Calendar size={10} />Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                   {task.timeSlot && <span style={{ color: G.gold, marginLeft: 4 }}>· {task.timeSlot}</span>}
                                 </span>
+                                {task.purpose && (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan, fontSize: 10, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                    🎯 {task.purpose}
+                                  </span>
+                                )}
                                 {task.history && task.history.length > 0 && (
                                   <button onClick={() => { setHistoryTask(task); setShowHistoryModal(true); }} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: 0 }}>
                                     <ListTree size={10} />View History ({task.history.length})
@@ -1616,9 +2319,12 @@ setTimeout(() => {
                       <TaskRow key={task.id} task={task} idx={idx}
                         staffName={getName(task.assignedTo)}
                         isAdminAssignee={isAdminEmail(task.assignedTo)}
+                        getNameFn={getName}
                         onReview={() => { setSelectedTask(task); setShowReviewModal(true); }}
                         onViewHistory={() => { setHistoryTask(task); setShowHistoryModal(true); }}
                         onDelete={() => requestDeleteTask(task)}
+                        onReassign={() => { setReassignTask(task); setReassignTo(""); setReassignReason(""); setShowReassignModal(true); }}
+                        onReviewTatExt={task.tatExtensionRequest?.status === "pending" ? () => { setTatExtTask(task); setTatExtResponse(""); setShowTatExtModal(true); } : undefined}
                       />
                     ))}
                   </div>
@@ -1635,6 +2341,193 @@ setTimeout(() => {
               </section>
             )}
 
+            {/* ══ ASSISTANCE TICKETS TAB ══ */}
+            {activeTab === "tickets" && (
+              <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>
+                      Assistance <em style={{ color: "#ff9500" }}>Tickets</em>
+                    </h2>
+                    <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                      {pendingAssistanceTickets.length} pending · {(assistanceTickets ?? []).filter(t => t.assignedBy?.toLowerCase() === user?.email?.toLowerCase() && t.status === "admin-approved").length} approved
+                    </p>
+                  </div>
+                  {pendingAssistanceTickets.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
+                      <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#ff9500" }}>ACTION REQUIRED</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* All tickets for this admin (sent by staff they manage) */}
+                {(() => {
+                  const adminTickets = (assistanceTickets ?? []).filter(
+                    t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+                  );
+                  if (adminTickets.length === 0) {
+                    return (
+                      <div style={{
+                        textAlign: "center", padding: "72px 24px",
+                        background: "rgba(8,14,32,0.65)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 16, backdropFilter: "blur(16px)",
+                      }}>
+                        <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.3 }}>🎫</div>
+                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, marginBottom: 8 }}>No Tickets</div>
+                        <div style={{ fontSize: 13, color: G.textMuted }}>Assistance tickets raised by your team will appear here.</div>
+                      </div>
+                    );
+                  }
+
+                  const statusOrder = { "pending-admin": 0, "open": 1, "admin-approved": 2, "resolved": 3 };
+                  const sorted = [...adminTickets].sort((a, b) =>
+                    (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
+                  );
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {sorted.map(ticket => {
+                        const isPending  = ticket.status === "pending-admin";
+                        const isApproved = ticket.status === "admin-approved";
+                        const staffName  = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
+                        const linkedTask = allContextTasks.find(t => t.id === ticket.taskId);
+
+                        return (
+                          <div key={ticket.id} style={{
+                            background: "rgba(8,12,28,0.75)",
+                            border: `1px solid ${isPending ? "rgba(255,149,0,0.35)" : isApproved ? "rgba(0,255,136,0.22)" : "rgba(255,255,255,0.07)"}`,
+                            borderRadius: 14, overflow: "hidden",
+                            backdropFilter: "blur(20px)",
+                            boxShadow: isPending ? "0 4px 24px rgba(255,149,0,0.08)" : "none",
+                          }}>
+                            {/* Left accent bar */}
+                            <div style={{ display: "flex" }}>
+                              <div style={{
+                                width: 4, flexShrink: 0,
+                                background: isPending ? "linear-gradient(180deg,#ff9500,#ff6b35)" : isApproved ? G.success : "rgba(255,255,255,0.1)",
+                              }} />
+                              <div style={{ flex: 1, padding: "18px 20px" }}>
+                                {/* Top row */}
+                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                                  <div style={{ flex: 1, minWidth: 220 }}>
+                                    {/* Badges row */}
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                                      <span style={{
+                                        fontSize: 9, padding: "2px 8px", borderRadius: 4,
+                                        background: "rgba(255,149,0,0.1)", color: "#ff9500",
+                                        fontWeight: 800, textTransform: "uppercase" as const,
+                                        border: "1px solid rgba(255,149,0,0.25)", letterSpacing: "0.5px",
+                                        fontFamily: "'IBM Plex Mono',monospace",
+                                      }}>{ticket.id}</span>
+                                      <span style={{
+                                        fontSize: 9, padding: "2px 8px", borderRadius: 4,
+                                        background: isPending ? "rgba(255,149,0,0.1)" : isApproved ? "rgba(0,255,136,0.1)" : "rgba(255,255,255,0.06)",
+                                        color: isPending ? "#ff9500" : isApproved ? G.success : G.textMuted,
+                                        fontWeight: 800, textTransform: "uppercase" as const,
+                                        border: `1px solid ${isPending ? "rgba(255,149,0,0.3)" : isApproved ? "rgba(0,255,136,0.3)" : "rgba(255,255,255,0.1)"}`,
+                                      }}>
+                                        {isPending ? "⚡ Awaiting Review" : isApproved ? "✓ Approved" : ticket.status === "open" ? "Open" : "Resolved"}
+                                      </span>
+                                      <span style={{
+                                        fontSize: 9, padding: "2px 8px", borderRadius: 4,
+                                        background: "rgba(255,51,102,0.08)", color: "#ff3366",
+                                        fontWeight: 700, textTransform: "uppercase" as const,
+                                        border: "1px solid rgba(255,51,102,0.2)",
+                                      }}>Delayed Task</span>
+                                    </div>
+                                    {/* Task title */}
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>{ticket.taskTitle}</div>
+                                    {/* Staff + date meta */}
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 10, color: G.textMuted }}>
+                                      <span>👤 <span style={{ color: G.textSecondary, fontWeight: 600 }}>{staffName}</span></span>
+                                      <span>📅 Due: <span style={{ color: "#ff3366", fontWeight: 600 }}>{new Date(ticket.taskDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span></span>
+                                      <span>🕐 Raised: <span style={{ color: G.textSecondary }}>{new Date(ticket.raisedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span></span>
+                                    </div>
+                                  </div>
+                                  {/* Review button */}
+                                  {isPending && (
+                                    <button
+                                      onClick={() => { setSelectedTicket(ticket); setTicketReviewNote(""); setShowTicketModal(true); }}
+                                      style={{
+                                        flexShrink: 0, padding: "10px 18px",
+                                        background: "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,107,53,0.14))",
+                                        border: "1px solid rgba(255,149,0,0.45)",
+                                        borderRadius: 9, color: "#ff9500",
+                                        fontSize: 12, fontWeight: 800, cursor: "pointer",
+                                        fontFamily: "inherit", letterSpacing: "0.04em",
+                                        boxShadow: "0 0 16px rgba(255,149,0,0.15)",
+                                        transition: "all 0.2s",
+                                        display: "flex", alignItems: "center", gap: 7,
+                                      }}
+                                    >
+                                      <Eye size={13} /> Review & Decide
+                                    </button>
+                                  )}
+                                  {isApproved && (
+                                    <div style={{
+                                      flexShrink: 0, padding: "8px 14px",
+                                      background: "rgba(0,255,136,0.07)",
+                                      border: "1px solid rgba(0,255,136,0.2)",
+                                      borderRadius: 9, fontSize: 11, color: G.success,
+                                      fontWeight: 700, display: "flex", alignItems: "center", gap: 6,
+                                    }}>
+                                      <CheckCircle size={12} /> Approved by {ticket.approvedBy}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Staff note */}
+                                {ticket.staffNote && (
+                                  <div style={{
+                                    marginTop: 14, padding: "11px 14px",
+                                    background: "rgba(0,212,255,0.04)",
+                                    border: "1px solid rgba(0,212,255,0.12)",
+                                    borderRadius: 9,
+                                  }}>
+                                    <div style={{ fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.6px", marginBottom: 5 }}>
+                                      Staff Explanation
+                                    </div>
+                                    <div style={{ fontSize: 12, color: G.textSecondary, lineHeight: 1.6 }}>{ticket.staffNote}</div>
+                                  </div>
+                                )}
+
+                                {/* Admin comment if approved */}
+                                {ticket.adminComment && isApproved && (
+                                  <div style={{
+                                    marginTop: 10, padding: "11px 14px",
+                                    background: "rgba(0,255,136,0.04)",
+                                    border: "1px solid rgba(0,255,136,0.15)",
+                                    borderRadius: 9,
+                                  }}>
+                                    <div style={{ fontSize: 9, fontWeight: 800, color: G.success, textTransform: "uppercase" as const, letterSpacing: "0.6px", marginBottom: 5 }}>
+                                      Your Response · {ticket.approvedAt ? new Date(ticket.approvedAt).toLocaleDateString("en-IN") : ""}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "#c8f5dc", lineHeight: 1.6 }}>{ticket.adminComment}</div>
+                                  </div>
+                                )}
+
+                                {/* Linked task quick info */}
+                                {linkedTask && (
+                                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: G.textMuted }}>
+                                    <span>Task status: <span style={{ color: G.textSecondary, textTransform: "capitalize" }}>{linkedTask.approvalStatus?.replace("-", " ")}</span></span>
+                                    {(linkedTask as any).isFrozen && (
+                                      <span style={{ color: "#b06af3", fontWeight: 700 }}>🔒 Frozen</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </section>
+            )}
+
             {/* ══ TASK MAP TAB ══ */}
             {activeTab === "taskmap" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
@@ -1646,6 +2539,194 @@ setTimeout(() => {
           </div>
 
           {/* ════ MODALS ════ */}
+
+          {/* ════ ASSISTANCE TICKET REVIEW MODAL ════ */}
+          {showTicketModal && selectedTicket && (
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 1200,
+              background: "rgba(2,4,14,0.9)",
+              backdropFilter: "blur(20px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 20,
+            }}>
+              <div style={{
+                width: "100%", maxWidth: 560,
+                background: "linear-gradient(160deg, rgba(10,14,32,0.99) 0%, rgba(6,8,22,1) 100%)",
+                border: "1px solid rgba(255,149,0,0.35)",
+                borderRadius: 20, overflow: "hidden",
+                boxShadow: "0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,149,0,0.06)",
+              }}>
+                {/* Modal header */}
+                <div style={{
+                  padding: "22px 24px 18px",
+                  background: "linear-gradient(135deg, rgba(255,149,0,0.1), rgba(255,107,53,0.05))",
+                  borderBottom: "1px solid rgba(255,149,0,0.15)",
+                  display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{
+                      width: 46, height: 46, borderRadius: 13,
+                      background: "rgba(255,149,0,0.12)",
+                      border: "1px solid rgba(255,149,0,0.35)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 22,
+                    }}>🎫</div>
+                    <div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: G.textPrimary, fontFamily: "'Oswald',sans-serif" }}>
+                        Review Assistance Ticket
+                      </div>
+                      <div style={{ fontSize: 10, color: "#ff9500", marginTop: 3, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.06em" }}>
+                        {selectedTicket.id} · ACTION REQUIRED
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowTicketModal(false)} style={{ background: "none", border: "none", color: G.textMuted, cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+                </div>
+
+                <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16, maxHeight: "70vh", overflowY: "auto" }}>
+                  {/* Staff info */}
+                  <div style={{
+                    padding: "14px 16px",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                    borderRadius: 12,
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 10 }}>Request Details</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 11 }}>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>From</div>
+                        <div style={{ color: G.textPrimary, fontWeight: 700 }}>
+                          {allMembers.find(m => m.email.toLowerCase() === selectedTicket.assignedTo.toLowerCase())?.name ?? selectedTicket.assignedTo}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Task</div>
+                        <div style={{ color: G.textPrimary, fontWeight: 700 }}>{selectedTicket.taskTitle}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Original Due Date</div>
+                        <div style={{ color: "#ff3366", fontWeight: 700 }}>
+                          {new Date(selectedTicket.taskDueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Ticket Raised</div>
+                        <div style={{ color: G.textSecondary }}>
+                          {new Date(selectedTicket.raisedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Staff explanation */}
+                  <div style={{
+                    padding: "14px 16px",
+                    background: "rgba(0,212,255,0.04)",
+                    border: "1px solid rgba(0,212,255,0.15)",
+                    borderRadius: 12,
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>
+                      Staff Explanation for Delay
+                    </div>
+                    <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.7 }}>
+                      {selectedTicket.staffNote || <span style={{ color: G.textMuted, fontStyle: "italic" }}>No explanation provided by staff.</span>}
+                    </div>
+                  </div>
+
+                  {/* What approval does */}
+                  <div style={{
+                    padding: "12px 14px",
+                    background: "rgba(0,255,136,0.04)",
+                    border: "1px solid rgba(0,255,136,0.15)",
+                    borderRadius: 10, display: "flex", gap: 10,
+                  }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>🔓</span>
+                    <div style={{ fontSize: 11, color: "rgba(0,255,136,0.75)", lineHeight: 1.7 }}>
+                      <strong style={{ color: G.success }}>Approving this ticket will unfreeze the task</strong> and send an approval
+                      notification directly to the doer, allowing them to continue working.
+                    </div>
+                  </div>
+
+                  {/* Admin response */}
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>
+                      Your Response / Instructions <span style={{ color: "#ff3366" }}>*</span>
+                    </div>
+                    <textarea
+                      value={ticketReviewNote}
+                      onChange={e => setTicketReviewNote(e.target.value)}
+                      placeholder="Provide your feedback, instructions, or revised timeline to the doer…"
+                      style={{
+                        width: "100%", padding: "12px 14px",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,149,0,0.25)",
+                        borderRadius: 10, color: G.textPrimary,
+                        fontSize: 12, fontFamily: "inherit",
+                        resize: "vertical", outline: "none",
+                        minHeight: 90, lineHeight: 1.6,
+                      }}
+                      onFocus={e => e.target.style.borderColor = "rgba(255,149,0,0.55)"}
+                      onBlur={e => e.target.style.borderColor = "rgba(255,149,0,0.25)"}
+                    />
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
+                    <button
+                      onClick={() => setShowTicketModal(false)}
+                      style={{
+                        flex: 1, padding: "13px",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 10, color: G.textMuted,
+                        fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >Cancel</button>
+                    <button
+                      onClick={() => {
+                        if (!ticketReviewNote.trim()) return;
+                        approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
+                        // Append to global history log so it's visible in Master History
+                        const linkedTaskId = selectedTicket.taskId;
+                        appendHistoryEntry(linkedTaskId, {
+                          id:        crypto.randomUUID(),
+                          timestamp: new Date().toISOString(),
+                          action:    `assistance_ticket_approved · Ticket ${selectedTicket.id} · "${ticketReviewNote.trim().slice(0, 80)}${ticketReviewNote.trim().length > 80 ? "…" : ""}"`,
+                          by:        user?.email ?? "Admin",
+                          notes:     ticketReviewNote.trim(),
+                        });
+                        speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
+                        setShowTicketModal(false);
+                        setSelectedTicket(null);
+                        toast("✓ Ticket approved — task unfrozen · Doer notified");
+                      }}
+                      disabled={ticketReviewNote.trim().length < 5}
+                      style={{
+                        flex: 2, padding: "13px",
+                        background: ticketReviewNote.trim().length >= 5
+                          ? "linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,200,100,0.14))"
+                          : "rgba(255,255,255,0.04)",
+                        border: ticketReviewNote.trim().length >= 5
+                          ? `1px solid rgba(0,255,136,0.45)`
+                          : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 10,
+                        color: ticketReviewNote.trim().length >= 5 ? G.success : G.textMuted,
+                        fontSize: 12, fontWeight: 800,
+                        cursor: ticketReviewNote.trim().length >= 5 ? "pointer" : "not-allowed",
+                        fontFamily: "inherit", letterSpacing: "0.04em",
+                        boxShadow: ticketReviewNote.trim().length >= 5 ? "0 0 20px rgba(0,255,136,0.15)" : "none",
+                        transition: "all 0.2s",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}
+                    >
+                      <CheckCircle size={14} /> Approve & Unfreeze Task
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Confirm Delete Modal */}
           {confirmDelete && (
@@ -1683,10 +2764,25 @@ setTimeout(() => {
                 <ModalHeader title="Master History Log" sub="All task activity across the system — chronological" onClose={() => setShowGlobalHistory(false)} accent={G.purple} />
                 <div style={{ padding: "24px 28px 28px" }}>
                   <HistoryTimeline
-                    history={allTasksCombined
-                      .flatMap(t => (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id })))
-                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                    }
+                    history={(() => {
+                      // Merge persisted store entries with in-memory task history
+                      // so history survives UserContext resets
+                      const storeEntries = getAllHistoryEntries();
+                      const taskTitleMap = Object.fromEntries(allTasksCombined.map(t => [t.id, t.title]));
+                      const merged = new Map<string, HistoryEntry & { taskTitle?: string; taskId: string }>();
+                      // First add in-memory entries
+                      allTasksCombined.flatMap(t =>
+                        (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id }))
+                      ).forEach(e => merged.set(e.id, e));
+                      // Then overlay with persisted entries (these survive context resets)
+                      storeEntries.forEach(e => {
+                        if (!merged.has(e.id)) {
+                          merged.set(e.id, { ...e, taskTitle: taskTitleMap[e.taskId] ?? e.taskId });
+                        }
+                      });
+                      return Array.from(merged.values())
+                        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                    })()}
                     getNameFn={getName}
                     compact={false}
                   />
@@ -1720,6 +2816,24 @@ setTimeout(() => {
                       <label className="g-label">Priority</label>
                       <select className="g-input" value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}>
                         <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="g-label">Purpose</label>
+                      <select className="g-input" value={newTask.purpose} onChange={(e) => setNewTask({ ...newTask, purpose: e.target.value })}>
+                        <option value="">— Select purpose —</option>
+                        <optgroup label="BRAND INTERNAL USE CREATIVE / VIDEOS / BROCHURE">
+                          <option value="LEAD GEN CREATIVES / VIDEOS">1. LEAD GEN CREATIVES / VIDEOS</option>
+                          <option value="PR CREATIVES / VIDEOS">2. PR CREATIVES / VIDEOS</option>
+                          <option value="SOCIAL MEDIA CREATIVES / VIDEOS">3. SOCIAL MEDIA CREATIVES / VIDEOS</option>
+                          <option value="CORE CREATIVES / VIDEOS">4. CORE CREATIVES / VIDEOS</option>
+                          <option value="WISHING CREATIVES / VIDEOS">5. WISHING CREATIVES / VIDEOS</option>
+                          <option value="OFFLINE CREATIVES / VIDEOS">6. OFFLINE CREATIVES / VIDEOS</option>
+                          <option value="WEBSITE CREATIVES / VIDEOS">7. WEBSITE CREATIVES / VIDEOS</option>
+                          <option value="RECORDING / SHOOTING VIDEOS">8. RECORDING / SHOOTING VIDEOS</option>
+                          <option value="EVENT OR SITE BRANDING">9. EVENT OR SITE BRANDING</option>
+                          <option value="AI SYSTEMS & AUTOMATION">10. AI SYSTEMS & AUTOMATION</option>
+                        </optgroup>
                       </select>
                     </div>
                     <div style={{ gridColumn: "1 / -1" }}>
@@ -1815,7 +2929,19 @@ setTimeout(() => {
                     {historyTask.tatBreached && <span className="tat-badge"><AlertTriangle size={9} />TAT BREACH</span>}
                     {historyTask.timeSlot && <span className="g-badge g-badge-muted"><Clock size={9} />{historyTask.timeSlot}</span>}
                   </div>
-                  <HistoryTimeline history={historyTask.history ?? []} getNameFn={getName} filterByTaskId={historyTask.id} compact={false} />
+                  <HistoryTimeline
+                    history={(() => {
+                      const persisted = getTaskHistory(historyTask.id);
+                      const inMemory = historyTask.history ?? [];
+                      const merged = new Map<string, HistoryEntry>();
+                      inMemory.forEach(e => merged.set(e.id, e));
+                      persisted.forEach(e => { if (!merged.has(e.id)) merged.set(e.id, e); });
+                      return Array.from(merged.values()).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    })()}
+                    getNameFn={getName}
+                    filterByTaskId={historyTask.id}
+                    compact={false}
+                  />
                   <div style={{ marginTop: 20 }}>
                     <button className="g-btn-ghost" onClick={() => { setShowHistoryModal(false); setHistoryTask(null); }} style={{ width: "100%" }}>Close</button>
                   </div>
@@ -1834,6 +2960,7 @@ setTimeout(() => {
                     <span className="g-badge g-badge-gold"><User size={9} />{getName(selectedTask.assignedTo)}</span>
                     {selectedTask.tatBreached && <span className="tat-badge"><AlertTriangle size={9} />TAT BREACH</span>}
                     {selectedTask.timeSlot && <span className="g-badge g-badge-muted"><Clock size={9} />{selectedTask.timeSlot}</span>}
+                    {selectedTask.purpose && <span className="g-badge" style={{ background: "rgba(0,212,255,0.08)", color: G.cyan, border: `1px solid ${G.cyan}44` }}>{selectedTask.purpose}</span>}
                   </div>
                   <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, marginBottom: 14 }}>
                     <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>Description</div>
@@ -1869,6 +2996,25 @@ setTimeout(() => {
                     <button className="g-btn-success" onClick={handleApprove} style={{ flex: 1 }}><CheckCircle size={14} />Approve & Forward</button>
                     <button className="g-btn-danger"  onClick={handleRework}  style={{ flex: 1 }}><RotateCw size={14} />Send for Rework</button>
                     <button className="g-btn-ghost" onClick={() => { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); }}>Cancel</button>
+                  </div>
+                  {/* Reassign from review modal */}
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      className="g-btn-reassign"
+                      style={{ width: "100%", justifyContent: "center" }}
+                      onClick={() => {
+                        if (!selectedTask) return;
+                        setShowReviewModal(false);
+                        setReassignTask(selectedTask);
+                        setReassignTo("");
+                        setReassignReason("");
+                        setSelectedTask(null);
+                        setReviewComments("");
+                        setShowReassignModal(true);
+                      }}
+                    >
+                      <Share2 size={13} />Reassign Task to Different Doer
+                    </button>
                   </div>
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
                     <button className="g-btn-delete" style={{ width: "100%" }} onClick={() => { setShowReviewModal(false); requestDeleteTask(selectedTask); }}>
@@ -1963,6 +3109,216 @@ setTimeout(() => {
             </div>
           )}
 
+          {/* ════ REASSIGN TASK MODAL ════ */}
+          {showReassignModal && reassignTask && (
+            <div className="g-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowReassignModal(false); setReassignTask(null); } }}>
+              <div className="g-modal" style={{ maxHeight: "90vh" }}>
+                <ModalHeader
+                  title={`Reassign: ${reassignTask.title}`}
+                  sub="Cancel current doer · Assign new doer · Trigger handover voice call"
+                  onClose={() => { setShowReassignModal(false); setReassignTask(null); setReassignTo(""); setReassignReason(""); }}
+                  accent={G.cyan}
+                />
+                <div style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+                  {/* Current doer info */}
+                  <div style={{ padding: "14px 16px", background: "rgba(255,45,85,0.06)", border: `1px solid ${G.dangerBorder}`, borderRadius: 12 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.danger, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Current Doer — Will Be Cancelled</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg,${G.danger},#cc0033)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <User size={15} color="#fff" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: G.textPrimary }}>{getName(reassignTask.assignedTo)}</div>
+                        <div style={{ fontSize: 11, color: G.textMuted }}>{reassignTask.assignedTo}</div>
+                      </div>
+                      <span className="g-badge g-badge-red" style={{ marginLeft: "auto" }}>CANCELLED</span>
+                    </div>
+                  </div>
+
+                  {/* What happens note */}
+                  <div style={{ padding: "12px 14px", background: "rgba(191,95,255,0.06)", border: "1px solid rgba(191,95,255,0.25)", borderRadius: 10, display: "flex", gap: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>🔄</span>
+                    <div style={{ fontSize: 11, color: "rgba(191,95,255,0.85)", lineHeight: 1.7 }}>
+                      <strong style={{ color: G.purple }}>A voice handover notice will be sent to the current doer</strong> instructing them to hand over all completed creatives and working files to the new assignee. Both parties will also receive WhatsApp notifications.
+                    </div>
+                  </div>
+
+                  {/* Select new doer */}
+                  <div>
+                    <label className="g-label">New Doer *</label>
+                    <select className="g-input" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
+                      <option value="">— Select new assignee —</option>
+                      {allMembers
+                        .filter(m => m.email !== reassignTask.assignedTo)
+                        .sort((a, b) => {
+                          if (a.role === "staff" && b.role !== "staff") return -1;
+                          if (a.role !== "staff" && b.role === "staff") return 1;
+                          return a.name.localeCompare(b.name);
+                        })
+                        .map(m => (
+                          <option key={m.id} value={m.email}>
+                            {m.name} ({m.role === "staff" ? "Doer" : "Admin"})
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+
+                  {/* Reason */}
+                  <div>
+                    <label className="g-label">Reason for Reassignment (Optional)</label>
+                    <textarea
+                      className="g-input"
+                      value={reassignReason}
+                      onChange={e => setReassignReason(e.target.value)}
+                      placeholder="e.g., Original doer unavailable, skill mismatch, workload rebalancing…"
+                      style={{ minHeight: 80, resize: "vertical" as const }}
+                    />
+                  </div>
+
+                  {/* Preview of new assignee */}
+                  {reassignTo && (() => {
+                    const nm = allMembers.find(m => m.email === reassignTo);
+                    return nm ? (
+                      <div style={{ padding: "12px 14px", background: "rgba(0,245,160,0.05)", border: `1px solid ${G.successBorder}`, borderRadius: 10, display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg,${G.success},#00a86b)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <User size={14} color="#001a0e" />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: G.textPrimary }}>{nm.name}</div>
+                          <div style={{ fontSize: 11, color: G.textMuted }}>{nm.email}</div>
+                        </div>
+                        <span className="g-badge g-badge-green">NEW DOER</span>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
+                    <button
+                      className="g-btn-gold"
+                      onClick={handleReassignTask}
+                      disabled={!reassignTo}
+                      style={{ flex: 2 }}
+                    >
+                      <Share2 size={14} />Confirm Reassignment &amp; Trigger Handover
+                    </button>
+                    <button
+                      className="g-btn-ghost"
+                      onClick={() => { setShowReassignModal(false); setReassignTask(null); setReassignTo(""); setReassignReason(""); }}
+                      style={{ flex: 1 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════ TAT EXTENSION REVIEW MODAL ════ */}
+          {showTatExtModal && tatExtTask?.tatExtensionRequest && (
+            <div className="g-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowTatExtModal(false); setTatExtTask(null); } }}>
+              <div className="g-modal" style={{ maxHeight: "90vh" }}>
+                <ModalHeader
+                  title="TAT Extension Request"
+                  sub="Review doer's reason · Approve to extend deadline or deny to enforce original TAT"
+                  onClose={() => { setShowTatExtModal(false); setTatExtTask(null); setTatExtResponse(""); }}
+                  accent={G.amber}
+                />
+                <div style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+                  {/* Request details */}
+                  <div style={{ padding: "14px 16px", background: "rgba(255,159,10,0.06)", border: `1px solid rgba(255,159,10,0.35)`, borderRadius: 12 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.amber, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 10 }}>Extension Request Details</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 11 }}>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Requested by</div>
+                        <div style={{ color: G.textPrimary, fontWeight: 700 }}>{getName(tatExtTask.assignedTo)}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Task</div>
+                        <div style={{ color: G.textPrimary, fontWeight: 700 }}>{tatExtTask.title}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Original Deadline</div>
+                        <div style={{ color: G.danger, fontWeight: 700 }}>
+                          {new Date(tatExtTask.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })} · {tatExtTask.timeSlot}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Requested New Deadline</div>
+                        <div style={{ color: G.success, fontWeight: 700 }}>
+                          {new Date(tatExtTask.tatExtensionRequest.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })} · {tatExtTask.tatExtensionRequest.requestedNewTimeSlot}
+                        </div>
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <div style={{ color: G.textMuted, marginBottom: 2 }}>Requested At</div>
+                        <div style={{ color: G.textSecondary }}>
+                          {new Date(tatExtTask.tatExtensionRequest.requestedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Doer's reason */}
+                  <div style={{ padding: "14px 16px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.15)", borderRadius: 12 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Doer's Reason for Extension</div>
+                    <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.7 }}>
+                      {tatExtTask.tatExtensionRequest.reason || <span style={{ color: G.textMuted, fontStyle: "italic" }}>No reason provided.</span>}
+                    </div>
+                  </div>
+
+                  {/* Warning about denial */}
+                  <div style={{ padding: "12px 14px", background: "rgba(255,45,85,0.05)", border: `1px solid ${G.dangerBorder}`, borderRadius: 10, display: "flex", gap: 10 }}>
+                    <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+                    <div style={{ fontSize: 11, color: "rgba(255,45,85,0.80)", lineHeight: 1.7 }}>
+                      <strong style={{ color: G.danger }}>If denied</strong>, the original TAT deadline remains in force. Once it is crossed, the task will be <strong>automatically frozen</strong> and will require an assistance ticket to unfreeze.
+                    </div>
+                  </div>
+
+                  {/* Admin response */}
+                  <div>
+                    <label className="g-label">Your Response / Instructions {tatExtTask ? "(required to deny)" : ""}</label>
+                    <textarea
+                      className="g-input"
+                      value={tatExtResponse}
+                      onChange={e => setTatExtResponse(e.target.value)}
+                      placeholder="e.g., Approved — ensure delivery by new date. / Denied — original deadline must be met, escalate blockers immediately…"
+                      style={{ minHeight: 90, resize: "vertical" as const }}
+                      onFocus={e => e.target.style.borderColor = `rgba(255,159,10,0.55)`}
+                      onBlur={e => e.target.style.borderColor = `rgba(255,255,255,0.12)`}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      className="g-btn-success"
+                      onClick={handleApproveTatExtension}
+                      style={{ flex: 1 }}
+                    >
+                      <CheckCircle size={14} />Approve Extension
+                    </button>
+                    <button
+                      className="g-btn-danger"
+                      onClick={handleDenyTatExtension}
+                      disabled={!tatExtResponse.trim()}
+                      style={{ flex: 1 }}
+                    >
+                      <X size={14} />Deny — Hold Original TAT
+                    </button>
+                    <button
+                      className="g-btn-ghost"
+                      onClick={() => { setShowTatExtModal(false); setTatExtTask(null); setTatExtResponse(""); }}
+                    >
+                      Later
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {showSmartAssist && activeTicket && (
             <SmartAssistModal
               ticket={activeTicket}
@@ -2010,14 +3366,41 @@ setTimeout(() => {
     onReview: () => void;
     onViewHistory: () => void;
     onDelete: () => void;
+    onReassign: () => void;
+    onReviewTatExt?: () => void;
+    getNameFn: (e: string) => string;
   }
 
-  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete }) => {
+  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete, onReassign, onReviewTatExt, getNameFn }) => {
     const [hovered, setHovered] = React.useState(false);
+    const hasPendingTatExt = task.tatExtensionRequest?.status === "pending";
     return (
       <div className="fade-up"
         style={{ animationDelay: `${idx * 55}ms`, background: hovered ? G.surfaceMid : G.surface, border: `1px solid ${hovered ? G.cyan + "44" : task.tatBreached ? G.dangerBorder : "rgba(255,255,255,0.09)"}`, borderRadius: 12, padding: "18px 22px", transition: "all 0.2s ease", backdropFilter: "blur(16px)" }}
         onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+        {/* TAT Extension pending banner */}
+        {hasPendingTatExt && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "8px 14px", background: "rgba(255,159,10,0.10)", border: `1px solid rgba(255,159,10,0.40)`, borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: G.amber, fontFamily: "'IBM Plex Mono',monospace" }}>
+              <Clock size={11} />
+              <strong>TAT EXTENSION REQUEST</strong> · {staffName} has requested a deadline extension
+              <span style={{ fontSize: 10, color: G.textMuted }}>— New date: {new Date(task.tatExtensionRequest!.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} {task.tatExtensionRequest!.requestedNewTimeSlot}</span>
+            </div>
+            {onReviewTatExt && (
+              <button onClick={e => { e.stopPropagation(); onReviewTatExt(); }}
+                style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(255,159,10,0.14)", border: `1px solid rgba(255,159,10,0.45)`, borderRadius: 7, color: G.amber, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" as const }}>
+                Review Extension →
+              </button>
+            )}
+          </div>
+        )}
+        {/* Handover banner */}
+        {task.handoverRequested && task.previousAssignee && (
+          <div className="handover-banner">
+            <Share2 size={11} />
+            Handover triggered — <strong style={{ marginLeft: 4 }}>{getNameFn(task.previousAssignee!)}</strong> was asked to hand over creatives
+          </div>
+        )}
         {task.tatBreached && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "6px 12px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 7, fontSize: 11, color: G.danger, fontFamily: "'IBM Plex Mono',monospace" }}>
             <AlertTriangle size={11} /> TAT BREACH — {task.smartAssist?.delayDuration || "Overdue"}
@@ -2032,6 +3415,7 @@ setTimeout(() => {
               <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary }}>{task.title}</h3>
               <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
               {isAdminAssignee && <span className="g-badge g-badge-gold"><Shield size={9} />ADMIN</span>}
+              {hasPendingTatExt && <span className="tat-ext-badge"><Clock size={9} />EXT REQUESTED</span>}
             </div>
             <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
               {task.description}
@@ -2052,18 +3436,29 @@ setTimeout(() => {
               )}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 2 }}>
-            <button onClick={onReview}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: hovered ? `linear-gradient(135deg,${G.cyan},#60efff)` : "rgba(255,255,255,0.05)", color: hovered ? "#001a26" : G.textSecondary, border: `1px solid ${hovered ? G.cyan : "rgba(255,255,255,0.10)"}`, borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap", boxShadow: hovered ? `0 0 20px ${G.cyan}55` : "none" }}>
-              <Eye size={12} />Review<ChevronRight size={11} />
-            </button>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 2, flexDirection: "column" as const }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onReview}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: hovered ? `linear-gradient(135deg,${G.cyan},#60efff)` : "rgba(255,255,255,0.05)", color: hovered ? "#001a26" : G.textSecondary, border: `1px solid ${hovered ? G.cyan : "rgba(255,255,255,0.10)"}`, borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap" as const, boxShadow: hovered ? `0 0 20px ${G.cyan}55` : "none" }}>
+                <Eye size={12} />Review<ChevronRight size={11} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="g-btn-delete"
+                style={{ padding: "9px 12px" }}
+                title="Delete task"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+            {/* Reassign button — always available on review tasks */}
             <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="g-btn-delete"
-              style={{ padding: "9px 12px" }}
-              title="Delete task"
+              className="g-btn-reassign"
+              onClick={e => { e.stopPropagation(); onReassign(); }}
+              title="Reassign this task to a different doer"
+              style={{ width: "100%", fontSize: 11 }}
             >
-              <Trash2 size={13} />
+              <Share2 size={11} />Reassign Doer
             </button>
           </div>
         </div>

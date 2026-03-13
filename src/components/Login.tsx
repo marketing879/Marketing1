@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser, Role } from "../contexts/UserContext";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
-import { greetUser, setElevenLabsVoice, announceVoice } from "../services/VoiceModule"; 
-let _welcomeLoginPlayed = false;
+import { setElevenLabsVoice, announceVoice } from "../services/VoiceModule";
+
 const Login: React.FC = () => {
   const { validateLogin, commitLogin, teamMembers } = useUser();
   const navigate = useNavigate();
@@ -53,44 +53,39 @@ const Login: React.FC = () => {
     };
   }, []);
 
-  const welcomeRef = useRef(false);
-
   useEffect(() => {
-    if (_welcomeLoginPlayed) return;
-    _welcomeLoginPlayed = true;
-    setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh"); // ← voice ID restored
-    setTimeout(() => {
-      announceVoice("Welcome_Login").catch(() => {});
-    }, 600);
-  }, [])
+    setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh");
+  }, []);
 
   const handleGenerateOTP = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setError("");
+
     const foundUser = teamMembers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.role === role
+      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
     );
+
     if (!foundUser) {
-      setError("No account found with this email and role combination.");
+      setError("No account found with this email address.");
       return;
     }
+
+    // Auto-correct the role if it doesn't match
+    if (foundUser.role !== role) {
+      setRole(foundUser.role as Role);
+      setError("Role corrected to match your account. Please click Request Access Code again.");
+      return;
+    }
+
     setLoading(true);
     timeoutRef.current = setTimeout(() => {
       setLoading(false);
       setStep("password");
       setPassword("");
     }, 800);
-  }, [email, role, teamMembers]);
+  }, [email, role, teamMembers, setRole]);
 
-  // ── handleVerifyPassword ──────────────────────────────────────────────────
-  // Sequence:
-  //   1. validateLogin()  — checks creds only, sets NO state (no redirect)
-  //   2. Wrong → Access_Denied voice, show error
-  //   3. Right → show granted screen + progress bar (2.5s CSS)
-  //   4. After 2.5s → await announceVoice("Access_Granted") — audio plays fully
-  //   5. commitLogin()    — NOW sets user state, triggers route guard
-  //   6. navigate()       — redirect happens here, after voice is done
   const handleVerifyPassword = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -104,36 +99,28 @@ const Login: React.FC = () => {
         setError("Invalid password. Please try again.");
         setPassword("");
         setLoading(false);
-        announceVoice("Access_Denied").catch(() => {});
+        try { announceVoice("Access_Denied").catch(() => {}); } catch {}
         return;
       }
 
-      // Find name for personalised greeting
-      const foundUser = teamMembers.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase()
-      );
       setGrantedRole(role);
       setLoading(false);
-      setStep("granted"); // show screen — no user state set yet, no redirect yet
+      setStep("granted");
 
-      // Bar fills for 2.5s (CSS animation), then voice fires
       timeoutRef.current = setTimeout(async () => {
-        try {
-          await announceVoice("Access_Granted"); // wait for full audio playback
-              } catch (err) {
-          console.error("Voice failed:", err);
-        }
-        // Only NOW set user state — route guard fires here, not before
+        try { await announceVoice("Access_Granted"); } catch {}
         commitLogin(email, password);
         navigate("/" + role);
       }, 2500);
     }, 600);
-  }, [email, password, role, validateLogin, commitLogin, navigate, teamMembers]);
+  }, [email, password, role, validateLogin, commitLogin, navigate]);
 
+  // ── CHANGE: Added "supremo" to roles array ────────────────────────────────
   const roles: { value: Role; label: string; icon: string }[] = [
-    { value: "staff", label: "Staff", icon: "◈" },
-    { value: "admin", label: "Admin", icon: "◆" },
-    { value: "superadmin", label: "Super Admin", icon: "✦" },
+    { value: "staff",      label: "Staff",       icon: "◈" },
+    { value: "admin",      label: "Admin",        icon: "◆" },
+    { value: "superadmin", label: "Super Admin",  icon: "✦" },
+    { value: "supremo",    label: "Supremo",      icon: "⬡" },
   ];
 
   return (
@@ -302,26 +289,27 @@ const Login: React.FC = () => {
           box-shadow: 0 0 0 4px rgba(201,169,110,0.08);
         }
 
+        /* ── CHANGE: 4-column grid for role selector to fit Supremo ─────── */
         .role-selector {
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 16px;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
+          gap: 10px;
           margin-bottom: 25px;
         }
 
         .role-btn {
-          padding: 14px 16px;
+          padding: 12px 8px;
           background: linear-gradient(135deg, rgba(30,25,20,0.9) 0%, rgba(25,20,15,0.9) 100%);
           border: 1.5px solid rgba(201,169,110,0.2);
           border-radius: 12px;
           color: #a89968;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 600;
           transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
           text-align: center;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 0.8px;
           position: relative;
           overflow: hidden;
         }
@@ -344,12 +332,21 @@ const Login: React.FC = () => {
           transform: translateY(-2px);
         }
 
+        /* ── CHANGE: Supremo gets a special gold-glow active state ──────── */
         .role-btn.active {
           background: linear-gradient(135deg, #c9a96e 0%, #d4b896 100%);
           color: #0a0a0a;
           border-color: #c9a96e;
           box-shadow: 0 12px 32px rgba(201,169,110,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
           text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .role-btn.active.supremo-btn {
+          background: linear-gradient(135deg, #1a1200 0%, #3d2e00 50%, #1a1200 100%);
+          color: #c9a96e;
+          border-color: #c9a96e;
+          box-shadow: 0 0 20px rgba(201,169,110,0.6), 0 0 40px rgba(201,169,110,0.2), inset 0 1px 0 rgba(201,169,110,0.3);
+          text-shadow: 0 0 8px rgba(201,169,110,0.8);
         }
 
         .role-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -605,13 +602,9 @@ const Login: React.FC = () => {
               <div className="access-granted-container">
                 <div className="access-granted-icon">
                   <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    {/* Shackle */}
                     <path d="M11 16V11C11 7.134 14.134 4 18 4C21.866 4 25 7.134 25 11V16" stroke="#c9a96e" strokeWidth="2" strokeLinecap="round"/>
-                    {/* Body */}
                     <rect x="7" y="16" width="22" height="16" rx="3" stroke="#c9a96e" strokeWidth="2"/>
-                    {/* Keyhole circle */}
                     <circle cx="18" cy="24" r="2.5" stroke="#c9a96e" strokeWidth="1.5"/>
-                    {/* Keyhole stem */}
                     <line x1="18" y1="26.5" x2="18" y2="29.5" stroke="#c9a96e" strokeWidth="1.5" strokeLinecap="round"/>
                   </svg>
                 </div>
@@ -647,11 +640,17 @@ const Login: React.FC = () => {
                       <button
                         key={r.value}
                         type="button"
-                        className={"role-btn" + (role === r.value ? " active" : "")}
+                        className={
+                          "role-btn" +
+                          (role === r.value ? " active" : "") +
+                          (r.value === "supremo" ? " supremo-btn" : "")
+                        }
                         onClick={() => setRole(r.value)}
                         disabled={loading}
                       >
-                        <span style={{ fontSize: "16px", display: "block", marginBottom: "4px" }}>{r.icon}</span>
+                        <span style={{ fontSize: "16px", display: "block", marginBottom: "4px" }}>
+                          {r.icon}
+                        </span>
                         {r.label}
                       </button>
                     ))}
@@ -718,7 +717,11 @@ const Login: React.FC = () => {
                   >
                     ← Back
                   </button>
-                  <button type="submit" className="submit-btn" disabled={loading || password.length !== 6}>
+                  <button
+                    type="submit"
+                    className="submit-btn"
+                    disabled={loading || password.length !== 6}
+                  >
                     LOGIN
                     {loading && <span className="loading" />}
                   </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser, Task } from "../contexts/UserContext";
+import { useUser, Task, AssistanceTicket } from "../contexts/UserContext";
 import { Eye, Upload, CheckCircle, AlertCircle, Loader, Shield, User, X, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
@@ -438,18 +438,6 @@ const avgCompletionTime = (tasks: Task[]): string => {
 };
 
 // ── Assistance Ticket Types ─────────────────────────────────────────────────
-interface AssistanceTicket {
-  id: string;
-  taskId: string;
-  taskTitle: string;
-  taskDueDate: string;
-  raisedAt: string;
-  status: "open" | "pending-admin" | "admin-approved" | "resolved";
-  reason: string;
-  staffNote: string;
-  adminComment?: string;
-}
-
 const generateTicketId = (): string =>
   "TKT-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 5).toUpperCase();
 
@@ -1433,6 +1421,10 @@ const StaffDashboard: React.FC = () => {
     getProjectById,
     teamMembers,
     updateTask,
+    assistanceTickets: contextTickets,
+    raiseAssistanceTicket,
+    updateAssistanceTicket: ctxUpdateTicket,
+    submitTicketToAdmin: ctxSubmitTicket,
   } = useUser();
   const navigate = useNavigate();
 
@@ -1454,7 +1446,10 @@ const StaffDashboard: React.FC = () => {
   // New state
   const [showFlashPanel,    setShowFlashPanel]    = useState(false);
   const [rescheduledTasks,  setRescheduledTasks]  = useState<{ [id: string]: string }>({});
-  const [tickets,           setTickets]           = useState<AssistanceTicket[]>([]);
+  // tickets are now sourced from context — filtered to this doer's email
+  const tickets = (contextTickets ?? []).filter(
+    t => t.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
+  );
   const ticketInitRef = useRef(false);
 
   // AI Score modal state
@@ -1578,6 +1573,10 @@ const StaffDashboard: React.FC = () => {
   const completedTasks  = assignedTasks.filter((t) => t.approvalStatus === "superadmin-approved");
   const submittedTasks  = [...inReviewTasks, ...completedTasks];
   const delayedTasks    = assignedTasks.filter(t => isDelayed(t));
+  const frozenTasks     = assignedTasks.filter(t => (t as any).isFrozen === true);
+  const ticketsRaised   = (contextTickets ?? []).filter(
+    tk => tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase() && tk.status !== "resolved"
+  );
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 50);
@@ -1884,6 +1883,10 @@ const StaffDashboard: React.FC = () => {
     if (activeFilter === "active") return pendingTasks;
     if (activeFilter === "inreview") return inReviewTasks;
     if (activeFilter === "approved") return completedTasks;
+    if (activeFilter === "frozen") return frozenTasks;
+    if (activeFilter === "tickets") return assignedTasks.filter(t =>
+      ticketsRaised.some(tk => tk.taskId === t.id)
+    );
     return pendingTasks;
   };
 
@@ -1900,6 +1903,10 @@ const StaffDashboard: React.FC = () => {
   };
 
   const handleDelayedComplete = (task: Task) => {
+    if ((task as any).isFrozen) {
+      showSuccess("🔒 Task is frozen — admin must approve the assistance ticket first.");
+      return;
+    }
     setSelectedTask(task);
     setShowCompletionForm(true);
   };
@@ -1913,26 +1920,49 @@ const StaffDashboard: React.FC = () => {
     const delayed = assignedTasks.filter(t => isDelayed(t));
     if (delayed.length === 0) return;
 
-    setTickets(prev => {
-      const existingTaskIds = new Set(prev.map(t => t.taskId));
-      const newTickets: AssistanceTicket[] = delayed
-        .filter(t => !existingTaskIds.has(t.id))
-        .map(t => ({
-          id:          generateTicketId(),
-          taskId:      t.id,
-          taskTitle:   t.title,
-          taskDueDate: t.dueDate,
-          raisedAt:    new Date().toISOString(),
-          status:      "open" as const,
-          reason:      `This task was due on ${new Date(t.dueDate).toLocaleDateString()} and has not been completed. An assistance ticket has been automatically raised to notify your admin and track the delay.`,
-          staffNote:   "",
-        }));
-      return [...prev, ...newTickets];
+    // Use context raiseAssistanceTicket — it deduplicates internally
+    delayed.forEach(t => {
+      raiseAssistanceTicket({
+        taskId:      t.id,
+        taskTitle:   t.title,
+        taskDueDate: t.dueDate,
+        assignedTo:  user?.email ?? "",
+        assignedBy:  (t as any).assignedBy ?? "",
+        reason:      `This task was due on ${new Date(t.dueDate).toLocaleDateString()} and has not been completed. An assistance ticket has been automatically raised to notify your admin and track the delay.`,
+        staffNote:   "",
+      });
     });
   }, [assignedTasks]);
 
+  // ── Freeze any delayed task that has an active ticket — runs every render ───
+  // Runs separately from ticket creation so it catches tickets that already
+  // existed before this session (avoids ticketInitRef blocking the freeze).
+  useEffect(() => {
+    if (!assignedTasks.length || !contextTickets) return;
+    assignedTasks.forEach(t => {
+      const hasActiveTicket = contextTickets.some(
+        tk => tk.taskId === t.id &&
+              (tk.status === "open" || tk.status === "pending-admin") &&
+              tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
+      );
+      const isAlreadyFrozen = (t as any).isFrozen === true;
+      if (hasActiveTicket && !isAlreadyFrozen) {
+        updateTask?.(t.id, { isFrozen: true } as any);
+      }
+      // Unfreeze if all tickets for this task are resolved / approved
+      if (!hasActiveTicket && isAlreadyFrozen) {
+        const allResolved = contextTickets
+          .filter(tk => tk.taskId === t.id)
+          .every(tk => tk.status === "resolved" || tk.status === "admin-approved");
+        if (allResolved) {
+          updateTask?.(t.id, { isFrozen: false } as any);
+        }
+      }
+    });
+  }, [assignedTasks, contextTickets]);
+
   const handleUpdateTicket = (id: string, updates: Partial<AssistanceTicket>) => {
-    setTickets(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    ctxUpdateTicket(id, updates);
     showSuccess("✓ Ticket note saved");
     if (updates.staffNote) {
       speakText("Note saved. When you are ready, submit the ticket to your admin for approval.");
@@ -1941,7 +1971,13 @@ const StaffDashboard: React.FC = () => {
 
   const handleSubmitTicketToAdmin = (id: string) => {
     const ticket = tickets.find(t => t.id === id);
-    setTickets(prev => prev.map(t => t.id === id ? { ...t, status: "pending-admin" } : t));
+    ctxSubmitTicket(id);
+
+    // Belt-and-suspenders: also directly freeze the linked task
+    if (ticket?.taskId) {
+      updateTask?.(ticket.taskId, { isFrozen: true } as any);
+    }
+
     showSuccess("📤 Ticket submitted to admin for review");
 
     // Find the assigning admin name from the linked task
@@ -1985,14 +2021,50 @@ const StaffDashboard: React.FC = () => {
           --t3: #434763;
         }
 
-        body { background: transparent; font-family: 'Inter', sans-serif; }
-        html { background: transparent; }
+        body { background: #060a15; font-family: 'Inter', sans-serif; }
+        html { background: #060a15; }
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: rgba(15,17,32,0.5); border-radius: 10px; }
         ::-webkit-scrollbar-thumb { background: rgba(126,132,163,0.4); border-radius: 10px; transition: background 0.2s; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(126,132,163,0.7); }
         * { scrollbar-color: rgba(126,132,163,0.5) rgba(15,17,32,0.3); scrollbar-width: thin; }
+
+        /* ── Video Background ── */
+        .sd-video-bg {
+          position: fixed;
+          top: 0; left: 0;
+          width: 100vw; height: 100vh;
+          z-index: 0;
+          pointer-events: none;
+          overflow: hidden;
+        }
+        .sd-video-bg video {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          opacity: 0.35;
+          filter: brightness(0.6) saturate(1.2);
+        }
+        .sd-video-bg iframe {
+          position: absolute;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          border: none;
+          pointer-events: none;
+        }
+        .sd-video-overlay {
+          position: fixed;
+          top: 0; left: 0;
+          width: 100vw; height: 100vh;
+          z-index: 0;
+          background: linear-gradient(
+            135deg,
+            rgba(6,10,21,0.28) 0%,
+            rgba(15,10,35,0.22) 50%,
+            rgba(6,10,21,0.28) 100%
+          );
+          pointer-events: none;
+        }
 
         .sd-root {
           height: 100vh;
@@ -2269,11 +2341,11 @@ const StaffDashboard: React.FC = () => {
         .sd-stat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.5); border-color: rgba(0,212,255,0.3); }
         .sd-stat-card.active { border-color: rgba(0,212,255,0.5); box-shadow: 0 0 30px rgba(0,212,255,0.2); background: rgba(0,212,255,0.04); }
         .sd-stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .sd-stat-label { font-size: 9px; font-weight: 700; color: var(--t3); text-transform: uppercase; letter-spacing: 1.2px; }
+        .sd-stat-label { font-size: 10px; font-weight: 800; color: #ffffff; text-transform: uppercase; letter-spacing: 1.4px; text-shadow: 0 0 12px rgba(255,255,255,0.25); }
         .sd-stat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, var(--c)); box-shadow: 0 0 10px var(--dot, var(--c)), 0 0 20px var(--dot, var(--c)); animation: dotGlow 2s ease-in-out infinite; }
         @keyframes dotGlow { 0%,100%{opacity:0.7} 50%{opacity:1} }
         .sd-stat-value { font-size: 44px; font-weight: 900; color: var(--val, var(--c)); line-height: 1; letter-spacing: -2px; font-family: 'Space Grotesk', sans-serif; margin-bottom: 8px; text-shadow: 0 0 30px var(--val, rgba(0,212,255,0.4)); }
-        .sd-stat-sub { font-size: 11px; color: var(--t3); font-weight: 500; }
+        .sd-stat-sub { font-size: 11px; color: #cdd0e8; font-weight: 600; letter-spacing: 0.2px; }
         .sd-stat-bar { margin-top: 14px; height: 2px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
         .sd-stat-bar-fill { height: 100%; background: linear-gradient(90deg, var(--val, var(--c)), var(--c2)); border-radius: 2px; box-shadow: 0 0 8px var(--val, var(--c)); transition: width 1s ease; }
 
@@ -2295,6 +2367,7 @@ const StaffDashboard: React.FC = () => {
           padding: 16px 18px; margin-bottom: 12px; transition: border-color 0.18s, box-shadow 0.18s;
           position: relative; overflow: hidden; max-height: 360px; overflow-y: auto;
         }
+        .sd-task.frozen { pointer-events: none; opacity: 0.8; }
         .sd-task::before { content: ''; position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; background: transparent; border-radius: 0 2px 2px 0; transition: all 0.22s; }
         .sd-task:hover { border-color: rgba(0,212,255,0.18); box-shadow: 0 0 0 1px rgba(0,212,255,0.05), 0 8px 32px rgba(0,0,0,0.4); }
         .sd-task:hover::before { background: linear-gradient(180deg, var(--c), var(--c2)); box-shadow: 0 0 14px var(--c); }
@@ -2457,6 +2530,22 @@ const StaffDashboard: React.FC = () => {
         />
       )}
 
+      {/* ── Video Background — Cloudinary CDN, instant autoplay ── */}
+      <div className="sd-video-bg">
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          src="https://res.cloudinary.com/donsrpgw3/video/upload/v1773312581/0_Circles_Gold_1280x720_so9fiu.mp4"
+          style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+                   width:"177.78vh", minWidth:"100vw", height:"56.25vw", minHeight:"100vh",
+                   objectFit:"cover", pointerEvents:"none", opacity:0.85,
+                   filter:"brightness(0.8) saturate(1.3)" }}
+        />
+      </div>
+      <div className="sd-video-overlay" />
+
       <div className="sd-root">
         {/* ── TOP NAVBAR ── */}
         <aside className="sd-sidebar">
@@ -2480,9 +2569,9 @@ const StaffDashboard: React.FC = () => {
               onClick={() => { setActiveTab("pending"); setActiveFilter(null); }}
             >
               <span className="sd-nav-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               </span>
-              My Tasks
+              Home
               {pendingTasks.length > 0 && <span className="sd-nav-badge">{pendingTasks.length}</span>}
             </button>
             <button
@@ -2582,7 +2671,7 @@ const StaffDashboard: React.FC = () => {
             {/* ── PAGE HEADER ── */}
             <div className="sd-page-header">
               <div className="sd-page-title">
-                {activeTab === "pending"  ? <>Task <em>Analytics</em></>
+                {activeTab === "pending"  ? <>My <em>Home</em></>
                  : activeTab === "history" ? <>Work <em>History</em></>
                  : activeTab === "delayed" ? <><em>Delayed</em> Tasks</>
                  : activeTab === "tickets" ? <><em>Assistance</em> Tickets</>
@@ -2640,6 +2729,60 @@ const StaffDashboard: React.FC = () => {
                   <div className="sd-stat-sub">Approved</div>
                   <div className="sd-stat-bar"><div className="sd-stat-bar-fill" style={{ width: `${assignedTasks.length > 0 ? (completedTasks.length / assignedTasks.length) * 100 : 0}%`, "--val": "var(--cg)" } as any} /></div>
                 </div>
+
+                {/* ── Frozen Tasks card ── */}
+                <div
+                  className={`sd-stat-card ${activeFilter === "frozen" ? "active" : ""}`}
+                  onClick={() => setActiveFilter(activeFilter === "frozen" ? null : "frozen")}
+                  style={{ "--glow": "rgba(176,106,243,0.22)" } as any}
+                >
+                  <div className="sd-stat-card-top">
+                    <div className="sd-stat-label">🔒 Frozen</div>
+                    <div className="sd-stat-dot" style={{ "--dot": "#b06af3" } as any} />
+                  </div>
+                  <div className="sd-stat-value" style={{ "--val": "#b06af3", color: "#b06af3" } as any}>{frozenTasks.length}</div>
+                  <div className="sd-stat-sub">{frozenTasks.length > 0 ? "Pending admin unlock" : "No frozen tasks"}</div>
+                  <div className="sd-stat-bar">
+                    <div className="sd-stat-bar-fill" style={{ width: `${assignedTasks.length > 0 ? (frozenTasks.length / assignedTasks.length) * 100 : 0}%`, "--val": "#b06af3", background: "#b06af3" } as any} />
+                  </div>
+                  {frozenTasks.length > 0 && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10,
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: "#b06af3", boxShadow: "0 0 10px #b06af3",
+                      animation: "badgePulse 1.5s ease-in-out infinite",
+                    }} />
+                  )}
+                </div>
+
+                {/* ── Assistance Tickets card ── */}
+                <div
+                  className={`sd-stat-card ${activeFilter === "tickets" ? "active" : ""}`}
+                  onClick={() => setActiveFilter(activeFilter === "tickets" ? null : "tickets")}
+                  style={{ "--glow": "rgba(255,149,0,0.18)" } as any}
+                >
+                  <div className="sd-stat-card-top">
+                    <div className="sd-stat-label">🎫 Tickets</div>
+                    <div className="sd-stat-dot" style={{ "--dot": "#ff9500" } as any} />
+                  </div>
+                  <div className="sd-stat-value" style={{ "--val": "#ff9500", color: "#ff9500" } as any}>{ticketsRaised.length}</div>
+                  <div className="sd-stat-sub">
+                    {ticketsRaised.filter(t => t.status === "pending-admin").length > 0
+                      ? `${ticketsRaised.filter(t => t.status === "pending-admin").length} awaiting admin`
+                      : ticketsRaised.length > 0 ? "Assistance raised" : "No open tickets"}
+                  </div>
+                  <div className="sd-stat-bar">
+                    <div className="sd-stat-bar-fill" style={{ width: `${assignedTasks.length > 0 ? (ticketsRaised.length / assignedTasks.length) * 100 : 0}%`, "--val": "#ff9500", background: "#ff9500" } as any} />
+                  </div>
+                  {ticketsRaised.filter(t => t.status === "pending-admin").length > 0 && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10,
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: "#ff9500", boxShadow: "0 0 10px #ff9500",
+                      animation: "badgePulse 1.5s ease-in-out infinite",
+                    }} />
+                  )}
+                </div>
               </div>
             )}
 
@@ -2660,7 +2803,7 @@ const StaffDashboard: React.FC = () => {
                       photos={uploadedPhotos[task.id] || []}
                       getProjectName={getProjectName}
                       getAssignerInfo={getAssignerInfo}
-                      onComplete={() => { setSelectedTask(task); setShowCompletionForm(true); }}
+                      onComplete={() => { if ((task as any).isFrozen) return; setSelectedTask(task); setShowCompletionForm(true); }}
                       onUpload={(files) => handlePhotoUpload(task.id, files)}
                       onRemovePhoto={(i) => removePhoto(task.id, i)}
                       onOpenLightbox={(photos, idx) => openLightbox(photos, idx)}
@@ -3502,7 +3645,38 @@ const TaskCard: React.FC<TaskCardProps> = ({
   const delayed = isDelayed(task);
 
   return (
-    <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : {}}>
+    <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : (task as any).isFrozen ? { borderColor: "rgba(176,106,243,0.35)", background: "rgba(176,106,243,0.03)" } : {}}>
+      {/* ── Frozen Banner — shown when a pending-admin ticket is blocking this task ── */}
+      {(task as any).isFrozen && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 10,
+          background: "rgba(6,10,21,0.72)",
+          backdropFilter: "blur(4px)",
+          borderRadius: "inherit",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 10, padding: 20,
+          border: "1px solid rgba(176,106,243,0.3)",
+        }}>
+          <div style={{ fontSize: 28 }}>🔒</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
+            Task Frozen — Pending Admin Approval
+          </div>
+          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
+            An assistance ticket for this task has been submitted to your admin.
+            You cannot submit this task until the ticket is approved and the task is unfrozen.
+          </div>
+          <div style={{
+            padding: "6px 14px",
+            background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
+            borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
+            textTransform: "uppercase" as const, letterSpacing: "0.5px",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
+            Awaiting Admin Review
+          </div>
+        </div>
+      )}
       {delayed && (
         <div style={{
           position: "absolute", top: 10, right: 10,
@@ -3519,7 +3693,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <div className="sd-task-title">{task.title}</div>
           <div className="sd-task-desc">{task.description}</div>
         </div>
-        {!isCompleted && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
+        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
           <button className="sd-btn-complete" onClick={onComplete}>
             <Eye size={11} /> Submit
           </button>
@@ -3588,7 +3762,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
-      {!isCompleted && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
+      {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
         <div className="sd-photos" style={{ marginTop: "8px" }}>
           {photos.length > 0 && (
             <div className="sd-photo-grid">

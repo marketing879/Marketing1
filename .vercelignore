@@ -1,0 +1,10 @@
+backend/
+node_modules/
+public/videos/
+src/
+*.tsx
+*.ts
+*.json
+*.md
+.env*
+!build/

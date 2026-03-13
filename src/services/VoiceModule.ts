@@ -19,7 +19,7 @@ type VoiceEvent =
 
 // ── Backend Config ────────────────────────────────────────────────────────────
 const API_BASE =
-  process.env.REACT_APP_API_URL || "http://localhost:5000";
+  process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
 
 // ── Voice Selection Controller ────────────────────────────────────────────────
 let _selectedVoice: string | null = null;
@@ -155,7 +155,7 @@ async function _speakWithBackend(text: string): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
         text,
-        voiceId: _selectedVoice || "EXAVITQu4vr4xnSDxMaL",
+        voiceId: _selectedVoice || "ThT5KcBeYPX3keUQqHPh",
       }),
     });
 

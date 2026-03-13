@@ -9,3 +9,5 @@ dist/
 *.log
 *.db
 *.sqlite
+.vercel
+.env*.local

@@ -3,30 +3,41 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import qrcode from "qrcode-terminal";
-
-// ── whatsapp-web.js is CommonJS — must import via default ─────────────────────
-import pkg from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
 
 dotenv.config();
 
-
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
+app.options("/{*path}", cors());
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Origin", process.env.FRONTEND_URL);
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.header("Access-Control-Allow-Credentials", "true");
+    return res.status(204).send();
+  }
+  next();
+});
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANTHROPIC CLIENT
 // ─────────────────────────────────────────────────────────────────────────────
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
-
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error("❌ ERROR: ANTHROPIC_API_KEY is not set in .env");
   process.exit(1);
 }
 console.log("✓ ANTHROPIC_API_KEY is configured");
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
 async function callAnthropicWithRetry(fn, maxRetries = 4) {
   let delay = 1000;
@@ -121,70 +132,15 @@ const TEAM_DIRECTORY = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHATSAPP CLIENT
+// WHATSAPP — stubbed out (re-enable with Twilio when ready)
 // ─────────────────────────────────────────────────────────────────────────────
-let waReady  = false;
-let waClient = null;
-
-function initWhatsApp() {
-  waClient = new Client({
-    authStrategy: new LocalAuth({ dataPath: "./.wa_auth" }),
-    puppeteer: {
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--window-size=1280,720",
-      ],
-    },
-  });
-
-  waClient.on("qr", (qr) => {
-    console.log("\n──────────────────────────────────────────────");
-    console.log("📱  SCAN THIS QR CODE WITH WHATSAPP");
-    console.log("──────────────────────────────────────────────\n");
-    qrcode.generate(qr, { small: true });
-    console.log("\n  WhatsApp → ⋮ → Linked Devices → Link a Device\n");
-    console.log("──────────────────────────────────────────────\n");
-  });
-
-  waClient.on("loading_screen", (p, m) => console.log(`⏳ WhatsApp: ${p}% — ${m}`));
-  waClient.on("authenticated",  ()    => console.log("🔐 WhatsApp authenticated — session saved"));
-  waClient.on("auth_failure",   (m)   => { console.error("❌ WA auth failure:", m); waReady = false; });
-  waClient.on("ready",          ()    => { waReady = true; console.log("✅ WhatsApp READY — reminders active"); });
-  waClient.on("disconnected",   (r)   => {
-    waReady = false;
-    console.warn("⚠️  WhatsApp disconnected:", r, "— reinitializing in 10s...");
-    setTimeout(() => waClient.initialize().catch((e) => console.error("Reinit failed:", e.message)), 10_000);
-  });
-
-  waClient.initialize().catch((e) => console.error("❌ WA init error:", e.message));
-}
-
-function toWhatsAppId(phone) {
-  const digits = phone.replace(/\D/g, "");
-  return `${digits.length === 10 ? "91" + digits : digits}@c.us`;
-}
-
 async function sendWhatsApp(phone, message) {
-  if (!waReady) {
-    console.warn(`⚠️  WA not ready — skipping ${phone}`);
-    return false;
-  }
-  try {
-    await waClient.sendMessage(toWhatsAppId(phone), message);
-    console.log(`✅ WA sent → ${phone}`);
-    return true;
-  } catch (e) {
-    console.error(`❌ WA failed → ${phone}:`, e.message);
-    return false;
-  }
+  console.log(`[WA STUB] Skipping WA message to ${phone}: ${message.slice(0, 60)}...`);
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BACKEND TAT MONITOR
+// TAT MONITOR
 // ─────────────────────────────────────────────────────────────────────────────
 function getDelayString(deadline, now) {
   const diffMs      = now.getTime() - deadline.getTime();
@@ -198,10 +154,6 @@ function getDelayString(deadline, now) {
 
 async function runTATMonitor() {
   if (mongoose.connection.readyState !== 1) return;
-  if (!waReady) {
-    console.log("⏭  TAT monitor skipped — WhatsApp not ready yet");
-    return;
-  }
 
   try {
     const now   = new Date();
@@ -228,6 +180,7 @@ async function runTATMonitor() {
 
       const delayDuration = getDelayString(deadline, now);
       const reminderCount = (task.reminderCount ?? 0) + 1;
+      const dashboardUrl  = process.env.FRONTEND_URL || "https://your-app.vercel.app";
 
       if (doer?.phone) {
         await sendWhatsApp(doer.phone,
@@ -243,7 +196,7 @@ Your task is overdue and requires immediate attention:
 
 Please submit your completed work or contact your manager for a revised timeline.
 
-🔗 Dashboard: http://localhost:3000`
+🔗 Dashboard: ${dashboardUrl}`
         );
       }
 
@@ -262,7 +215,7 @@ A task you assigned is overdue:
 
 Please follow up or use *Smart Assist* in the dashboard to revise the timeline.
 
-🔗 Dashboard: http://localhost:3000`
+🔗 Dashboard: ${dashboardUrl}`
         );
       }
 
@@ -271,7 +224,7 @@ Please follow up or use *Smart Assist* in the dashboard to revise the timeline.
         lastReminderAt: now.toISOString(),
       });
 
-      console.log(`📲 TAT reminder #${reminderCount} sent → "${task.title}"`);
+      console.log(`📲 TAT reminder #${reminderCount} logged → "${task.title}"`);
       alertCount++;
     }
 
@@ -384,7 +337,7 @@ app.put("/api/tasks/:id", async (req, res) => {
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
-// ⚠️  /all MUST be BEFORE /:id
+// ⚠️ /all MUST be BEFORE /:id
 app.delete("/api/tasks/all", async (req, res) => {
   try {
     const r = await Task.deleteMany({});
@@ -464,7 +417,7 @@ app.post("/api/review-attachments", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCORE CONTENT  (AI 5-category marketing quality scorer)
+// SCORE CONTENT
 // ─────────────────────────────────────────────────────────────────────────────
 app.post("/api/score-content", async (req, res) => {
   const { systemPrompt, userContent } = req.body;
@@ -474,7 +427,6 @@ app.post("/api/score-content", async (req, res) => {
   try {
     const imageCount = userContent.filter(c => c.type === "image").length;
     console.log(`[INFO] 🎯 Scoring content — ${imageCount} image(s)...`);
-
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -483,51 +435,62 @@ app.post("/api/score-content", async (req, res) => {
         messages: [{ role: "user", content: userContent }],
       })
     );
-
-    const rawText = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("");
-
-    // Strip accidental markdown fences
+    const rawText = message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
     const clean = rawText.replace(/```json|```/g, "").trim();
-
     let result;
     try {
       result = JSON.parse(clean);
     } catch (parseErr) {
       console.error("[ERROR] score-content JSON parse failed:", clean.slice(0, 300));
-      return res.status(500).json({
-        success: false,
-        message: "AI returned invalid JSON — please try again",
-        raw: clean.slice(0, 300),
-      });
+      return res.status(500).json({ success: false, message: "AI returned invalid JSON — please try again", raw: clean.slice(0, 300) });
     }
-
     console.log("[INFO] ✓ Content scored successfully");
     res.json({ success: true, result });
   } catch (error) {
     console.error("[ERROR] score-content:", error);
     const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
-    if (isOverloaded) {
-      return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
-    }
+    if (isOverloaded) return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
     res.status(500).json({ success: false, message: "Failed to score content: " + error.message });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ELEVENLABS TEXT-TO-SPEECH (SECURE BACKEND PROXY)
+// SMARTCUE AI CHAT
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/chat", async (req, res) => {
+  const { model, max_tokens, system, messages } = req.body;
+  if (!messages?.length) {
+    return res.status(400).json({ success: false, message: "messages are required" });
+  }
+  try {
+    console.log("[INFO] 🤖 SmartCue AI chat request...");
+    const response = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({
+        model:      model      || "claude-sonnet-4-20250514",
+        max_tokens: max_tokens || 1024,
+        system:     system     || "You are SmartCue, an elite AI assistant for Roswalt Realty.",
+        messages,
+      })
+    );
+    const reply = response.content?.[0]?.text ?? "Systems briefly offline. Please retry.";
+    console.log("[INFO] ✓ SmartCue response generated");
+    res.json({ content: [{ type: "text", text: reply }] });
+  } catch (error) {
+    console.error("[ERROR] SmartCue chat:", error);
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) return res.status(503).json({ content: [{ type: "text", text: "SmartCue is overloaded. Please retry in a moment." }] });
+    res.status(500).json({ content: [{ type: "text", text: "Network disruption detected. Please retry." }] });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELEVENLABS TEXT-TO-SPEECH
 // ─────────────────────────────────────────────────────────────────────────────
 app.post("/api/tts", async (req, res) => {
   try {
     const { text, voiceId } = req.body;
-
-    if (!text) {
-      return res.status(400).json({ message: "Text is required" });
-    }
-
+    if (!text) return res.status(400).json({ message: "Text is required" });
     const selectedVoice = voiceId || "21m00Tcm4TlvDq8ikWAM";
-
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
       {
@@ -539,20 +502,15 @@ app.post("/api/tts", async (req, res) => {
         body: JSON.stringify({
           text,
           model_id: "eleven_monolingual_v1",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-          },
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
         }),
       }
     );
-
     if (!response.ok) {
       const errorText = await response.text();
       console.error("ElevenLabs error:", errorText);
       return res.status(response.status).send(errorText);
     }
-
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     res.set("Content-Type", "audio/mpeg");
     res.send(audioBuffer);
@@ -563,20 +521,6 @@ app.post("/api/tts", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHATSAPP STATUS & TEST
-// ─────────────────────────────────────────────────────────────────────────────
-app.get("/api/whatsapp/status", (req, res) => {
-  res.json({ ready: waReady });
-});
-
-app.post("/api/whatsapp/test", async (req, res) => {
-  const { phone, message } = req.body;
-  if (!phone) return res.status(400).json({ success: false, message: "phone is required" });
-  const sent = await sendWhatsApp(phone, message || "✅ Test message from Roswalt Task System");
-  res.json({ success: sent });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // HEALTH
 // ─────────────────────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
@@ -584,7 +528,7 @@ app.get("/health", (req, res) => {
     status:           "ok",
     apiKeyConfigured: !!process.env.ANTHROPIC_API_KEY,
     mongoConnected:   mongoose.connection.readyState === 1,
-    whatsapp:         waReady ? "connected" : "not ready",
+    whatsapp:         "stubbed — enable Twilio when ready",
   });
 });
 
@@ -594,26 +538,23 @@ app.get("/health", (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
-  console.log(`║  ✓ Server running on http://localhost:${PORT}          ║`);
+  console.log(`║  ✓ Server running on port ${PORT}                      ║`);
   console.log(`╠══════════════════════════════════════════════════════╣`);
   console.log(`║  Projects:   GET/POST/PUT  /api/projects             ║`);
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
   console.log(`║  AI:         POST /api/draft-notes                   ║`);
   console.log(`║              POST /api/review-attachments            ║`);
   console.log(`║              POST /api/score-content                 ║`);
-  console.log(`║  WhatsApp:   GET  /api/whatsapp/status               ║`);
-  console.log(`║              POST /api/whatsapp/test                 ║`);
+  console.log(`║              POST /api/chat  (SmartCue AI)           ║`);
+  console.log(`║  TTS:        POST /api/tts                           ║`);
   console.log(`║  Health:     GET  /health                            ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
   console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✓ Loaded" : "✗ Missing");
 
-  // 1. Start WhatsApp
-  initWhatsApp();
-
-  // 2. Start TAT monitor — 30s delay gives WhatsApp time to connect first
+  // Start TAT monitor
   setTimeout(() => {
     console.log("⏱  TAT monitor started — checking every 60 seconds");
     runTATMonitor();
     setInterval(runTATMonitor, 60_000);
-  }, 30_000);
+  }, 5_000);
 });

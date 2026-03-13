@@ -29,7 +29,8 @@ const USE_CLOUD_API = process.env.REACT_APP_USE_CLOUD_API === "true";
 // Backend URL (server.js running on port 5000)
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
-// WhatsApp Cloud API credentials (only used if USE_CLOUD_API=true)
+// WhatsApp Cloud API credentials (only used if USE_CLOUD_API=true)n
+
 const WA_CLOUD_API_TOKEN = process.env.REACT_APP_WA_CLOUD_API_TOKEN || "";
 const WA_PHONE_NUMBER_ID = process.env.REACT_APP_WA_PHONE_NUMBER_ID || "";
 

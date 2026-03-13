@@ -1,0 +1,6 @@
+node_modules/
+.env
+.wa_auth/
+*.db
+*.db-wal
+*.db-shm
