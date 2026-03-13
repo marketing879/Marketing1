@@ -953,7 +953,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
     );
-    const myAssignedTasks = (getAssignedTasks() as unknown as Task[]).filter(t =>
+    const myAssignedTasks = (tasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
@@ -3467,3 +3467,4 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
