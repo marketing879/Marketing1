@@ -225,7 +225,7 @@ Return this exact JSON:
 
   userContent.push({ type: "text", text: contextNote });
 
-  const response = await fetch("http://localhost:5000/api/score-content", {
+  const response = await fetch("https://roswalt-backend-production.up.railway.app/api/score-content", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ systemPrompt, userContent }),
@@ -1634,7 +1634,7 @@ const StaffDashboard: React.FC = () => {
     }
     setDraftingTask(taskId);
     try {
-      const response = await fetch("http://localhost:5000/api/draft-notes", {
+      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, notes: completionNotes }),
@@ -1676,7 +1676,7 @@ const StaffDashboard: React.FC = () => {
         contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
-      const response = await fetch("http://localhost:5000/api/review-attachments", {
+      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, contentArray }),
