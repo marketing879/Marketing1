@@ -1,10 +1,6 @@
 backend/
 node_modules/
 public/videos/
-src/
-*.tsx
-*.ts
-*.md
 .env*
 !build/
 !vercel.json
