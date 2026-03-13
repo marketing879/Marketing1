@@ -32,10 +32,10 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // ANTHROPIC CLIENT
 // ─────────────────────────────────────────────────────────────────────────────
 if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("❌ ERROR: ANTHROPIC_API_KEY is not set in .env");
+  console.error("✘ ERROR: ANTHROPIC_API_KEY is not set in .env");
   process.exit(1);
 }
-console.log("✓ ANTHROPIC_API_KEY is configured");
+console.log("✔ ANTHROPIC_API_KEY is configured");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
@@ -48,7 +48,7 @@ async function callAnthropicWithRetry(fn, maxRetries = 4) {
         err?.status === 529 || err?.status === 503 ||
         err?.error?.error?.type === "overloaded_error";
       if (isOverloaded && attempt <= maxRetries) {
-        console.warn(`[RETRY] Anthropic overloaded. Attempt ${attempt}/${maxRetries} — retrying in ${delay}ms...`);
+        console.warn(`[RETRY] Anthropic overloaded. Attempt ${attempt}/${maxRetries} – retrying in ${delay}ms...`);
         await new Promise((r) => setTimeout(r, delay));
         delay *= 2;
       } else { throw err; }
@@ -61,10 +61,10 @@ async function callAnthropicWithRetry(fn, maxRetries = 4) {
 // ─────────────────────────────────────────────────────────────────────────────
 if (process.env.MONGO_URI) {
   mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✓ MongoDB connected"))
-    .catch((err) => console.error("❌ MongoDB error:", err));
+    .then(() => console.log("✔ MongoDB connected"))
+    .catch((err) => console.error("✘ MongoDB error:", err));
 } else {
-  console.warn("⚠ MONGO_URI not set — projects will use in-memory fallback.");
+  console.warn("⚠ MONGO_URI not set – projects will use in-memory fallback.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +81,9 @@ const projectSchema = new mongoose.Schema({
   createdBy:          { type: String },
 }, { timestamps: true });
 
+// ── FIX: added `id` field to store the frontend UUID ─────────────────────────
 const taskSchema = new mongoose.Schema({
+  id:              { type: String, index: true },   // ← frontend UUID (crypto.randomUUID)
   title:           { type: String, required: true },
   description:     { type: String, default: "" },
   status:          { type: String, default: "pending" },
@@ -95,7 +97,7 @@ const taskSchema = new mongoose.Schema({
   adminComments:   { type: String },
   reminderCount:   { type: Number, default: 0 },
   lastReminderAt:  { type: String, default: null },
-}, { timestamps: true });
+}, { timestamps: true, strict: false }); // strict:false keeps any extra fields the frontend sends
 
 const Project = mongoose.model("Project", projectSchema);
 const Task    = mongoose.model("Task",    taskSchema);
@@ -106,7 +108,6 @@ let inMemoryProjects = [];
 // TEAM DIRECTORY
 // ─────────────────────────────────────────────────────────────────────────────
 const TEAM_DIRECTORY = {
-  // ── Doers ──────────────────────────────────────────────────────────────────
   "prathamesh.chile@roswalt.com":  { name: "Prathamesh Chile",  phone: "9XXXXXXXXX" },
   "samruddhi.shivgan@roswalt.com": { name: "Samruddhi Shivgan", phone: "9XXXXXXXXX" },
   "irfan.ansari@roswalt.com":      { name: "Irfan Ansari",      phone: "9XXXXXXXXX" },
@@ -120,19 +121,17 @@ const TEAM_DIRECTORY = {
   "raj.vichare@roswalt.com":       { name: "Raj Vichare",       phone: "8879142617" },
   "rohan.fernandes@roswalt.com":   { name: "Rohan Fernandes",   phone: "9XXXXXXXXX" },
   "vaibhavi.gujjeti@roswalt.com":  { name: "Vaibhavi Gujjeti",  phone: "9870826798" },
-  // ── Admins ─────────────────────────────────────────────────────────────────
   "aziz.khan@roswalt.com":         { name: "Aziz Khan",         phone: "8879778560" },
   "vinay.vanmali@roswalt.com":     { name: "Vinay Vanmali",     phone: "9270833482" },
   "jalal.shaikh@roswalt.com":      { name: "Jalal Shaikh",      phone: "9XXXXXXXXX" },
   "nidhi.mehta@roswalt.com":       { name: "Nidhi Mehta",       phone: "9XXXXXXXXX" },
   "keerti.barua@roswalt.com":      { name: "Keerti Barua",      phone: "9XXXXXXXXX" },
   "hetal.makwana@roswalt.com":     { name: "Hetal Makwana",     phone: "9XXXXXXXXX" },
-  // ── Superadmin ─────────────────────────────────────────────────────────────
   "pushkaraj.gore@roswalt.com":    { name: "Pushkaraj Gore",    phone: "9321181236" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHATSAPP — stubbed out (re-enable with Twilio when ready)
+// WHATSAPP – stubbed (re-enable with Twilio when ready)
 // ─────────────────────────────────────────────────────────────────────────────
 async function sendWhatsApp(phone, message) {
   console.log(`[WA STUB] Skipping WA message to ${phone}: ${message.slice(0, 60)}...`);
@@ -184,7 +183,7 @@ async function runTATMonitor() {
 
       if (doer?.phone) {
         await sendWhatsApp(doer.phone,
-`⚠️ *TASK REMINDER #${reminderCount}* — Roswalt Realty
+`⚠️ *TASK REMINDER #${reminderCount}* – Roswalt Realty
 
 Hello *${doer.name}*,
 
@@ -202,7 +201,7 @@ Please submit your completed work or contact your manager for a revised timeline
 
       if (admin?.phone) {
         await sendWhatsApp(admin.phone,
-`🔴 *TAT BREACH ALERT #${reminderCount}* — Roswalt Realty
+`🔴 *TAT BREACH ALERT #${reminderCount}* – Roswalt Realty
 
 Hello *${admin.name}*,
 
@@ -219,20 +218,21 @@ Please follow up or use *Smart Assist* in the dashboard to revise the timeline.
         );
       }
 
-      await Task.findByIdAndUpdate(task._id, {
-        reminderCount,
-        lastReminderAt: now.toISOString(),
-      });
+      // ── FIX: update by custom `id` field, not _id ──────────────────────────
+      await Task.findOneAndUpdate(
+        { id: task.id || String(task._id) },
+        { reminderCount, lastReminderAt: now.toISOString() }
+      );
 
       console.log(`📲 TAT reminder #${reminderCount} logged → "${task.title}"`);
       alertCount++;
     }
 
     if (alertCount === 0) {
-      console.log(`✓ TAT check — ${tasks.length} tasks scanned, no breaches`);
+      console.log(`✔ TAT check – ${tasks.length} tasks scanned, no breaches`);
     }
   } catch (err) {
-    console.error("❌ TAT monitor error:", err.message);
+    console.error("✘ TAT monitor error:", err.message);
   }
 }
 
@@ -317,27 +317,37 @@ app.put("/api/projects/:id", requireRole("superadmin"), validateProject, async (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TASK ROUTES
+// TASK ROUTES  ── FIXED: all routes now use custom `id` field, not _id
 // ─────────────────────────────────────────────────────────────────────────────
+
+// GET – normalize so every task has an `id` the frontend can use
 app.get("/api/tasks", async (req, res) => {
-  try { res.json(await Task.find().sort({ createdAt: -1 })); }
-  catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.post("/api/tasks", async (req, res) => {
-  try { res.status(201).json(await Task.create(req.body)); }
-  catch (e) { res.status(400).json({ message: e.message }); }
-});
-
-app.put("/api/tasks/:id", async (req, res) => {
   try {
-    const t = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!t) return res.status(404).json({ message: "Task not found." });
-    res.json(t);
+    const tasks = await Task.find().sort({ createdAt: -1 });
+    const normalized = tasks.map(t => {
+      const obj = t.toObject();
+      if (!obj.id) obj.id = String(obj._id); // backfill for any legacy docs
+      return obj;
+    });
+    res.json(normalized);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST – preserve the frontend UUID as `id`
+app.post("/api/tasks", async (req, res) => {
+  try {
+    const data = {
+      ...req.body,
+      id: req.body.id || String(Date.now()), // keep crypto.randomUUID() from frontend
+    };
+    const created = await Task.create(data);
+    const obj = created.toObject();
+    if (!obj.id) obj.id = String(obj._id);
+    res.status(201).json(obj);
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
-// ⚠️ /all MUST be BEFORE /:id
+// ⚠️  /all MUST stay above /:id
 app.delete("/api/tasks/all", async (req, res) => {
   try {
     const r = await Task.deleteMany({});
@@ -345,9 +355,27 @@ app.delete("/api/tasks/all", async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// PUT – find by custom `id` first, fall back to _id for any legacy docs
+app.put("/api/tasks/:id", async (req, res) => {
+  try {
+    let t = await Task.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: req.body },
+      { new: true }
+    );
+    if (!t) t = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    if (!t) return res.status(404).json({ message: "Task not found." });
+    const obj = t.toObject();
+    if (!obj.id) obj.id = String(obj._id);
+    res.json(obj);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// DELETE – find by custom `id` first, fall back to _id for any legacy docs
 app.delete("/api/tasks/:id", async (req, res) => {
   try {
-    const t = await Task.findByIdAndDelete(req.params.id);
+    let t = await Task.findOneAndDelete({ id: req.params.id });
+    if (!t) t = await Task.findByIdAndDelete(req.params.id);
     if (!t) return res.status(404).json({ message: "Task not found." });
     res.json({ success: true, message: `Task "${t.title}" deleted.` });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -372,7 +400,7 @@ app.post("/api/draft-notes", async (req, res) => {
       })
     );
     const improvedNotes = message.content[0]?.type === "text" ? message.content[0].text : notes;
-    console.log("[INFO] ✓ Notes drafted");
+    console.log("[INFO] ✔ Notes drafted");
     res.json({ success: true, improvedNotes });
   } catch (error) {
     console.error("[ERROR] Draft notes:", error);
@@ -406,7 +434,7 @@ app.post("/api/review-attachments", async (req, res) => {
       return res.status(400).json({ success: false, message: "Could not parse review results" });
     }
     const hasErrors = parsedResults.some(r => r.status === "ERROR");
-    console.log(`[INFO] ✓ Review complete (${hasErrors ? "errors found" : "all clear"})`);
+    console.log(`[INFO] ✔ Review complete (${hasErrors ? "errors found" : "all clear"})`);
     res.json({ success: true, results: parsedResults, hasErrors });
   } catch (error) {
     console.error("[ERROR] Review attachments:", error);
@@ -426,7 +454,7 @@ app.post("/api/score-content", async (req, res) => {
   }
   try {
     const imageCount = userContent.filter(c => c.type === "image").length;
-    console.log(`[INFO] 🎯 Scoring content — ${imageCount} image(s)...`);
+    console.log(`[INFO] 🎯 Scoring content – ${imageCount} image(s)...`);
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -442,9 +470,9 @@ app.post("/api/score-content", async (req, res) => {
       result = JSON.parse(clean);
     } catch (parseErr) {
       console.error("[ERROR] score-content JSON parse failed:", clean.slice(0, 300));
-      return res.status(500).json({ success: false, message: "AI returned invalid JSON — please try again", raw: clean.slice(0, 300) });
+      return res.status(500).json({ success: false, message: "AI returned invalid JSON – please try again", raw: clean.slice(0, 300) });
     }
-    console.log("[INFO] ✓ Content scored successfully");
+    console.log("[INFO] ✔ Content scored successfully");
     res.json({ success: true, result });
   } catch (error) {
     console.error("[ERROR] score-content:", error);
@@ -473,7 +501,7 @@ app.post("/api/chat", async (req, res) => {
       })
     );
     const reply = response.content?.[0]?.text ?? "Systems briefly offline. Please retry.";
-    console.log("[INFO] ✓ SmartCue response generated");
+    console.log("[INFO] ✔ SmartCue response generated");
     res.json({ content: [{ type: "text", text: reply }] });
   } catch (error) {
     console.error("[ERROR] SmartCue chat:", error);
@@ -528,7 +556,7 @@ app.get("/health", (req, res) => {
     status:           "ok",
     apiKeyConfigured: !!process.env.ANTHROPIC_API_KEY,
     mongoConnected:   mongoose.connection.readyState === 1,
-    whatsapp:         "stubbed — enable Twilio when ready",
+    whatsapp:         "stubbed – enable Twilio when ready",
   });
 });
 
@@ -538,7 +566,7 @@ app.get("/health", (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
-  console.log(`║  ✓ Server running on port ${PORT}                      ║`);
+  console.log(`║  ✔ Server running on port ${PORT}                      ║`);
   console.log(`╠══════════════════════════════════════════════════════╣`);
   console.log(`║  Projects:   GET/POST/PUT  /api/projects             ║`);
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
@@ -549,11 +577,10 @@ app.listen(PORT, () => {
   console.log(`║  TTS:        POST /api/tts                           ║`);
   console.log(`║  Health:     GET  /health                            ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
-  console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✓ Loaded" : "✗ Missing");
+  console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✔ Loaded" : "✗ Missing");
 
-  // Start TAT monitor
   setTimeout(() => {
-    console.log("⏱  TAT monitor started — checking every 60 seconds");
+    console.log("⏱  TAT monitor started – checking every 60 seconds");
     runTATMonitor();
     setInterval(runTATMonitor, 60_000);
   }, 5_000);

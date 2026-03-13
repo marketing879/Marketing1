@@ -1,19 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
-function loadFromStorage<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveToStorage<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
-}
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 // ── CHANGE 1: Added "supremo" to the Role type ───────────────────────────────
 export type Role = "staff" | "admin" | "superadmin" | "supremo";
@@ -150,100 +137,74 @@ interface StoredUser extends User {
   password: string;
 }
 
-// ── CHANGE 2: Added Supremo user (id "0", role "supremo", password "000000") ─
+// ── CHANGE 2: Added Supremo user ─────────────────────────────────────────────
 const defaultUsers: StoredUser[] = [
-  {
-    id: "0",
-    name: "Supremo",
-    email: "supremo@roswalt.com",
-    role: "supremo",
-    isDoer: false,
-    password: "000000",
-  },
-  { id: "1",  name: "Pushkaraj Gore",            email: "pushkaraj.gore@roswalt.com",      role: "superadmin", isDoer: false, password: "100001" },
-  { id: "2",  name: "Aziz Ashfaq Khan",           email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
-  { id: "3",  name: "Vinay Dinkar Vanmali",        email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "100003" },
-  { id: "4",  name: "Jalal Chandmiya Shaikh",      email: "jalal.shaikh@roswalt.com",        role: "admin",      isDoer: false, password: "100004" },
-  { id: "5",  name: "Nidhi Mehta",                 email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
-  { id: "6",  name: "Keerti Barua",                email: "keerti.barua@roswalt.com",        role: "admin",      isDoer: false, password: "100006" },
-  { id: "7",  name: "Hetal Makwana",               email: "hetal.makwana@roswalt.com",       role: "admin",      isDoer: false, password: "100007" },
-  { id: "8",  name: "Prathamesh Vijay Chile",      email: "prathamesh.chile@roswalt.com",    role: "staff",      isDoer: true,  password: "100008", phone: "+91XXXXXXXXXX" },
-  { id: "9",  name: "Samruddhi C Shivgan",         email: "samruddhi.shivgan@roswalt.com",   role: "staff",      isDoer: true,  password: "100009", phone: "+91XXXXXXXXXX" },
-  { id: "10", name: "Irfan S. Ansari",             email: "irfan.ansari@roswalt.com",        role: "staff",      isDoer: true,  password: "100010", phone: "+91XXXXXXXXXX" },
-  { id: "11", name: "Vishal Chaudhary",            email: "vishal.chaudhary@roswalt.com",    role: "staff",      isDoer: true,  password: "100011", phone: "+91XXXXXXXXXX" },
-  { id: "12", name: "Mithilesh Viinayak Menge",    email: "mithilesh.menge@roswalt.com",     role: "staff",      isDoer: true,  password: "100012", phone: "+91XXXXXXXXXX" },
-  { id: "13", name: "Jai Bhojwani",                email: "jai.bhojwani@roswalt.com",        role: "staff",      isDoer: true,  password: "100013", phone: "+91XXXXXXXXXX" },
-  { id: "14", name: "Vikrant Swami Pabrekar",      email: "vikrant.pabrekar@roswalt.com",    role: "staff",      isDoer: true,  password: "100014", phone: "+91XXXXXXXXXX" },
-  { id: "15", name: "Gaurav Waman Chavan",         email: "gaurav.chavan@roswalt.com",       role: "staff",      isDoer: true,  password: "100015", phone: "+91XXXXXXXXXX" },
-  { id: "16", name: "Harish Swami Utkam",          email: "harish.utkam@roswalt.com",        role: "staff",      isDoer: true,  password: "100016", phone: "+91XXXXXXXXXX" },
-  { id: "17", name: "Siddhesh Santosh Achari",     email: "siddhesh.achari@roswalt.com",     role: "staff",      isDoer: true,  password: "100017", phone: "+91XXXXXXXXXX" },
-  { id: "18", name: "Raj Sachin Vichare",          email: "raj.vichare@roswalt.com",         role: "staff",      isDoer: true,  password: "100018", phone: "+919321181236" },
-  { id: "19", name: "Rohan Fernandes",             email: "rohan.fernandes@roswalt.com",     role: "staff",      isDoer: true,  password: "100019", phone: "+91XXXXXXXXXX" },
-  { id: "20", name: "Vaibhavi Gujjeti",            email: "vaibhavi.gujjeti@roswalt.com",    role: "staff",      isDoer: true,  password: "100020", phone: "+91XXXXXXXXXX" },
+  { id: "0",  name: "Supremo",                      email: "supremo@roswalt.com",             role: "supremo",    isDoer: false, password: "000000" },
+  { id: "1",  name: "Pushkaraj Gore",               email: "pushkaraj.gore@roswalt.com",      role: "superadmin", isDoer: false, password: "100001" },
+  { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
+  { id: "3",  name: "Vinay Dinkar Vanmali",         email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "100003" },
+  { id: "4",  name: "Jalal Chandmiya Shaikh",       email: "jalal.shaikh@roswalt.com",        role: "admin",      isDoer: false, password: "100004" },
+  { id: "5",  name: "Nidhi Mehta",                  email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
+  { id: "6",  name: "Keerti Barua",                 email: "keerti.barua@roswalt.com",        role: "admin",      isDoer: false, password: "100006" },
+  { id: "7",  name: "Hetal Makwana",                email: "hetal.makwana@roswalt.com",       role: "admin",      isDoer: false, password: "100007" },
+  { id: "8",  name: "Prathamesh Vijay Chile",       email: "prathamesh.chile@roswalt.com",    role: "staff",      isDoer: true,  password: "100008", phone: "+91XXXXXXXXXX" },
+  { id: "9",  name: "Samruddhi C Shivgan",          email: "samruddhi.shivgan@roswalt.com",   role: "staff",      isDoer: true,  password: "100009", phone: "+91XXXXXXXXXX" },
+  { id: "10", name: "Irfan S. Ansari",              email: "irfan.ansari@roswalt.com",        role: "staff",      isDoer: true,  password: "100010", phone: "+91XXXXXXXXXX" },
+  { id: "11", name: "Vishal Chaudhary",             email: "vishal.chaudhary@roswalt.com",    role: "staff",      isDoer: true,  password: "100011", phone: "+91XXXXXXXXXX" },
+  { id: "12", name: "Mithilesh Viinayak Menge",     email: "mithilesh.menge@roswalt.com",     role: "staff",      isDoer: true,  password: "100012", phone: "+91XXXXXXXXXX" },
+  { id: "13", name: "Jai Bhojwani",                 email: "jai.bhojwani@roswalt.com",        role: "staff",      isDoer: true,  password: "100013", phone: "+91XXXXXXXXXX" },
+  { id: "14", name: "Vikrant Swami Pabrekar",       email: "vikrant.pabrekar@roswalt.com",    role: "staff",      isDoer: true,  password: "100014", phone: "+91XXXXXXXXXX" },
+  { id: "15", name: "Gaurav Waman Chavan",          email: "gaurav.chavan@roswalt.com",       role: "staff",      isDoer: true,  password: "100015", phone: "+91XXXXXXXXXX" },
+  { id: "16", name: "Harish Swami Utkam",           email: "harish.utkam@roswalt.com",        role: "staff",      isDoer: true,  password: "100016", phone: "+91XXXXXXXXXX" },
+  { id: "17", name: "Siddhesh Santosh Achari",      email: "siddhesh.achari@roswalt.com",     role: "staff",      isDoer: true,  password: "100017", phone: "+91XXXXXXXXXX" },
+  { id: "18", name: "Raj Sachin Vichare",           email: "raj.vichare@roswalt.com",         role: "staff",      isDoer: true,  password: "100018", phone: "+919321181236" },
+  { id: "19", name: "Rohan Fernandes",              email: "rohan.fernandes@roswalt.com",     role: "staff",      isDoer: true,  password: "100019", phone: "+91XXXXXXXXXX" },
+  { id: "20", name: "Vaibhavi Gujjeti",             email: "vaibhavi.gujjeti@roswalt.com",    role: "staff",      isDoer: true,  password: "100020", phone: "+91XXXXXXXXXX" },
 ];
 
-const defaultProjects: Project[] = [
-  { id: "1", name: "General",            color: "#6366F1", projectCode: "GEN-001", concernedDoerEmail: "", launchDate: "", status: "active" },
-  { id: "2", name: "Website Redesign",   color: "#3B82F6", projectCode: "WEB-001", concernedDoerEmail: "", launchDate: "", status: "active" },
-  { id: "3", name: "Marketing Campaign", color: "#EC4899", projectCode: "MKT-001", concernedDoerEmail: "", launchDate: "", status: "active" },
-  { id: "4", name: "Product Launch",     color: "#10B981", projectCode: "PRD-001", concernedDoerEmail: "", launchDate: "", status: "active" },
-];
+// ── Helper: normalize a raw backend task so `id` is always the UUID field ────
+function normalizeTask(raw: any): Task {
+  return { ...raw, id: raw.id || String(raw._id) };
+}
+
+// ── Helper: normalize a raw backend project ──────────────────────────────────
+function normalizeProject(raw: any): Project {
+  return { ...raw, id: raw.id || String(raw._id) };
+}
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() =>
-    loadFromStorage<User | null>("tf_user", null)
-  );
-  const [storedUsers, setStoredUsers] = useState<StoredUser[]>(() => {
-    const saved = loadFromStorage<StoredUser[]>("tf_users", []);
-    const merged = [...defaultUsers];
-    saved.forEach((savedUser) => {
-      if (!merged.find((u) => u.email.toLowerCase() === savedUser.email.toLowerCase())) {
-        merged.push(savedUser);
-      }
-    });
-    return merged;
-  });
-  const [tasks, setTasks] = useState<Task[]>(() =>
-    loadFromStorage<Task[]>("tf_tasks", [])
-  );
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = loadFromStorage<Project[]>("tf_projects", []);
-    return saved.length > 0 ? saved : defaultProjects;
-  });
-  const [assistanceTickets, setAssistanceTickets] = useState<AssistanceTicket[]>(() =>
-    loadFromStorage<AssistanceTicket[]>("tf_tickets", [])
-  );
+  // ── All state is pure in-memory — zero localStorage ───────────────────────
+  const [user,             setUser]             = useState<User | null>(null);
+  const [storedUsers,      setStoredUsers]      = useState<StoredUser[]>(defaultUsers);
+  const [tasks,            setTasks]            = useState<Task[]>([]);
+  const [projects,         setProjects]         = useState<Project[]>([]);
+  const [assistanceTickets,setAssistanceTickets]= useState<AssistanceTicket[]>([]);
   const [voiceAccessGranted, setVoiceAccessGranted] = useState<boolean>(false);
-
-  // Persist state
-  useEffect(() => { saveToStorage("tf_user",     user);             }, [user]);
-  useEffect(() => { saveToStorage("tf_tasks",    tasks);            }, [tasks]);
-  useEffect(() => { saveToStorage("tf_projects", projects);         }, [projects]);
-  useEffect(() => { saveToStorage("tf_tickets",  assistanceTickets);}, [assistanceTickets]);
-  useEffect(() => {
-    const nonDefault = storedUsers.filter(
-      (u) => !defaultUsers.find((d) => d.email.toLowerCase() === u.email.toLowerCase())
-    );
-    saveToStorage("tf_users", nonDefault);
-  }, [storedUsers]);
 
   const teamMembers: User[] = storedUsers.map(({ password: _p, ...u }) => u);
 
+  // ── Bootstrap: load tasks & projects from backend on mount ───────────────
+  useEffect(() => {
+    fetch(`${API_URL}/api/tasks`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((data: any[]) => setTasks(data.map(normalizeTask)))
+      .catch((err) => console.error("[UserContext] Failed to load tasks:", err));
+
+    fetch(`${API_URL}/api/projects`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((data: any[]) => setProjects(data.map(normalizeProject)))
+      .catch((err) => console.error("[UserContext] Failed to load projects:", err));
+  }, []);
+
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const validateLogin = (email: string, password: string): boolean => {
-    const found = storedUsers.find(
-      (u) =>
-        u.email.toLowerCase() === email.toLowerCase() &&
-        u.password === password
+  const validateLogin = (email: string, password: string): boolean =>
+    !!storedUsers.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
     );
-    return !!found;
-  };
 
   const commitLogin = (email: string, password: string): void => {
     const found = storedUsers.find(
-      (u) =>
-        u.email.toLowerCase() === email.toLowerCase() &&
-        u.password === password
+      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
     );
     if (found) {
       const { password: _p, ...userWithoutPassword } = found;
@@ -269,103 +230,99 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (u) => u.email.toLowerCase() === newUser.email.toLowerCase()
     );
     if (exists) return { success: false, message: "Email already exists." };
-    const created: StoredUser = {
-      ...newUser,
-      id: Date.now().toString(),
-    };
-    setStoredUsers((prev) => [...prev, created]);
+    setStoredUsers((prev) => [...prev, { ...newUser, id: Date.now().toString() }]);
     return { success: true, message: "User created successfully." };
   };
 
-  const deleteTeamMember = (memberId: string): void => {
+  const deleteTeamMember = (memberId: string): void =>
     setStoredUsers((prev) => prev.filter((u) => u.id !== memberId));
-  };
 
-  // ── Tasks ─────────────────────────────────────────────────────────────────
+  // ── Tasks — every mutation hits the backend, then updates local state ─────
+
   const addTask = (
     task: Omit<Task, "id" | "createdAt"> & { id?: string; createdAt?: string }
   ): void => {
-    const newTask: Task = {
+    const payload = {
       ...task,
-      id:        task.id        ?? Date.now().toString(),
+      id:        task.id        ?? crypto.randomUUID(),
       createdAt: task.createdAt ?? new Date().toISOString(),
     };
-    setTasks((prev) => [...prev, newTask]);
+    fetch(`${API_URL}/api/tasks`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((saved: any) => setTasks((prev) => [...prev, normalizeTask(saved)]))
+      .catch((err) => console.error("[UserContext] addTask failed:", err));
   };
 
   const updateTask = (taskId: string, updates: Partial<Task>): void => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
-    );
-  };
-
-  const updateTaskStatus = (
-    taskId: string,
-    status: Task["status"],
-    notes?: string
-  ): void => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? { ...t, status, ...(notes !== undefined ? { completionNotes: notes } : {}) }
-          : t
+    // Optimistic update so the UI feels instant
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t)));
+    fetch(`${API_URL}/api/tasks/${taskId}`, {
+      method:  "PUT",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(updates),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((saved: any) =>
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? normalizeTask(saved) : t)))
       )
-    );
+      .catch((err) => console.error("[UserContext] updateTask failed:", err));
   };
 
-  const submitTaskCompletion = (taskId: string, notes: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              status:          "completed",
-              completionNotes: notes,
-              approvalStatus:  "in-review",
-              completedAt:     new Date().toISOString(),
-            }
-          : t
-      )
-    );
+  const updateTaskStatus = (taskId: string, status: Task["status"], notes?: string): void => {
+    const updates: Partial<Task> = { status, ...(notes !== undefined ? { completionNotes: notes } : {}) };
+    updateTask(taskId, updates);
   };
 
-  const adminReviewTask = (taskId: string, approved: boolean, comments: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              adminApproved:   approved,
-              adminComments:   comments,
-              adminReviewedBy: user?.name || "Admin",
-              approvalStatus:  approved ? "admin-approved" : "rejected",
-              status:          approved ? "approved" : "rework",
-            }
-          : t
-      )
-    );
+  const submitTaskCompletion = (taskId: string, notes: string): void => {
+    updateTask(taskId, {
+      status:          "completed",
+      completionNotes: notes,
+      approvalStatus:  "in-review",
+      completedAt:     new Date().toISOString(),
+    });
   };
 
-  const superadminReviewTask = (taskId: string, approved: boolean, comments: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              approvalStatus:  approved ? "superadmin-approved" : "rejected",
-              adminComments:   comments,
-              adminReviewedBy: user?.name || "Superadmin",
-              status:          approved ? "approved" : "rework",
-            }
-          : t
-      )
-    );
+  const adminReviewTask = (taskId: string, approved: boolean, comments: string): void => {
+    updateTask(taskId, {
+      adminApproved:   approved,
+      adminComments:   comments,
+      adminReviewedBy: user?.name || "Admin",
+      approvalStatus:  approved ? "admin-approved" : "rejected",
+      status:          approved ? "approved" : "rework",
+    });
   };
 
+  const superadminReviewTask = (taskId: string, approved: boolean, comments: string): void => {
+    updateTask(taskId, {
+      approvalStatus:  approved ? "superadmin-approved" : "rejected",
+      adminComments:   comments,
+      adminReviewedBy: user?.name || "Superadmin",
+      status:          approved ? "approved" : "rework",
+    });
+  };
+
+  const deleteTask = (id: string): void => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    fetch(`${API_URL}/api/tasks/${id}`, { method: "DELETE" })
+      .catch((err) => console.error("[UserContext] deleteTask failed:", err));
+  };
+
+  const deleteAllTasks = (): void => {
+    setTasks([]);
+    fetch(`${API_URL}/api/tasks/all`, { method: "DELETE" })
+      .catch((err) => console.error("[UserContext] deleteAllTasks failed:", err));
+  };
+
+  // ── Task queries ──────────────────────────────────────────────────────────
   const getTasksForAdminReview = (): Task[] =>
-    tasks.filter((t) =>
-      t.approvalStatus === "in-review" &&
-      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+    tasks.filter(
+      (t) =>
+        t.approvalStatus === "in-review" &&
+        (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
 
   const getTasksForSuperadminReview = (): Task[] =>
@@ -385,18 +342,26 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getTaskById = (id: string): Task | undefined =>
     tasks.find((t) => t.id === id);
 
-  const deleteTask = (id: string): void => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+  // ── Projects ──────────────────────────────────────────────────────────────
+  const addProject = (project: Omit<Project, "id">): void => {
+    const payload = {
+      ...project,
+      callerRole: user?.role ?? "superadmin", // required by requireRole middleware
+    };
+    fetch(`${API_URL}/api/projects`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((saved: any) => setProjects((prev) => [normalizeProject(saved), ...prev]))
+      .catch((err) => console.error("[UserContext] addProject failed:", err));
   };
 
-  const deleteAllTasks = (): void => {
-    setTasks([]);
-  };
-
-  // ── Assistance Tickets ───────────────────────────────────────────────────
+  // ── Assistance Tickets (in-memory only — no backend endpoint yet) ─────────
   const raiseAssistanceTicket = (
     ticket: Omit<AssistanceTicket, "id" | "raisedAt" | "status">
-  ) => {
+  ): void => {
     const existing = assistanceTickets.find(
       (t) => t.taskId === ticket.taskId && t.status !== "resolved"
     );
@@ -410,32 +375,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAssistanceTickets((prev) => [...prev, newTicket]);
   };
 
-  const updateAssistanceTicket = (
-    ticketId: string,
-    updates: Partial<AssistanceTicket>
-  ) => {
+  const updateAssistanceTicket = (ticketId: string, updates: Partial<AssistanceTicket>): void =>
     setAssistanceTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, ...updates } : t))
     );
-  };
 
-  const submitTicketToAdmin = (ticketId: string) => {
+  const submitTicketToAdmin = (ticketId: string): void => {
     setAssistanceTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, status: "pending-admin" } : t))
     );
     const ticket = assistanceTickets.find((t) => t.id === ticketId);
     if (ticket) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === ticket.taskId
-            ? { ...t, isFrozen: true, frozenTicketId: ticketId }
-            : t
-        )
-      );
+      updateTask(ticket.taskId, { isFrozen: true, frozenTicketId: ticketId });
     }
   };
 
-  const approveAssistanceTicket = (ticketId: string, adminComment: string) => {
+  const approveAssistanceTicket = (ticketId: string, adminComment: string): void => {
     const ticket = assistanceTickets.find((t) => t.id === ticketId);
     if (!ticket) return;
     setAssistanceTickets((prev) =>
@@ -451,27 +406,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : t
       )
     );
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === ticket.taskId
-          ? { ...t, isFrozen: false, frozenTicketId: undefined }
-          : t
-      )
-    );
-  };
-
-  const addProject = (project: Omit<Project, "id">) => {
-    const newProject: Project = {
-      id:                 Date.now().toString(),
-      name:               project.name,
-      description:        project.description        ?? "",
-      color:              project.color              ?? "#c9a96e",
-      projectCode:        project.projectCode        ?? "",
-      concernedDoerEmail: project.concernedDoerEmail ?? "",
-      launchDate:         project.launchDate         ?? "",
-      status:             project.status             ?? "active",
-    };
-    setProjects((prev) => [...prev, newProject]);
+    updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
   };
 
   return (
