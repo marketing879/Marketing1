@@ -208,7 +208,7 @@ const ProjectManagementNew: React.FC = () => {
     setLoading(true);
 
     // ── POST to backend + update context ──────────────────────────────────
-    fetch("http://localhost:5000/api/projects", {
+     fetch(`${process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app"}/api/projects`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ ...form, createdBy: user?.email }),
