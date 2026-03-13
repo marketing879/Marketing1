@@ -119,7 +119,7 @@ async function extractVideoFrames(videoDataUrl: string, frameCount = 6): Promise
   });
 }
 
-async function scoreWithAI(notes: string, files: string[]): Promise<AIScoreResult> {
+async function scoreWithAI(notes: string, files: string[], purpose?: string): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
   const isVideo   = hasFiles && files[0].startsWith("data:video/");
 
@@ -138,7 +138,7 @@ async function scoreWithAI(notes: string, files: string[]): Promise<AIScoreResul
   const hasImages = scoringImages.length > 0;
 
   const systemPrompt = isVideo
-    ? `You are a professional marketing video quality scorer for Roswalt Realty. You are analysing ${scoringImages.length} sequential frames extracted from a marketing video. Score the video across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.
+    ? `You are a professional marketing video quality scorer for Roswalt Realty. You are analysing ${scoringImages.length} sequential frames extracted from a marketing video. Score the video across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — use this as the primary lens when evaluating relevance, messaging alignment, and audience fit across all categories.` : ""}
 
 Categories and subcriteria (each subcriterion is worth 4 marks):
 
@@ -172,7 +172,7 @@ Return this exact JSON:
   "extractedText": "",
   "verdict": ""
 }`
-    : `You are a professional marketing content quality scorer for Roswalt Realty. Score the submitted content across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.
+    : `You are a professional marketing content quality scorer for Roswalt Realty. Score the submitted content across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — use this as the primary lens when evaluating relevance, messaging alignment, and audience fit across all categories.` : ""}
 
 Categories and subcriteria (each subcriterion is worth 4 marks):
 
@@ -1750,7 +1750,7 @@ const StaffDashboard: React.FC = () => {
     );
 
     try {
-      const result = await scoreWithAI(completionNotes, photos);
+      const result = await scoreWithAI(completionNotes, photos, selectedTask.purpose);
 
       setEvalStage(4); await sleep(400); // Brand compliance
       setEvalStage(5); await sleep(400); // Grammar validation
@@ -3257,6 +3257,7 @@ const StaffDashboard: React.FC = () => {
             <div className="sd-modal-info">
               <p><strong>Priority:</strong> {selectedTask.priority?.toUpperCase()}</p>
               <p><strong>Due:</strong> {new Date(selectedTask.dueDate).toLocaleDateString()}</p>
+              {selectedTask.purpose && <p><strong>Purpose:</strong> <span style={{ color: "#00d4ff" }}>{selectedTask.purpose}</span></p>}
               <p style={{ gridColumn: "1 / -1" }}><strong>Description:</strong> {selectedTask.description}</p>
             </div>
 
@@ -3692,6 +3693,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
         <div style={{ flex: 1 }}>
           <div className="sd-task-title">{task.title}</div>
           <div className="sd-task-desc">{task.description}</div>
+          {(task as any).purpose && (
+            <div style={{ marginTop: 5, fontSize: 10, color: "#00d4ff", background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 4, padding: "2px 7px", display: "inline-block", fontWeight: 600, letterSpacing: "0.04em" }}>
+              🎯 {(task as any).purpose}
+            </div>
+          )}
         </div>
         {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
           <button className="sd-btn-complete" onClick={onComplete}>
