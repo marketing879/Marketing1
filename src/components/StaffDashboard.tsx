@@ -1750,7 +1750,7 @@ const StaffDashboard: React.FC = () => {
     );
 
     try {
-      const result = await scoreWithAI(completionNotes, photos, selectedTask.purpose);
+      const result = await scoreWithAI(completionNotes, photos, (selectedTask as any).purpose);
 
       setEvalStage(4); await sleep(400); // Brand compliance
       setEvalStage(5); await sleep(400); // Grammar validation
