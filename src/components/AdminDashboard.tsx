@@ -741,7 +741,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         message: `Delete "${task.title}"? This action cannot be undone.`,
         onConfirm: () => {
           deleteTask(task.id);
-          fetch(`http://localhost:5000/api/tasks/${task.id}`, { method: "DELETE" }).catch(() => {});
+          fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`, { method: "DELETE" }).catch(() => {});
           toast("🗑 Task deleted.");
           setConfirmDelete(null);
         },
@@ -753,7 +753,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         message: `Delete ALL ${allTasksCombined.length} tasks permanently? This cannot be undone.`,
         onConfirm: () => {
           deleteAllTasks();
-          fetch("http://localhost:5000/api/tasks/all", { method: "DELETE" }).catch(() => {});
+          fetch("https://roswalt-backend-production.up.railway.app/api/tasks/all", { method: "DELETE" }).catch(() => {});
           toast("🗑 All tasks deleted.");
           setConfirmDelete(null);
         },
@@ -1086,7 +1086,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     // ── Sync task updates to backend ──────────────────────────────────────────
     const syncTaskToBackend = async (task: Task): Promise<void> => {
       try {
-        await fetch(`http://localhost:5000/api/tasks/${task.id}`, {
+        await fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(task),
@@ -1244,7 +1244,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       if (!submitTask || !submitNotes.trim()) { toast("⚠ Write some notes first."); return; }
       setAiDrafting(true);
       try {
-        const res = await fetch("http://localhost:5000/api/draft-notes", {
+        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, notes: submitNotes }),
         });
@@ -1271,7 +1271,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           }
           contentArray.push({ type: "image", source: { type: "base64", media_type: mime, data: base64 } });
         }
-        const res = await fetch("http://localhost:5000/api/review-attachments", {
+        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, contentArray }),
         });
