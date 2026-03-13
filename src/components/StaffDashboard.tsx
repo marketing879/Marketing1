@@ -3257,7 +3257,7 @@ const StaffDashboard: React.FC = () => {
             <div className="sd-modal-info">
               <p><strong>Priority:</strong> {selectedTask.priority?.toUpperCase()}</p>
               <p><strong>Due:</strong> {new Date(selectedTask.dueDate).toLocaleDateString()}</p>
-              {selectedTask.purpose && <p><strong>Purpose:</strong> <span style={{ color: "#00d4ff" }}>{selectedTask.purpose}</span></p>}
+              {(selectedTask as any).purpose && <p><strong>Purpose:</strong> <span style={{ color: "#00d4ff" }}>{(selectedTask as any).purpose}</span></p>}
               <p style={{ gridColumn: "1 / -1" }}><strong>Description:</strong> {selectedTask.description}</p>
             </div>
 
