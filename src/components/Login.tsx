@@ -556,7 +556,7 @@ const Login: React.FC = () => {
       <div className="login-root">
 
         <video autoPlay muted loop playsInline className="background-video">
-          <source src="/videos/roswalt%20logo%20animation.mp4" type="video/mp4" />
+          <source src="https://res.cloudinary.com/donsrpgw3/video/upload/v1773312593/roswalt_logo_animation_fqrznd.mp4" type="video/mp4" />
         </video>
 
         <div className="video-overlay" />
