@@ -936,6 +936,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       title: "", description: "", priority: "medium", dueDate: "",
       assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "",
     });
+    const [showAssigningOverlay, setShowAssigningOverlay] = useState(false);
 
     const [showForwardModal, setShowForwardModal] = useState(false);
     const [forwardTask,      setForwardTask]      = useState<Task | null>(null);
@@ -1100,10 +1101,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const tasksToReview = (freshTasks as Task[]).filter(t =>
       t.approvalStatus === "in-review"
     );
-    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
-      t.title && t.description &&
-      !t.title.toLowerCase().includes("test") &&
-      !t.description.toLowerCase().includes("test")
+    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t =>
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() ||
+      (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
     const myPendingTasks = myAssignedTasks.filter(
       (t) => t.approvalStatus === "assigned" || t.approvalStatus === "rejected"
@@ -1700,8 +1700,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       // Persist history independently of UserContext
       history.forEach(e => appendHistoryEntry(taskId, e, user?.email));
 
-  // ── Voice callout to doer ──
-      speakText(`New task assigned. ${newTask.title} has been assigned to ${allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo}.`);
+      // ── Close modal, show overlay, speak "please wait" ──
+      setShowCreateModal(false);
+      setShowAssigningOverlay(true);
+      speakText("Please wait. The task is getting assigned.");
+
+      const assigneeName = allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo;
 
       const newTaskObj: Task = {
         id:             taskId,
@@ -1722,16 +1726,19 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       };
 
       addTask(newTaskObj as never);
-      
-      syncTaskToBackend(newTaskObj).then(() => {
-      console.log("✅ Task created with history:", history);
-    }).catch(err => {
-      console.error("❌ Backend sync failed:", err);
-      toast("⚠ Task created locally but backend sync failed");
-    });
-      
 
-  if (member.phone) {
+      syncTaskToBackend(newTaskObj).then(() => {
+        console.log("✅ Task created with history:", history);
+        // ── Success voice after backend confirms ──
+        speakText(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
+        setTimeout(() => setShowAssigningOverlay(false), 3500);
+      }).catch(err => {
+        console.error("❌ Backend sync failed:", err);
+        toast("⚠ Task created locally but backend sync failed");
+        setShowAssigningOverlay(false);
+      });
+
+      if (member.phone) {
         try {
           sendTaskWhatsApp({
             recipientPhone:  member.phone,
@@ -1755,7 +1762,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       }
 
       setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "" });
-      setShowCreateModal(false);
     };  // ← this closing brace for handleCreateTask MUST be here
 
     // ── handleLogout ──────────────────────────────────────────────────────────
@@ -3482,6 +3488,36 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         </div>
 
         {toastMsg && <div className="g-toast">{toastMsg}</div>}
+
+        {/* ── Task Assigning Overlay ── */}
+        {showAssigningOverlay && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,0.92)",
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(8px)",
+          }}>
+            <video
+              autoPlay loop muted playsInline
+              style={{
+                width: "min(520px,80vw)", borderRadius: 20,
+                boxShadow: "0 0 80px rgba(201,169,110,0.35)",
+                border: "1px solid rgba(201,169,110,0.2)",
+              }}
+            >
+              <source src="https://res.cloudinary.com/donsrpgw3/video/upload/v1773599341/5561660_Coll_wavebreak_Animation_1280x720_cm1tj7.mp4" type="video/mp4" />
+            </video>
+            <p style={{
+              marginTop: 28, color: "#c9a96e",
+              fontFamily: "'IBM Plex Mono',monospace",
+              fontSize: 13, letterSpacing: "0.18em",
+              textTransform: "uppercase",
+            }}>
+              Assigning Task…
+            </p>
+          </div>
+        )}
       </>
     );
   };
