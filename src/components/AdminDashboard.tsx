@@ -1106,8 +1106,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const tasksToReview = (freshTasks as Task[]).filter(t =>
       t.approvalStatus === "in-review"
     );
+    // My Tasks tab = tasks where THIS admin is the doer (assigned TO them by someone else)
+    // Tasks they assigned OUT are tracked via tasksToReview / "Assigned by Me" card — not here
     const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t =>
-      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() ||
       (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
     const myPendingTasks = myAssignedTasks.filter(
