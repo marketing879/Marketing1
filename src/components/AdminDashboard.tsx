@@ -43,9 +43,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   function computeExactDeadline(dueDate: string, timeSlot: string): string {
     if (!dueDate) return "";
     const d = new Date(dueDate + "T00:00:00");
-    if (timeSlot === "AM") d.setHours(9, 0, 0, 0);
-    else if (timeSlot === "Noon") d.setHours(12, 0, 0, 0);
-    else d.setHours(18, 0, 0, 0);
+    const m = timeSlot && timeSlot.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) { d.setHours(parseInt(m[1],10), parseInt(m[2],10), 0, 0); }
+    else if (timeSlot === "AM") { d.setHours(9, 0, 0, 0); }
+    else if (timeSlot === "Noon") { d.setHours(12, 0, 0, 0); }
+    else { d.setHours(18, 0, 0, 0); }
     return d.toISOString();
   }
 
@@ -361,17 +363,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     "in-progress": "In Progress", completed: "Completed", pending: "Pending",
   };
 
-  const HOUR_SLOTS = Array.from({ length: 24 }, (_, i) => {
-    const hour = i;
-    const ampm = hour < 12 ? "AM" : "PM";
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    return {
-      value: String(hour).padStart(2, "0") + ":00",
-      display: `${String(displayHour).padStart(2, "0")}:00 ${ampm}`,
-      hour,
-    };
-  });
-
   interface DateTimePickerProps {
     label?: string;
     required?: boolean;
@@ -382,28 +373,165 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     hideDateInput?: boolean;
   }
 
+  // ── Scroll-Wheel Time Picker (like iOS) ───────────────────────────────────
+  const ScrollTimePicker: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+    const parse = (v: string) => {
+      const m = v && v.match(/^(\d{1,2}):(\d{2})$/);
+      if (m) return { h: parseInt(m[1], 10), min: parseInt(m[2], 10) };
+      // legacy AM/PM/Noon fallback
+      if (v === "AM") return { h: 9, min: 0 };
+      if (v === "Noon") return { h: 12, min: 0 };
+      return { h: 18, min: 0 };
+    };
+    const { h, min } = parse(value);
+    const isAM = h < 12;
+    const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
+
+    const emit = (newH24: number, newMin: number) => {
+      onChange(String(newH24).padStart(2,"0") + ":" + String(newMin).padStart(2,"0"));
+    };
+    const setHour = (hh12: number) => {
+      const h24 = isAM ? (hh12 === 12 ? 0 : hh12) : (hh12 === 12 ? 12 : hh12 + 12);
+      emit(h24, min);
+    };
+    const setMin = (mm: number) => {
+      emit(h, mm);
+    };
+    const setAmPm = (ap: string) => {
+      let h24 = h % 12;
+      if (ap === "PM") h24 += 12;
+      emit(h24, min);
+    };
+
+    const hours12 = [12,1,2,3,4,5,6,7,8,9,10,11];
+    const minutes = [0,5,10,15,20,25,30,35,40,45,50,55];
+
+    const colStyle: React.CSSProperties = {
+      display: "flex", flexDirection: "column", alignItems: "center",
+      height: 150, overflowY: "scroll", scrollSnapType: "y mandatory",
+      msOverflowStyle: "none",
+      padding: "55px 0", gap: 2,
+    };
+    const itemBase: React.CSSProperties = {
+      scrollSnapAlign: "center", minHeight: 38, width: 58,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      borderRadius: 9, cursor: "pointer", transition: "all 0.15s",
+      flexShrink: 0,
+    };
+
+    return (
+      <div>
+        {/* Label row */}
+        <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: G.cyan, fontWeight: 700 }}>
+            {String(displayH).padStart(2,"0")}:{String(min).padStart(2,"0")} {isAM ? "AM" : "PM"}
+          </span>
+          <span style={{ opacity: 0.4 }}>— scroll to set time</span>
+        </div>
+        <div style={{
+          display: "flex", gap: 4, alignItems: "center",
+          background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 14, padding: "0 8px", position: "relative", overflow: "hidden",
+          userSelect: "none",
+        }}>
+          {/* Selection highlight band */}
+          <div style={{
+            position: "absolute", top: "50%", left: 0, right: 0, height: 40,
+            transform: "translateY(-50%)",
+            background: "rgba(0,212,255,0.07)",
+            borderTop: "1px solid rgba(0,212,255,0.2)",
+            borderBottom: "1px solid rgba(0,212,255,0.2)",
+            pointerEvents: "none", zIndex: 1,
+          }} />
+
+          {/* HOURS column */}
+          <div style={{ ...colStyle, scrollbarWidth: "none" }}>
+            {hours12.map(hh => {
+              const active = hh === displayH;
+              return (
+                <div key={hh} onClick={() => setHour(hh)} style={{
+                  ...itemBase,
+                  fontSize: active ? 22 : 16,
+                  fontWeight: active ? 900 : 400,
+                  color: active ? "#00d4ff" : "rgba(255,255,255,0.25)",
+                  background: active ? "rgba(0,212,255,0.12)" : "transparent",
+                  border: active ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+                  fontFamily: "'Space Grotesk',sans-serif",
+                  transform: active ? "scale(1.08)" : "scale(1)",
+                  zIndex: active ? 2 : 0,
+                }}>
+                  {String(hh).padStart(2,"0")}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Colon separator */}
+          <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,0.3)", paddingBottom: 4, zIndex: 2 }}>:</div>
+
+          {/* MINUTES column */}
+          <div style={{ ...colStyle, scrollbarWidth: "none" }}>
+            {minutes.map(mm => {
+              const active = mm === min || (min < 5 && mm === 0) || (min >= 5 && min < 10 && mm === 5);
+              const exactActive = mm === min;
+              return (
+                <div key={mm} onClick={() => setMin(mm)} style={{
+                  ...itemBase,
+                  fontSize: exactActive ? 22 : 16,
+                  fontWeight: exactActive ? 900 : 400,
+                  color: exactActive ? "#00d4ff" : "rgba(255,255,255,0.25)",
+                  background: exactActive ? "rgba(0,212,255,0.12)" : "transparent",
+                  border: exactActive ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+                  fontFamily: "'Space Grotesk',sans-serif",
+                  transform: exactActive ? "scale(1.08)" : "scale(1)",
+                  zIndex: exactActive ? 2 : 0,
+                }}>
+                  {String(mm).padStart(2,"0")}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* AM / PM column */}
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, padding: "0 6px", zIndex: 2 }}>
+            {["AM","PM"].map(ap => {
+              const active = (ap === "AM" && isAM) || (ap === "PM" && !isAM);
+              return (
+                <div key={ap} onClick={() => setAmPm(ap)} style={{
+                  width: 52, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRadius: 9, cursor: "pointer",
+                  fontSize: active ? 15 : 13, fontWeight: active ? 900 : 500,
+                  color: active ? "#00d4ff" : "rgba(255,255,255,0.3)",
+                  background: active ? "rgba(0,212,255,0.15)" : "rgba(255,255,255,0.03)",
+                  border: active ? "1px solid rgba(0,212,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                  fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.05em",
+                  transition: "all 0.15s",
+                  boxShadow: active ? "0 0 12px rgba(0,212,255,0.25)" : "none",
+                }}>
+                  {ap}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const DateTimePicker: React.FC<DateTimePickerProps> = ({
     label, required, dateValue, timeSlot, onDateChange, onTimeSlotChange, hideDateInput,
   }) => (
     <div>
       {label && <label className="g-label">{label}{required ? " *" : ""}</label>}
-      <div className="g-dt-row">
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {!hideDateInput && (
           <input type="date" value={dateValue} onChange={(e) => onDateChange(e.target.value)}
-            style={{ colorScheme: "dark", flex: 1 } as React.CSSProperties} />
+            className="g-input" style={{ colorScheme: "dark" } as React.CSSProperties} />
         )}
-        {hideDateInput && (
-          <div style={{ flex: 1, padding: "12px 14px", fontSize: 13, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center" }}>
-            Select time →
-          </div>
-        )}
-        <select value={timeSlot} onChange={(e) => onTimeSlotChange(e.target.value)}
-          style={{ flex: 1, background: "linear-gradient(135deg, rgba(0,212,255,0.12), rgba(191,95,255,0.10))", border: "none", borderLeft: "1px solid rgba(255,255,255,0.10)", padding: "12px 14px", color: G.textPrimary, fontSize: "14px", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600, cursor: "pointer", appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300d4ff' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", paddingRight: "32px" }}>
-          <option value="" disabled>Select a time...</option>
-          {HOUR_SLOTS.map((slot) => (
-            <option key={slot.value} value={slot.value}>{slot.display}</option>
-          ))}
-        </select>
+        <ScrollTimePicker
+          value={timeSlot || "18:00"}
+          onChange={onTimeSlotChange}
+        />
       </div>
     </div>
   );
@@ -806,7 +934,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const [newTask, setNewTask] = useState({
       title: "", description: "", priority: "medium", dueDate: "",
-      assignedTo: "", projectId: "", timeSlot: "PM", purpose: "",
+      assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "",
     });
 
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -972,9 +1100,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const tasksToReview = (freshTasks as Task[]).filter(t =>
       t.approvalStatus === "in-review"
     );
-    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t =>
-      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() ||
-      (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
+      t.title && t.description &&
+      !t.title.toLowerCase().includes("test") &&
+      !t.description.toLowerCase().includes("test")
     );
     const myPendingTasks = myAssignedTasks.filter(
       (t) => t.approvalStatus === "assigned" || t.approvalStatus === "rejected"
@@ -1024,7 +1153,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const allTasksCombined = useMemo<Task[]>(() => {
       const map = new Map<string, Task>();
-      (freshTasks as Task[]).forEach(t => map.set(t.id, t));
+      (freshTasks as Task[])
+        .filter(t =>
+          t.title && t.description &&
+          !t.title.toLowerCase().includes("test") &&
+          !t.description.toLowerCase().includes("test")
+        )
+        .forEach(t => map.set(t.id, t));
       return Array.from(map.values());
     }, [freshTasks, user]);
     const analytics = useMemo(() => {
@@ -1165,7 +1300,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       setSubmitTask(task);
       setSubmitNotes(task.completionNotes ?? "");
       setSubmitPhotos(task.attachments ?? []);
-      setSubmitTimeSlot(task.timeSlot ?? "PM");
+      setSubmitTimeSlot(task.timeSlot ?? "18:00");
       setAiReviewResults(null); setReviewPanelOpen(false);
       setShowSubmitModal(true);
     };
@@ -1205,7 +1340,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           assignedBy: task.assignedBy, assignedByName: getName(task.assignedBy ?? ""),
           delayDuration: task.smartAssist?.delayDuration ?? "Unknown",
           originalDeadline: task.exactDeadline ?? computeExactDeadline(task.dueDate, task.timeSlot ?? "PM"),
-          timeSlot: task.timeSlot ?? "PM", reminderCount: task.smartAssist?.reminderCount ?? 1,
+          timeSlot: task.timeSlot ?? "18:00", reminderCount: task.smartAssist?.reminderCount ?? 1,
           status: "open", lastReminderAt: new Date().toISOString(),
         }
       );
@@ -1619,7 +1754,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         console.warn(`WhatsApp skipped: "${member.name}" (${member.email}) has no phone number.`);
       }
 
-      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "PM", purpose: "" });
+      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "" });
       setShowCreateModal(false);
     };  // ← this closing brace for handleCreateTask MUST be here
 
@@ -2286,7 +2421,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
-                              <button className="g-btn-ghost" onClick={() => { setReassignTask(task); setShowReassignModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><RotateCw size={13} />Reassign</button>
+                              {canForward && <button className="g-btn-ghost" onClick={() => { setForwardTask(task); setShowForwardModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><Share2 size={13} />Forward</button>}
+                              {canSubmit  && <button className="g-btn-gold"  onClick={() => openSubmitModal(task)} style={{ padding: "9px 16px", fontSize: 12 }}><Upload size={13} />Submit</button>}
                               <button className="g-btn-delete" onClick={() => requestDeleteTask(task)} style={{ padding: "9px 14px" }}><Trash2 size={13} />Delete</button>
                             </div>
                           </div>
@@ -2774,11 +2910,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       // Merge persisted store entries with in-memory task history
                       // so history survives UserContext resets
                       const storeEntries = getAllHistoryEntries(user?.email);
-                      const myTasks = allTasksCombined.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase());
-                      const taskTitleMap = Object.fromEntries(myTasks.map(t => [t.id, t.title]));
+                      const taskTitleMap = Object.fromEntries(allTasksCombined.map(t => [t.id, t.title]));
                       const merged = new Map<string, HistoryEntry & { taskTitle?: string; taskId: string }>();
                       // First add in-memory entries
-                      myTasks.flatMap(t =>
+                      allTasksCombined.flatMap(t =>
                         (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id }))
                       ).forEach(e => merged.set(e.id, e));
                       // Then overlay with persisted entries (these survive context resets)
@@ -3474,6 +3609,3 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
-
-
-
