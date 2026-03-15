@@ -2774,10 +2774,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       // Merge persisted store entries with in-memory task history
                       // so history survives UserContext resets
                       const storeEntries = getAllHistoryEntries(user?.email);
-                      const taskTitleMap = Object.fromEntries(allTasksCombined.map(t => [t.id, t.title]));
+                      const myTasks = allTasksCombined.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase());
+                      const taskTitleMap = Object.fromEntries(myTasks.map(t => [t.id, t.title]));
                       const merged = new Map<string, HistoryEntry & { taskTitle?: string; taskId: string }>();
                       // First add in-memory entries
-                      allTasksCombined.flatMap(t =>
+                      myTasks.flatMap(t =>
                         (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id }))
                       ).forEach(e => merged.set(e.id, e));
                       // Then overlay with persisted entries (these survive context resets)
@@ -3473,4 +3474,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
+
 
