@@ -2385,7 +2385,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {[...myPendingTasks, ...mySubmittedTasks].map((task, idx) => {
-                      const canSubmit  = task.approvalStatus === "assigned" || task.approvalStatus === "rejected";
+                      // Only show Submit if this admin IS the doer (task assigned TO them, not BY them)
+                      const canSubmit  = (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (task.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase();
                       const canForward = task.approvalStatus === "assigned";
                       const ac = APPROVAL_COLORS[task.approvalStatus] || G.textMuted;
                       return (
