@@ -185,7 +185,9 @@ function normalizeProject(raw: any): Project {
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // ── All state is pure in-memory — zero localStorage ───────────────────────
-  const [user,             setUser]             = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try { const s = sessionStorage.getItem("sc_user"); return s ? JSON.parse(s) as User : null; } catch { return null; }
+  });
   const [storedUsers,      setStoredUsers]      = useState<StoredUser[]>(defaultUsers);
   const [tasks,            setTasks]            = useState<Task[]>([]);
   const [projects,         setProjects]         = useState<Project[]>([]);
@@ -221,6 +223,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { password: _p, ...userWithoutPassword } = found;
       setUser(userWithoutPassword);
       setVoiceAccessGranted(true);
+      try { sessionStorage.setItem("sc_user", JSON.stringify(userWithoutPassword)); } catch {}
     }
   };
 
@@ -232,6 +235,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = (): void => {
     setUser(null);
     setVoiceAccessGranted(false);
+    try { sessionStorage.removeItem("sc_user"); } catch {}
   };
 
   const addUser = (
@@ -466,6 +470,3 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
-
-
-
