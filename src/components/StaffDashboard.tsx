@@ -75,6 +75,72 @@ function gradeFromPercent(p: number): "S" | "A" | "B" | "C" | "D" | "F" {
   return "F";
 }
 
+function downloadScoreReport(task: any, userName: string) {
+  const sd = task.scoreData;
+  const date = sd?.submittedAt ? new Date(sd.submittedAt).toLocaleDateString() : new Date().toLocaleDateString();
+  const grade = sd?.grade ?? "—";
+  const score = sd?.percentScore ?? "—";
+
+  let catRows = "";
+  if (sd?.categories?.length) {
+    catRows = sd.categories.map((cat: any) => {
+      const subRows = (cat.subcriteria || []).map((sub: any) =>
+        `      ${sub.label}: ${sub.score}/${sub.max}${sub.note ? " — " + sub.note : ""}`
+      ).join("\n");
+      return `  ${cat.id}) ${cat.name}: ${cat.score}/${cat.max}\n${subRows}`;
+    }).join("\n\n");
+  }
+
+  const report = [
+    "SMARTCUE AI SCORING REPORT",
+    "Roswalt Realty — Confidential",
+    "=".repeat(50),
+    "",
+    `Task:          ${task.title}`,
+    `Doer:          ${userName}`,
+    `Submitted:     ${date}`,
+    `Due Date:      ${task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}`,
+    `Priority:      ${task.priority?.toUpperCase() ?? "—"}`,
+    `Approval:      ${task.approvalStatus ?? "—"}`,
+    "",
+    "=".repeat(50),
+    "SCORE SUMMARY",
+    "=".repeat(50),
+    `Total Score:   ${score}/100`,
+    `Grade:         ${grade}`,
+    `Grammar:       ${sd?.grammarClean ? "Clean" : "Issues found"}`,
+    "",
+    sd?.verdict ? `Verdict: ${sd.verdict}` : "",
+    "",
+    "=".repeat(50),
+    "CATEGORY BREAKDOWN",
+    "=".repeat(50),
+    catRows,
+    "",
+    sd?.grammarErrors?.length ? "GRAMMAR ISSUES:\n" + sd.grammarErrors.map((e: string) => "  • " + e).join("\n") : "",
+    "",
+    sd?.strengths?.length ? "STRENGTHS:\n" + sd.strengths.map((s: string) => "  ✓ " + s).join("\n") : "",
+    "",
+    sd?.improvements?.length ? "IMPROVEMENTS:\n" + sd.improvements.map((s: string) => "  → " + s).join("\n") : "",
+    "",
+    "=".repeat(50),
+    "COMPLETION NOTES",
+    "=".repeat(50),
+    task.completionNotes || "(no notes provided)",
+    "",
+    `Report generated: ${new Date().toLocaleString()}`,
+    "SmartCue AI — Powered by Roswalt Realty",
+  ].filter(l => l !== undefined).join("\n");
+
+  const blob = new Blob([report], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `SmartCue_Score_${task.title.replace(/\s+/g, "_")}_${date.replace(/\//g, "-")}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Extract N evenly-spaced frames from a video data-URL via canvas ───────────
 async function extractVideoFrames(videoDataUrl: string, frameCount = 6): Promise<string[]> {
   return new Promise((resolve) => {
@@ -1830,6 +1896,17 @@ const StaffDashboard: React.FC = () => {
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
       attachments:     uploadedPhotos[selectedTask.id] || [],
+      scoreData:       aiScoreResult ? {
+        percentScore:  aiScoreResult.percentScore,
+        grade:         aiScoreResult.grade,
+        verdict:       aiScoreResult.verdict,
+        grammarClean:  aiScoreResult.grammarClean,
+        grammarErrors: aiScoreResult.grammarErrors,
+        strengths:     aiScoreResult.strengths,
+        improvements:  aiScoreResult.improvements,
+        categories:    aiScoreResult.categories,
+        submittedAt:   new Date().toISOString(),
+      } : undefined,
     } as any);
     submitTaskCompletion(selectedTask.id, completionNotes);
     speakText("Successfully submitted for admin approval. Well done!");
@@ -2838,6 +2915,7 @@ const StaffDashboard: React.FC = () => {
                       dragOver={dragOver}
                       setDragOver={setDragOver}
                       isCompleted
+                      userName={user?.name || "Staff"}
                     />
                   ))}
                 </div>
@@ -3612,13 +3690,14 @@ interface TaskCardProps {
   dragOver:       boolean;
   setDragOver:    (v: boolean) => void;
   isCompleted?:   boolean;
+  userName?:      string;
 }
 
 // ── TaskCard — unchanged from original ──────────────────────────────────────
 const TaskCard: React.FC<TaskCardProps> = ({
   task, photos, getProjectName, getAssignerInfo,
   onComplete, onUpload, onRemovePhoto, onOpenLightbox,
-  dragOver, setDragOver, isCompleted,
+  dragOver, setDragOver, isCompleted, userName,
 }) => {
   const approvalMap: Record<string, { label: string; cls: string }> = {
     assigned:              { label: "Assigned",       cls: "badge-blue"   },
@@ -3817,9 +3896,24 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
           {task.createdAt && <span>Created: {new Date(task.createdAt).toLocaleDateString()}</span>}
         </div>
-        {statusMsg && (
-          <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
+          {statusMsg && (
+            <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
+          )}
+          {(task as any).scoreData && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: "#00d4ff", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.25)", padding: "2px 7px", borderRadius: 4 }}>
+                {(task as any).scoreData.percentScore}/100 · {(task as any).scoreData.grade}
+              </span>
+              <button
+                onClick={() => downloadScoreReport(task, userName || "Staff")}
+                style={{ fontSize: 9, fontWeight: 700, color: "#b06af3", background: "rgba(176,106,243,0.08)", border: "1px solid rgba(176,106,243,0.22)", padding: "2px 8px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase" as const, letterSpacing: "0.4px" }}
+              >
+                ↓ Report
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

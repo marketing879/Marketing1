@@ -2984,6 +2984,79 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       </div>
                     </div>
                   )}
+                  {/* ── AI Score Panel ── */}
+                  {(selectedTask as any).scoreData && (() => {
+                    const sd = (selectedTask as any).scoreData;
+                    const gradeColor: Record<string, string> = { S: "#00d4ff", A: "#00ff88", B: "#b06af3", C: "#f5c518", D: "#ff6b35", F: "#ff3366" };
+                    const gc = gradeColor[sd.grade] || G.gold;
+                    return (
+                      <div style={{ marginBottom: 14, border: `1px solid ${gc}33`, borderRadius: 12, overflow: "hidden" }}>
+                        {/* Header */}
+                        <div style={{ padding: "10px 14px", background: `${gc}0d`, borderBottom: `1px solid ${gc}22`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: gc, textTransform: "uppercase" as const, letterSpacing: "0.8px" }}>
+                            ◈ SmartCue AI Score
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 18, fontWeight: 900, color: gc, fontFamily: "'Space Grotesk',sans-serif" }}>{sd.percentScore}/100</span>
+                            <span style={{ fontSize: 14, fontWeight: 900, color: gc, background: `${gc}18`, border: `1px solid ${gc}44`, padding: "2px 8px", borderRadius: 6 }}>{sd.grade}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: sd.grammarClean ? "#00ff88" : "#ff3366", background: sd.grammarClean ? "rgba(0,255,136,0.08)" : "rgba(255,51,102,0.08)", border: `1px solid ${sd.grammarClean ? "rgba(0,255,136,0.25)" : "rgba(255,51,102,0.25)"}`, padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" as const }}>
+                              {sd.grammarClean ? "✓ Grammar" : "✗ Grammar"}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Category bars */}
+                        <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column" as const, gap: 6 }}>
+                          {sd.verdict && <p style={{ fontSize: 11, color: G.textSecondary, marginBottom: 6, lineHeight: 1.5 }}>{sd.verdict}</p>}
+                          {(sd.categories || []).map((cat: any) => {
+                            const catColor: Record<string, string> = { A: "#00d4ff", B: "#00ff88", C: "#f5c518", D: "#b06af3", E: "#ff6b35" };
+                            const cc = catColor[cat.id] || G.gold;
+                            return (
+                              <div key={cat.id}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                                  <span style={{ fontSize: 9, fontWeight: 800, color: cc, width: 18 }}>{cat.id})</span>
+                                  <span style={{ flex: 1, fontSize: 10, color: G.textSecondary }}>{cat.name}</span>
+                                  <div style={{ width: 80, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
+                                    <div style={{ height: "100%", width: `${(cat.score / 20) * 100}%`, background: cc, borderRadius: 2 }} />
+                                  </div>
+                                  <span style={{ fontSize: 10, fontWeight: 800, color: cc, minWidth: 32, textAlign: "right" as const }}>{cat.score}/20</span>
+                                </div>
+                                {/* Subcriteria deductions */}
+                                {(cat.subcriteria || []).filter((s: any) => s.score < s.max).map((sub: any, si: number) => (
+                                  <div key={si} style={{ marginLeft: 26, marginBottom: 2, padding: "3px 8px", background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.1)", borderRadius: 4, display: "flex", gap: 6, alignItems: "flex-start" }}>
+                                    <span style={{ fontSize: 8, color: "#ff6b35", flexShrink: 0 }}>↳</span>
+                                    <span style={{ fontSize: 9, color: G.textMuted, lineHeight: 1.4 }}><strong style={{ color: "#ff6b35" }}>{sub.label}</strong> {sub.score}/{sub.max} — {sub.note}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                          {/* Strengths */}
+                          {sd.strengths?.length > 0 && (
+                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(0,255,136,0.04)", border: "1px solid rgba(0,255,136,0.14)", borderRadius: 8 }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color: "#00ff88", textTransform: "uppercase" as const, marginBottom: 4 }}>✓ Strengths</div>
+                              {sd.strengths.map((s: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>✓ {s}</div>)}
+                            </div>
+                          )}
+                          {/* Improvements */}
+                          {sd.improvements?.length > 0 && (
+                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.14)", borderRadius: 8 }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color: "#00d4ff", textTransform: "uppercase" as const, marginBottom: 4 }}>→ Improvements</div>
+                              {sd.improvements.map((s: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>→ {s}</div>)}
+                            </div>
+                          )}
+                          {/* Grammar errors */}
+                          {sd.grammarErrors?.length > 0 && (
+                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.14)", borderRadius: 8 }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color: "#ff3366", textTransform: "uppercase" as const, marginBottom: 4 }}>✗ Grammar Issues</div>
+                              {sd.grammarErrors.map((e: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>✗ {e}</div>)}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 6, fontSize: 9, color: G.textMuted }}>Scored: {sd.submittedAt ? new Date(sd.submittedAt).toLocaleString() : "—"}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
@@ -3429,6 +3502,16 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
               </span>
               {task.completionNotes && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan }}><FileText size={10} />Has notes</span>}
+              {(task as any).scoreData && (() => {
+                const sd = (task as any).scoreData;
+                const gc: Record<string, string> = { S: "#00d4ff", A: "#00ff88", B: "#b06af3", C: "#f5c518", D: "#ff6b35", F: "#ff3366" };
+                const c = gc[sd.grade] || G.gold;
+                return (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 4, background: `${c}14`, border: `1px solid ${c}33`, fontSize: 9, fontWeight: 800, color: c }}>
+                    ◈ {sd.percentScore}/100 · {sd.grade}
+                  </span>
+                );
+              })()}
               {task.history && task.history.length > 0 && (
                 <button onClick={onViewHistory} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: 0 }}>
                   <ListTree size={10} />History ({task.history.length})
@@ -3467,5 +3550,3 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
-
-

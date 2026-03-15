@@ -71,6 +71,17 @@ export interface Task {
   attachments?:   string[];
   isFrozen?:      boolean;
   frozenTicketId?: string;
+  scoreData?: {
+    percentScore:  number;
+    grade:         string;
+    verdict:       string;
+    grammarClean:  boolean;
+    grammarErrors: string[];
+    strengths:     string[];
+    improvements:  string[];
+    categories:    any[];
+    submittedAt:   string;
+  };
 }
 
 export interface Project {
@@ -455,4 +466,6 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
+
 
