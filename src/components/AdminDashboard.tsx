@@ -98,31 +98,31 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   // ── Persistent History Store ─────────────────────────────────────────────────
   // UserContext.updateTask may not persist the history field reliably.
   // We keep a separate localStorage store keyed by taskId so history is never lost.
-  const HISTORY_STORE_KEY = "smartcue_task_history";
-
-  function loadHistoryStore(): Record<string, HistoryEntry[]> {
-    try { return JSON.parse(localStorage.getItem(HISTORY_STORE_KEY) ?? "{}"); } catch { return {}; }
+  // History is scoped per user so one admin's history never bleeds into another's
+  function getHistoryStoreKey(email?: string): string {
+    return "smartcue_task_history_" + (email || "shared").toLowerCase().replace(/[^a-z0-9]/g, "_");
   }
 
-  function saveHistoryStore(store: Record<string, HistoryEntry[]>): void {
-    try { localStorage.setItem(HISTORY_STORE_KEY, JSON.stringify(store)); } catch {}
+  function loadHistoryStore(userEmail?: string): Record<string, HistoryEntry[]> {
+    try { return JSON.parse(localStorage.getItem(getHistoryStoreKey(userEmail)) ?? "{}"); } catch { return {}; }
   }
 
-  function appendHistoryEntry(taskId: string, entry: HistoryEntry): void {
-    // Save to localStorage for instant local read
-    const store = loadHistoryStore();
+  function saveHistoryStore(store: Record<string, HistoryEntry[]>, userEmail?: string): void {
+    try { localStorage.setItem(getHistoryStoreKey(userEmail), JSON.stringify(store)); } catch {}
+  }
+
+  function appendHistoryEntry(taskId: string, entry: HistoryEntry, userEmail?: string): void {
+    const store = loadHistoryStore(userEmail);
     store[taskId] = [...(store[taskId] ?? []), entry];
-    saveHistoryStore(store);
-    // Also persist to backend so all dashboards see history
-    // backend sync handled by appendHistoryToBackend in component scope
+    saveHistoryStore(store, userEmail);
   }
 
-  function getTaskHistory(taskId: string): HistoryEntry[] {
-    return loadHistoryStore()[taskId] ?? [];
+  function getTaskHistory(taskId: string, userEmail?: string): HistoryEntry[] {
+    return loadHistoryStore(userEmail)[taskId] ?? [];
   }
 
-  function getAllHistoryEntries(): (HistoryEntry & { taskId: string })[] {
-    const store = loadHistoryStore();
+  function getAllHistoryEntries(userEmail?: string): (HistoryEntry & { taskId: string })[] {
+    const store = loadHistoryStore(userEmail);
     return Object.entries(store).flatMap(([taskId, entries]) =>
       entries.map(e => ({ ...e, taskId }))
     );
@@ -466,7 +466,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Calendar size={9} />{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                         {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
                         {task.tatBreached && <span style={{ color: G.danger, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={9} />TAT BREACH</span>}
-                        {(task as any).scoreData && (() => { const gc: Record<string,string> = {S:"#00d4ff",A:"#00ff88",B:"#b06af3",C:"#f5c518",D:"#ff6b35",F:"#ff3366"}; const sd=(task as any).scoreData; const c=gc[sd.grade]||G.gold; return <span style={{display:"flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:3,background:`${c}14`,border:`1px solid ${c}33`,fontSize:8,fontWeight:800,color:c}}>◈ {sd.percentScore}/100 · {sd.grade}</span>; })()}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
@@ -710,7 +709,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const {
       getTasksForAdminReview, getAssignedTasks, submitTaskCompletion,
       adminReviewTask, logout, user, teamMembers, addTask, projects, updateTask,
-      deleteTask, deleteAllTasks, tasks: tasksLive_raw,
+      deleteTask, deleteAllTasks, tasks: allContextTasks,
       assistanceTickets, approveAssistanceTicket,
     } = useUser() as ReturnType<typeof useUser> & {
       deleteTask: (id: string) => void;
@@ -720,23 +719,23 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
     };
 
-    // ── Poll backend every 15s so submitted tasks appear without page refresh ──
-    const [liveTasksOverride, setLiveTasksOverride] = React.useState<Task[] | null>(null);
-    const tasksLive = (liveTasksOverride ?? tasksLive_raw) as Task[];
-
+    // ── Live polling: fetch tasks directly from backend every 15s ───────────
+    const [liveTasks, setLiveTasks] = React.useState<Task[] | null>(null);
+    const freshTasks = React.useMemo<Task[]>(
+      () => (liveTasks ?? (allContextTasks as Task[])),
+      [liveTasks, allContextTasks]
+    );
     useEffect(() => {
-      const fetchLive = () => {
+      const poll = () =>
         fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
           .then(r => r.ok ? r.json() : Promise.reject())
-          .then((data: any[]) => setLiveTasksOverride(
-            data.map(t => ({ ...t, id: t.id || String(t._id) }))
-          ))
+          .then((data: any[]) => setLiveTasks(data.map((t: any) => ({ ...t, id: t.id || String(t._id) }))))
           .catch(() => {});
-      };
-      fetchLive(); // immediate on mount
-      const interval = setInterval(fetchLive, 15000); // refresh every 15s
-      return () => clearInterval(interval);
+      poll();
+      const iv = setInterval(poll, 15000);
+      return () => clearInterval(iv);
     }, []);
+
     const navigate = useNavigate();
 
     const allMembers     = teamMembers as TeamMember[];
@@ -901,11 +900,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       await greetUser(fullName);
 
       // 2. Task-aware briefing summary
-      const allTasks       = tasksLive as Task[];
-      const pendingCount   = allTasks.filter(t =>
-        t.approvalStatus === "in-review" &&
-        (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
-      ).length;
+      const allTasks       = freshTasks as Task[];
+      const pendingCount   = allTasks.filter(t => t.approvalStatus === "in-review").length;
       const tatCount       = allTasks.filter(t => (t as any).tatBreached).length;
       const frozenCount    = allTasks.filter(t => (t as any).isFrozen).length;
       const ticketCount    = (assistanceTickets ?? []).filter(
@@ -936,13 +932,18 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     if (!showFlashPanel) return;
     if (flashVoiceRef.current) return;
 
-    const pendingTickets = (assistanceTickets ?? []).filter(
-      t => t.status === "pending-admin" &&
-           (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
-    );
-    if (pendingTickets.length === 0) return;
-
     flashVoiceRef.current = true;
+    const pendingTickets = (assistanceTickets ?? []).filter(t => t.status === "pending-admin");
+    const reviewNow = tasksToReview.length;
+    if (reviewNow > 0 || pendingTickets.length > 0) {
+      setTimeout(async () => {
+        const parts: string[] = [];
+        if (reviewNow > 0) parts.push(`${reviewNow} task${reviewNow !== 1 ? "s are" : " is"} waiting for approval in the Review tab.`);
+        if (pendingTickets.length > 0) parts.push(`${pendingTickets.length} assistance ticket${pendingTickets.length !== 1 ? "s" : ""} need your review.`);
+        await speakText(parts.join(" "));
+      }, 2200);
+      if (pendingTickets.length === 0) return;
+    } else { return; }
 
     const ticketNames = pendingTickets.map(t => t.taskTitle);
     let script = "";
@@ -968,13 +969,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     }, 3500);
   }, [showFlashPanel]);
 
-    const tasksToReview = (tasksLive as Task[]).filter(t =>
+    const tasksToReview = (freshTasks as Task[]).filter(t =>
       t.approvalStatus === "in-review" &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
     );
-    const myAssignedTasks = (tasksLive as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
+    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
@@ -1027,22 +1028,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const allTasksCombined = useMemo<Task[]>(() => {
       const map = new Map<string, Task>();
-      // Include ALL tasks this admin created (assignedBy) + tasks assigned to them
-      // Not just in-review ones — so Overview/Analytics shows everything
-      const adminEmail = (user?.email ?? "").toLowerCase();
-      const allFiltered = (tasksLive as Task[]).filter(t =>
-        t.title && t.description &&
-        !t.title.toLowerCase().includes("test") &&
-        !t.description.toLowerCase().includes("test") &&
-        (
-          (t.assignedBy ?? "").toLowerCase() === adminEmail ||
-          (t.assignedTo ?? "").toLowerCase() === adminEmail
+      (freshTasks as Task[])
+        .filter(t =>
+          t.title && t.description &&
+          !t.title.toLowerCase().includes("test") &&
+          !t.description.toLowerCase().includes("test")
         )
-      );
-      allFiltered.forEach((t) => map.set(t.id, t));
+        .forEach(t => map.set(t.id, t));
       return Array.from(map.values());
-    }, [tasksLive, user]);
-
+    }, [freshTasks, user]);
     const analytics = useMemo(() => {
       const allTasks        = allTasksCombined;
       const totalTasks      = allTasks.length;
@@ -1242,7 +1236,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         id: `hist_${Date.now()}`, timestamp: new Date().toISOString(),
         action: "completed", by: user?.email ?? "", notes: submitNotes,
       };
-      appendHistoryEntry(submitTask.id, histEntry); // persist independently
+      appendHistoryEntry(submitTask.id, histEntry, user?.email); // persist independently
       // Single merged update — prevents submitTaskCompletion from overwriting history
       const updatedTask: Task = {
         ...submitTask,
@@ -1308,7 +1302,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const handleForwardTask = (): void => {
       if (!forwardTask || !forwardTo) { toast("⚠ Please select a team member."); return; }
       const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "forwarded", by: user?.email ?? "", to: forwardTo, notes: forwardNotes };
-      appendHistoryEntry(forwardTask.id, h); // persist independently
+      appendHistoryEntry(forwardTask.id, h, user?.email); // persist independently
       const updatedTask = { ...forwardTask, assignedTo: forwardTo, assignedBy: user?.email, forwardedFrom: forwardTask.assignedTo, history: [...(forwardTask.history ?? []), h] };
       updateTask(forwardTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask as Task);
@@ -1319,7 +1313,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   const handleApprove = (): void => {
     if (!selectedTask) return;
     const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: reviewComments };
-    appendHistoryEntry(selectedTask.id, h); // persist independently
+    appendHistoryEntry(selectedTask.id, h, user?.email); // persist independently
     // Merge history + approvalStatus in ONE update so adminReviewTask can't overwrite history
     const updatedTask: Task = {
       ...selectedTask,
@@ -1360,7 +1354,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by: user?.email ?? "",
         notes: reviewComments,
       };
-      appendHistoryEntry(selectedTask.id, h); // persist independently
+      appendHistoryEntry(selectedTask.id, h, user?.email); // persist independently
       // Single update with full state — no second context call that could overwrite history
       const updatedTask: Task = {
         ...selectedTask,
@@ -1395,7 +1389,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         to:        reassignTo,
         notes:     reassignReason,
       };
-      appendHistoryEntry(reassignTask.id, histEntry);
+      appendHistoryEntry(reassignTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...reassignTask,
@@ -1480,7 +1474,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by:        user?.email ?? "",
         notes:     tatExtResponse,
       };
-      appendHistoryEntry(tatExtTask.id, histEntry);
+      appendHistoryEntry(tatExtTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...tatExtTask,
@@ -1526,7 +1520,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by:        user?.email ?? "",
         notes:     tatExtResponse,
       };
-      appendHistoryEntry(tatExtTask.id, histEntry);
+      appendHistoryEntry(tatExtTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...tatExtTask,
@@ -1579,7 +1573,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         { id: crypto.randomUUID(), timestamp: now, action: "assigned", by: user?.email ?? "", to: newTask.assignedTo },
       ];
       // Persist history independently of UserContext
-      history.forEach(e => appendHistoryEntry(taskId, e));
+      history.forEach(e => appendHistoryEntry(taskId, e, user?.email));
 
   // ── Voice callout to doer ──
       speakText(`New task assigned. ${newTask.title} has been assigned to ${allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo}.`);
@@ -1840,8 +1834,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     { title: "Active Tasks",    value: analytics.inProgressTasks,  subtitle: "In progress",        color: G.amber,   tasks: analytics.allTasks.filter(t => (["in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
                     { title: "TAT Breached",    value: analytics.tatBreachedCount, subtitle: "Deadline misses",    color: G.danger,  tasks: analytics.allTasks.filter(t => t.tatBreached) },
                     { title: "Smart Assist",    value: analytics.activeTicketCount,subtitle: "Open escalations",   color: G.amber,   tasks: [] },
-                    { title: "Assigned by Me",  value: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()).length, subtitle: "Tasks I assigned",  color: G.cyan,    tasks: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) },
-                    { title: "Pending Review",  value: tasksToReview.length,         subtitle: "Awaiting my action", color: G.gold,    tasks: tasksToReview },
+                    { title: "Assigned by Me",  value: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()).length, subtitle: "Tasks I created", color: G.cyan, tasks: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) },
+                    { title: "Pending Review",  value: tasksToReview.length, subtitle: "Awaiting approval", color: G.gold, tasks: tasksToReview },
                   ].map((card, i) => (
                     <div key={i} className="g-stat-card fade-up" style={{ animationDelay: `${i * 60}ms` }}
                       onClick={() => card.tasks.length > 0 && openTaskListModal(card.title, card.tasks, card.color)}>
@@ -2415,7 +2409,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         const isPending  = ticket.status === "pending-admin";
                         const isApproved = ticket.status === "admin-approved";
                         const staffName  = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
-                        const linkedTask = tasksLive.find(t => t.id === ticket.taskId);
+                        const linkedTask = freshTasks.find(t => t.id === ticket.taskId);
 
                         return (
                           <div key={ticket.id} style={{
@@ -2790,7 +2784,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     history={(() => {
                       // Merge persisted store entries with in-memory task history
                       // so history survives UserContext resets
-                      const storeEntries = getAllHistoryEntries();
+                      const storeEntries = getAllHistoryEntries(user?.email);
                       const taskTitleMap = Object.fromEntries(allTasksCombined.map(t => [t.id, t.title]));
                       const merged = new Map<string, HistoryEntry & { taskTitle?: string; taskId: string }>();
                       // First add in-memory entries
@@ -2954,7 +2948,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                   <HistoryTimeline
                     history={(() => {
-                      const persisted = getTaskHistory(historyTask.id);
+                      const persisted = getTaskHistory(historyTask.id, user?.email);
                       const inMemory = historyTask.history ?? [];
                       const merged = new Map<string, HistoryEntry>();
                       inMemory.forEach(e => merged.set(e.id, e));
