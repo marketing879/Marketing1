@@ -970,15 +970,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   }, [showFlashPanel]);
 
     const tasksToReview = (freshTasks as Task[]).filter(t =>
-      t.approvalStatus === "in-review" &&
-      t.title && t.description &&
-      !t.title.toLowerCase().includes("test") &&
-      !t.description.toLowerCase().includes("test")
+      t.approvalStatus === "in-review"
     );
-    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
-      t.title && t.description &&
-      !t.title.toLowerCase().includes("test") &&
-      !t.description.toLowerCase().includes("test")
+    const myAssignedTasks = (freshTasks as unknown as Task[]).filter(t =>
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() ||
+      (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
     const myPendingTasks = myAssignedTasks.filter(
       (t) => t.approvalStatus === "assigned" || t.approvalStatus === "rejected"
@@ -1028,13 +1024,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const allTasksCombined = useMemo<Task[]>(() => {
       const map = new Map<string, Task>();
-      (freshTasks as Task[])
-        .filter(t =>
-          t.title && t.description &&
-          !t.title.toLowerCase().includes("test") &&
-          !t.description.toLowerCase().includes("test")
-        )
-        .forEach(t => map.set(t.id, t));
+      (freshTasks as Task[]).forEach(t => map.set(t.id, t));
       return Array.from(map.values());
     }, [freshTasks, user]);
     const analytics = useMemo(() => {
