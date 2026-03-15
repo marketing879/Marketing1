@@ -849,6 +849,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     // ── Live polling: fetch tasks directly from backend every 15s ───────────
     const [liveTasks, setLiveTasks] = React.useState<Task[] | null>(null);
+    const tasksLoaded = liveTasks !== null; // true once first poll returns
     const freshTasks = React.useMemo<Task[]>(
       () => (liveTasks ?? (allContextTasks as Task[])),
       [liveTasks, allContextTasks]
@@ -864,9 +865,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           })
           .catch(err => console.warn("[Poll] Failed to fetch tasks:", err));
       poll(); // immediate on mount
-      const iv = setInterval(poll, 10000); // every 10s
+      const iv = setInterval(poll, 8000); // every 8s
       return () => clearInterval(iv);
-    }, []);
+    }, [user?.email]); // re-poll when user changes (login/logout)
 
     const navigate = useNavigate();
 
@@ -1157,15 +1158,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const allTasksCombined = useMemo<Task[]>(() => {
       const map = new Map<string, Task>();
-      (freshTasks as Task[])
-        .filter(t =>
-          t.title && t.description &&
-          !t.title.toLowerCase().includes("test") &&
-          !t.description.toLowerCase().includes("test")
-        )
-        .forEach(t => map.set(t.id, t));
+      (freshTasks as Task[]).forEach(t => map.set(t.id, t));
       return Array.from(map.values());
-    }, [freshTasks, user]);
+    }, [freshTasks]);
     const analytics = useMemo(() => {
       const allTasks        = allTasksCombined;
       const totalTasks      = allTasks.length;
@@ -1965,16 +1960,20 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
                 {/* Key Metrics Grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 28 }}>
-                  {[
-                    { title: "Total Tasks",     value: analytics.totalTasks,       subtitle: "All time",          color: G.cyan,    tasks: analytics.allTasks },
-                    { title: "Completion Rate", value: `${analytics.completionRate}%`, subtitle: "Success ratio",  color: G.success, tasks: analytics.allTasks.filter(t => t.approvalStatus === "superadmin-approved") },
-                    { title: "Avg Completion",  value: analytics.avgCompletionTime,subtitle: "Per task",           color: G.purple,  tasks: analytics.allTasks.filter(t => t.completedAt) },
-                    { title: "Active Tasks",    value: analytics.inProgressTasks,  subtitle: "In progress",        color: G.amber,   tasks: analytics.allTasks.filter(t => (["in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
-                    { title: "TAT Breached",    value: analytics.tatBreachedCount, subtitle: "Deadline misses",    color: G.danger,  tasks: analytics.allTasks.filter(t => t.tatBreached) },
-                    { title: "Smart Assist",    value: analytics.activeTicketCount,subtitle: "Open escalations",   color: G.amber,   tasks: [] },
-                    { title: "Assigned by Me",  value: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()).length, subtitle: "Tasks I created", color: G.cyan, tasks: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) },
-                    { title: "Pending Review",  value: tasksToReview.length, subtitle: "Awaiting approval", color: G.gold, tasks: tasksToReview },
-                  ].map((card, i) => (
+                  {(() => {
+                    const myEmail = (user?.email ?? "").toLowerCase();
+                    const assignedByMe  = allTasksCombined.filter(t => (t.assignedBy ?? "").toLowerCase() === myEmail);
+                    return [
+                    { title: "Total Tasks",     value: tasksLoaded ? analytics.totalTasks : "…",       subtitle: "All time",          color: G.cyan,    tasks: analytics.allTasks },
+                    { title: "Completion Rate", value: tasksLoaded ? `${analytics.completionRate}%` : "…", subtitle: "Success ratio",  color: G.success, tasks: analytics.allTasks.filter(t => t.approvalStatus === "superadmin-approved") },
+                    { title: "Avg Completion",  value: tasksLoaded ? analytics.avgCompletionTime : "…", subtitle: "Per task",          color: G.purple,  tasks: analytics.allTasks.filter(t => t.completedAt) },
+                    { title: "Active Tasks",    value: tasksLoaded ? analytics.inProgressTasks : "…",   subtitle: "In progress",       color: G.amber,   tasks: analytics.allTasks.filter(t => (["in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
+                    { title: "TAT Breached",    value: tasksLoaded ? analytics.tatBreachedCount : "…",  subtitle: "Deadline misses",   color: G.danger,  tasks: analytics.allTasks.filter(t => t.tatBreached) },
+                    { title: "Smart Assist",    value: analytics.activeTicketCount, subtitle: "Open escalations", color: G.amber, tasks: [] },
+                    { title: "Assigned by Me",  value: tasksLoaded ? assignedByMe.length : "…",         subtitle: "Tasks I created",   color: G.cyan,    tasks: assignedByMe },
+                    { title: "Pending Review",  value: tasksLoaded ? tasksToReview.length : "…",        subtitle: "Awaiting approval", color: G.gold,    tasks: tasksToReview },
+                    ];
+                  })().map((card, i) => (
                     <div key={i} className="g-stat-card fade-up" style={{ animationDelay: `${i * 60}ms` }}
                       onClick={() => card.tasks.length > 0 && openTaskListModal(card.title, card.tasks, card.color)}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
