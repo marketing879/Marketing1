@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser, Task, AssistanceTicket } from "../contexts/UserContext";
-import { Eye, Upload, CheckCircle, AlertCircle, Loader, Shield, User, X, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
+import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
