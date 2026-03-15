@@ -2286,8 +2286,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
-                              {canForward && <button className="g-btn-ghost" onClick={() => { setForwardTask(task); setShowForwardModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><Share2 size={13} />Forward</button>}
-                              {canSubmit  && <button className="g-btn-gold"  onClick={() => openSubmitModal(task)} style={{ padding: "9px 16px", fontSize: 12 }}><Upload size={13} />Submit</button>}
+                              <button className="g-btn-ghost" onClick={() => { setReassignTask(task); setShowReassignModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><RotateCw size={13} />Reassign</button>
                               <button className="g-btn-delete" onClick={() => requestDeleteTask(task)} style={{ padding: "9px 14px" }}><Trash2 size={13} />Delete</button>
                             </div>
                           </div>
