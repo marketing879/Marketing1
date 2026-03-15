@@ -109,9 +109,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   }
 
   function appendHistoryEntry(taskId: string, entry: HistoryEntry): void {
+    // Save to localStorage for instant local read
     const store = loadHistoryStore();
     store[taskId] = [...(store[taskId] ?? []), entry];
     saveHistoryStore(store);
+    // Also persist to backend so all dashboards see history
+    // backend sync handled by appendHistoryToBackend in component scope
   }
 
   function getTaskHistory(taskId: string): HistoryEntry[] {
@@ -463,6 +466,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Calendar size={9} />{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                         {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
                         {task.tatBreached && <span style={{ color: G.danger, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={9} />TAT BREACH</span>}
+                        {(task as any).scoreData && (() => { const gc: Record<string,string> = {S:"#00d4ff",A:"#00ff88",B:"#b06af3",C:"#f5c518",D:"#ff6b35",F:"#ff3366"}; const sd=(task as any).scoreData; const c=gc[sd.grade]||G.gold; return <span style={{display:"flex",alignItems:"center",gap:3,padding:"1px 6px",borderRadius:3,background:`${c}14`,border:`1px solid ${c}33`,fontSize:8,fontWeight:800,color:c}}>◈ {sd.percentScore}/100 · {sd.grade}</span>; })()}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
@@ -706,7 +710,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const {
       getTasksForAdminReview, getAssignedTasks, submitTaskCompletion,
       adminReviewTask, logout, user, teamMembers, addTask, projects, updateTask,
-      deleteTask, deleteAllTasks, tasks: allContextTasks,
+      deleteTask, deleteAllTasks, tasks: tasksLive_raw,
       assistanceTickets, approveAssistanceTicket,
     } = useUser() as ReturnType<typeof useUser> & {
       deleteTask: (id: string) => void;
@@ -715,6 +719,24 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       assistanceTickets: import("../contexts/UserContext").AssistanceTicket[];
       approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
     };
+
+    // ── Poll backend every 15s so submitted tasks appear without page refresh ──
+    const [liveTasksOverride, setLiveTasksOverride] = React.useState<Task[] | null>(null);
+    const tasksLive = (liveTasksOverride ?? tasksLive_raw) as Task[];
+
+    useEffect(() => {
+      const fetchLive = () => {
+        fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
+          .then(r => r.ok ? r.json() : Promise.reject())
+          .then((data: any[]) => setLiveTasksOverride(
+            data.map(t => ({ ...t, id: t.id || String(t._id) }))
+          ))
+          .catch(() => {});
+      };
+      fetchLive(); // immediate on mount
+      const interval = setInterval(fetchLive, 15000); // refresh every 15s
+      return () => clearInterval(interval);
+    }, []);
     const navigate = useNavigate();
 
     const allMembers     = teamMembers as TeamMember[];
@@ -879,7 +901,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       await greetUser(fullName);
 
       // 2. Task-aware briefing summary
-      const allTasks       = allContextTasks as Task[];
+      const allTasks       = tasksLive as Task[];
       const pendingCount   = allTasks.filter(t =>
         t.approvalStatus === "in-review" &&
         (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
@@ -946,14 +968,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     }, 3500);
   }, [showFlashPanel]);
 
-    const tasksToReview = (allContextTasks as Task[]).filter(t =>
+    const tasksToReview = (tasksLive as Task[]).filter(t =>
       t.approvalStatus === "in-review" &&
-      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
     );
-    const myAssignedTasks = (allContextTasks as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
+    const myAssignedTasks = (tasksLive as unknown as Task[]).filter(t => ((t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() || (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) &&
       t.title && t.description &&
       !t.title.toLowerCase().includes("test") &&
       !t.description.toLowerCase().includes("test")
@@ -1009,7 +1030,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       // Include ALL tasks this admin created (assignedBy) + tasks assigned to them
       // Not just in-review ones — so Overview/Analytics shows everything
       const adminEmail = (user?.email ?? "").toLowerCase();
-      const allFiltered = (allContextTasks as Task[]).filter(t =>
+      const allFiltered = (tasksLive as Task[]).filter(t =>
         t.title && t.description &&
         !t.title.toLowerCase().includes("test") &&
         !t.description.toLowerCase().includes("test") &&
@@ -1020,7 +1041,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       );
       allFiltered.forEach((t) => map.set(t.id, t));
       return Array.from(map.values());
-    }, [allContextTasks, user]);
+    }, [tasksLive, user]);
 
     const analytics = useMemo(() => {
       const allTasks        = allTasksCombined;
@@ -1819,6 +1840,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     { title: "Active Tasks",    value: analytics.inProgressTasks,  subtitle: "In progress",        color: G.amber,   tasks: analytics.allTasks.filter(t => (["in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
                     { title: "TAT Breached",    value: analytics.tatBreachedCount, subtitle: "Deadline misses",    color: G.danger,  tasks: analytics.allTasks.filter(t => t.tatBreached) },
                     { title: "Smart Assist",    value: analytics.activeTicketCount,subtitle: "Open escalations",   color: G.amber,   tasks: [] },
+                    { title: "Assigned by Me",  value: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()).length, subtitle: "Tasks I assigned",  color: G.cyan,    tasks: analytics.allTasks.filter(t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) },
+                    { title: "Pending Review",  value: tasksToReview.length,         subtitle: "Awaiting my action", color: G.gold,    tasks: tasksToReview },
                   ].map((card, i) => (
                     <div key={i} className="g-stat-card fade-up" style={{ animationDelay: `${i * 60}ms` }}
                       onClick={() => card.tasks.length > 0 && openTaskListModal(card.title, card.tasks, card.color)}>
@@ -2392,7 +2415,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         const isPending  = ticket.status === "pending-admin";
                         const isApproved = ticket.status === "admin-approved";
                         const staffName  = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
-                        const linkedTask = allContextTasks.find(t => t.id === ticket.taskId);
+                        const linkedTask = tasksLive.find(t => t.id === ticket.taskId);
 
                         return (
                           <div key={ticket.id} style={{
@@ -2984,79 +3007,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       </div>
                     </div>
                   )}
-                  {/* ── AI Score Panel ── */}
-                  {(selectedTask as any).scoreData && (() => {
-                    const sd = (selectedTask as any).scoreData;
-                    const gradeColor: Record<string, string> = { S: "#00d4ff", A: "#00ff88", B: "#b06af3", C: "#f5c518", D: "#ff6b35", F: "#ff3366" };
-                    const gc = gradeColor[sd.grade] || G.gold;
-                    return (
-                      <div style={{ marginBottom: 14, border: `1px solid ${gc}33`, borderRadius: 12, overflow: "hidden" }}>
-                        {/* Header */}
-                        <div style={{ padding: "10px 14px", background: `${gc}0d`, borderBottom: `1px solid ${gc}22`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <div style={{ fontSize: 10, fontWeight: 800, color: gc, textTransform: "uppercase" as const, letterSpacing: "0.8px" }}>
-                            ◈ SmartCue AI Score
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 18, fontWeight: 900, color: gc, fontFamily: "'Space Grotesk',sans-serif" }}>{sd.percentScore}/100</span>
-                            <span style={{ fontSize: 14, fontWeight: 900, color: gc, background: `${gc}18`, border: `1px solid ${gc}44`, padding: "2px 8px", borderRadius: 6 }}>{sd.grade}</span>
-                            <span style={{ fontSize: 9, fontWeight: 700, color: sd.grammarClean ? "#00ff88" : "#ff3366", background: sd.grammarClean ? "rgba(0,255,136,0.08)" : "rgba(255,51,102,0.08)", border: `1px solid ${sd.grammarClean ? "rgba(0,255,136,0.25)" : "rgba(255,51,102,0.25)"}`, padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" as const }}>
-                              {sd.grammarClean ? "✓ Grammar" : "✗ Grammar"}
-                            </span>
-                          </div>
-                        </div>
-                        {/* Category bars */}
-                        <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column" as const, gap: 6 }}>
-                          {sd.verdict && <p style={{ fontSize: 11, color: G.textSecondary, marginBottom: 6, lineHeight: 1.5 }}>{sd.verdict}</p>}
-                          {(sd.categories || []).map((cat: any) => {
-                            const catColor: Record<string, string> = { A: "#00d4ff", B: "#00ff88", C: "#f5c518", D: "#b06af3", E: "#ff6b35" };
-                            const cc = catColor[cat.id] || G.gold;
-                            return (
-                              <div key={cat.id}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                                  <span style={{ fontSize: 9, fontWeight: 800, color: cc, width: 18 }}>{cat.id})</span>
-                                  <span style={{ flex: 1, fontSize: 10, color: G.textSecondary }}>{cat.name}</span>
-                                  <div style={{ width: 80, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
-                                    <div style={{ height: "100%", width: `${(cat.score / 20) * 100}%`, background: cc, borderRadius: 2 }} />
-                                  </div>
-                                  <span style={{ fontSize: 10, fontWeight: 800, color: cc, minWidth: 32, textAlign: "right" as const }}>{cat.score}/20</span>
-                                </div>
-                                {/* Subcriteria deductions */}
-                                {(cat.subcriteria || []).filter((s: any) => s.score < s.max).map((sub: any, si: number) => (
-                                  <div key={si} style={{ marginLeft: 26, marginBottom: 2, padding: "3px 8px", background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.1)", borderRadius: 4, display: "flex", gap: 6, alignItems: "flex-start" }}>
-                                    <span style={{ fontSize: 8, color: "#ff6b35", flexShrink: 0 }}>↳</span>
-                                    <span style={{ fontSize: 9, color: G.textMuted, lineHeight: 1.4 }}><strong style={{ color: "#ff6b35" }}>{sub.label}</strong> {sub.score}/{sub.max} — {sub.note}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })}
-                          {/* Strengths */}
-                          {sd.strengths?.length > 0 && (
-                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(0,255,136,0.04)", border: "1px solid rgba(0,255,136,0.14)", borderRadius: 8 }}>
-                              <div style={{ fontSize: 9, fontWeight: 800, color: "#00ff88", textTransform: "uppercase" as const, marginBottom: 4 }}>✓ Strengths</div>
-                              {sd.strengths.map((s: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>✓ {s}</div>)}
-                            </div>
-                          )}
-                          {/* Improvements */}
-                          {sd.improvements?.length > 0 && (
-                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.14)", borderRadius: 8 }}>
-                              <div style={{ fontSize: 9, fontWeight: 800, color: "#00d4ff", textTransform: "uppercase" as const, marginBottom: 4 }}>→ Improvements</div>
-                              {sd.improvements.map((s: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>→ {s}</div>)}
-                            </div>
-                          )}
-                          {/* Grammar errors */}
-                          {sd.grammarErrors?.length > 0 && (
-                            <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.14)", borderRadius: 8 }}>
-                              <div style={{ fontSize: 9, fontWeight: 800, color: "#ff3366", textTransform: "uppercase" as const, marginBottom: 4 }}>✗ Grammar Issues</div>
-                              {sd.grammarErrors.map((e: string, i: number) => <div key={i} style={{ fontSize: 10, color: G.textSecondary, marginBottom: 2 }}>✗ {e}</div>)}
-                            </div>
-                          )}
-                          <div style={{ marginTop: 6, fontSize: 9, color: G.textMuted }}>Scored: {sd.submittedAt ? new Date(sd.submittedAt).toLocaleString() : "—"}</div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
                   <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
@@ -3502,16 +3452,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
               </span>
               {task.completionNotes && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan }}><FileText size={10} />Has notes</span>}
-              {(task as any).scoreData && (() => {
-                const sd = (task as any).scoreData;
-                const gc: Record<string, string> = { S: "#00d4ff", A: "#00ff88", B: "#b06af3", C: "#f5c518", D: "#ff6b35", F: "#ff3366" };
-                const c = gc[sd.grade] || G.gold;
-                return (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 4, background: `${c}14`, border: `1px solid ${c}33`, fontSize: 9, fontWeight: 800, color: c }}>
-                    ◈ {sd.percentScore}/100 · {sd.grade}
-                  </span>
-                );
-              })()}
               {task.history && task.history.length > 0 && (
                 <button onClick={onViewHistory} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: 0 }}>
                   <ListTree size={10} />History ({task.history.length})
