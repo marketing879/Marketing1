@@ -847,6 +847,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
     };
 
+    // ── One-time clear of stale localStorage history (now using MongoDB as source of truth) ──
+    useEffect(() => {
+      try {
+        Object.keys(localStorage).forEach(k => {
+          if (k.startsWith("smartcue_task_history_")) localStorage.removeItem(k);
+        });
+      } catch {}
+    }, []); // runs once on mount
+
     // ── Live polling: fetch tasks directly from backend every 15s ───────────
     const [liveTasks, setLiveTasks] = React.useState<Task[] | null>(null);
     const tasksLoaded = liveTasks !== null; // true once first poll returns
@@ -1366,7 +1375,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         id: `hist_${Date.now()}`, timestamp: new Date().toISOString(),
         action: "completed", by: user?.email ?? "", notes: submitNotes,
       };
-      appendHistoryEntry(submitTask.id, histEntry, user?.email); // persist independently
       // Single merged update — prevents submitTaskCompletion from overwriting history
       const updatedTask: Task = {
         ...submitTask,
@@ -1432,7 +1440,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const handleForwardTask = (): void => {
       if (!forwardTask || !forwardTo) { toast("⚠ Please select a team member."); return; }
       const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "forwarded", by: user?.email ?? "", to: forwardTo, notes: forwardNotes };
-      appendHistoryEntry(forwardTask.id, h, user?.email); // persist independently
       const updatedTask = { ...forwardTask, assignedTo: forwardTo, assignedBy: user?.email, forwardedFrom: forwardTask.assignedTo, history: [...(forwardTask.history ?? []), h] };
       updateTask(forwardTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask as Task);
@@ -1443,7 +1450,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   const handleApprove = (): void => {
     if (!selectedTask) return;
     const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: reviewComments };
-    appendHistoryEntry(selectedTask.id, h, user?.email); // persist independently
     // Merge history + approvalStatus in ONE update so adminReviewTask can't overwrite history
     const updatedTask: Task = {
       ...selectedTask,
@@ -1484,7 +1490,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by: user?.email ?? "",
         notes: reviewComments,
       };
-      appendHistoryEntry(selectedTask.id, h, user?.email); // persist independently
       // Single update with full state — no second context call that could overwrite history
       const updatedTask: Task = {
         ...selectedTask,
@@ -1519,7 +1524,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         to:        reassignTo,
         notes:     reassignReason,
       };
-      appendHistoryEntry(reassignTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...reassignTask,
@@ -1604,7 +1608,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by:        user?.email ?? "",
         notes:     tatExtResponse,
       };
-      appendHistoryEntry(tatExtTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...tatExtTask,
@@ -1650,7 +1653,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         by:        user?.email ?? "",
         notes:     tatExtResponse,
       };
-      appendHistoryEntry(tatExtTask.id, histEntry, user?.email);
 
       const updatedTask: Task = {
         ...tatExtTask,
@@ -1702,8 +1704,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         { id: crypto.randomUUID(), timestamp: now, action: "created",  by: user?.email ?? "", to: newTask.assignedTo },
         { id: crypto.randomUUID(), timestamp: now, action: "assigned", by: user?.email ?? "", to: newTask.assignedTo },
       ];
-      // Persist history independently of UserContext
-      history.forEach(e => appendHistoryEntry(taskId, e, user?.email));
+      // History is stored in the task object itself (saved to MongoDB via addTask)
+      // No separate localStorage write needed
 
       // ── Close modal, show overlay, speak "please wait" ──
       setShowCreateModal(false);
@@ -2845,13 +2847,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
                         // Append to global history log so it's visible in Master History
                         const linkedTaskId = selectedTicket.taskId;
-                        appendHistoryEntry(linkedTaskId, {
-                          id:        crypto.randomUUID(),
-                          timestamp: new Date().toISOString(),
-                          action:    `assistance_ticket_approved · Ticket ${selectedTicket.id} · "${ticketReviewNote.trim().slice(0, 80)}${ticketReviewNote.trim().length > 80 ? "…" : ""}"`,
-                          by:        user?.email ?? "Admin",
-                          notes:     ticketReviewNote.trim(),
-                        });
                         speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
@@ -2917,25 +2912,22 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           {showGlobalHistory && (
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowGlobalHistory(false); }}>
               <div className="g-modal g-modal-wide" style={{ maxHeight: "85vh" }}>
-                <ModalHeader title="Master History Log" sub="All task activity across the system — chronological" onClose={() => setShowGlobalHistory(false)} accent={G.purple} />
+                <ModalHeader title="Master History Log" sub="Your task activity — tasks you assigned or were assigned to you" onClose={() => setShowGlobalHistory(false)} accent={G.purple} />
                 <div style={{ padding: "24px 28px 28px" }}>
                   <HistoryTimeline
                     history={(() => {
-                      // Merge persisted store entries with in-memory task history
-                      // so history survives UserContext resets
-                      const storeEntries = getAllHistoryEntries(user?.email);
-                      const taskTitleMap = Object.fromEntries(allTasksCombined.map(t => [t.id, t.title]));
+                      const myEmail = (user?.email ?? "").toLowerCase();
                       const merged = new Map<string, HistoryEntry & { taskTitle?: string; taskId: string }>();
-                      // First add in-memory entries
-                      allTasksCombined.flatMap(t =>
-                        (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id }))
-                      ).forEach(e => merged.set(e.id, e));
-                      // Then overlay with persisted entries (these survive context resets)
-                      storeEntries.forEach(e => {
-                        if (!merged.has(e.id)) {
-                          merged.set(e.id, { ...e, taskTitle: taskTitleMap[e.taskId] ?? e.taskId });
-                        }
-                      });
+                      // Only include history from tasks this admin assigned OR was assigned to them
+                      allTasksCombined
+                        .filter(t =>
+                          (t.assignedBy ?? "").toLowerCase() === myEmail ||
+                          (t.assignedTo ?? "").toLowerCase() === myEmail
+                        )
+                        .flatMap(t =>
+                          (t.history ?? []).map(h => ({ ...h, taskTitle: t.title, taskId: t.id }))
+                        )
+                        .forEach(e => merged.set(e.id, e));
                       return Array.from(merged.values())
                         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
                     })()}
