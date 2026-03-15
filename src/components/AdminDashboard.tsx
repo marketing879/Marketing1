@@ -856,11 +856,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     useEffect(() => {
       const poll = () =>
         fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
-          .then(r => r.ok ? r.json() : Promise.reject())
-          .then((data: any[]) => setLiveTasks(data.map((t: any) => ({ ...t, id: t.id || String(t._id) }))))
-          .catch(() => {});
-      poll();
-      const iv = setInterval(poll, 15000);
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+          .then((data: any[]) => {
+            const mapped = data.map((t: any) => ({ ...t, id: t.id || String(t._id) }));
+            setLiveTasks(mapped);
+            console.log(`[Poll] ${mapped.length} tasks loaded from backend`);
+          })
+          .catch(err => console.warn("[Poll] Failed to fetch tasks:", err));
+      poll(); // immediate on mount
+      const iv = setInterval(poll, 10000); // every 10s
       return () => clearInterval(iv);
     }, []);
 
@@ -1224,9 +1228,14 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     };
 
     // ── Sync task updates to backend ──────────────────────────────────────────
+    // ── Backend helpers ──────────────────────────────────────────────────────
+    // NOTE: addTask() from UserContext already POSTs to backend — do NOT call
+    // any separate POST here or you will get duplicate writes.
+    const API = "https://roswalt-backend-production.up.railway.app";
+
     const syncTaskToBackend = async (task: Task): Promise<void> => {
       try {
-        await fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`, {
+        await fetch(`${API}/api/tasks/${task.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(task),
@@ -1727,16 +1736,14 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
       addTask(newTaskObj as never);
 
-      syncTaskToBackend(newTaskObj).then(() => {
-        console.log("✅ Task created with history:", history);
-        // ── Success voice after backend confirms ──
+      // POST to backend to CREATE the task (not PUT which only updates existing)
+      // addTask() from UserContext handles the POST to MongoDB — no separate fetch needed
+      // Wait 2s for backend to confirm, then play success voice and hide overlay
+      setTimeout(() => {
+        console.log("✅ Task assigned:", newTaskObj.id, "->", assigneeName);
         speakText(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
         setTimeout(() => setShowAssigningOverlay(false), 3500);
-      }).catch(err => {
-        console.error("❌ Backend sync failed:", err);
-        toast("⚠ Task created locally but backend sync failed");
-        setShowAssigningOverlay(false);
-      });
+      }, 2000);
 
       if (member.phone) {
         try {

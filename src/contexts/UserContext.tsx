@@ -268,7 +268,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body:    JSON.stringify(payload),
     })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then((saved: any) => setTasks((prev) => [...prev, normalizeTask(saved)]))
+      .then((saved: any) => {
+        console.log("[UserContext] addTask saved to DB:", saved.id || saved._id);
+        // Re-fetch all tasks so every dashboard is in sync
+        fetch(`${API_URL}/api/tasks`)
+          .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+          .then((data: any[]) => setTasks(data.map(normalizeTask)))
+          .catch(() => setTasks((prev) => [...prev, normalizeTask(saved)]));
+      })
       .catch((err) => console.error("[UserContext] addTask failed:", err));
   };
 
@@ -281,9 +288,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body:    JSON.stringify(updates),
     })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then((saved: any) =>
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? normalizeTask(saved) : t)))
-      )
+      .then((saved: any) => {
+        console.log("[UserContext] updateTask saved:", taskId, Object.keys(updates));
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? normalizeTask(saved) : t)));
+      })
       .catch((err) => console.error("[UserContext] updateTask failed:", err));
   };
 
