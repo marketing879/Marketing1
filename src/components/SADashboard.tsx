@@ -13,7 +13,7 @@ import {
   Home, BarChart2, AlertTriangle, TrendingUp, Video, Image as ImageIcon,
 } from "lucide-react";
 
-type Tab = "home" | "overview" | "approvals" | "tasks" | "users" | "addUser" | "projects" | "ai";
+type Tab = "home" | "overview" | "approvals" | "users" | "addUser" | "projects" | "ai";
 
 const DEFAULT_PASSWORDS: Record<string, string> = {
   "pushkaraj.gore@roswalt.com": "100001",
@@ -111,11 +111,11 @@ const SAFlashPanel: React.FC<SAFlashPanelProps> = ({
 
   return (
     <div
-      style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(20px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, opacity: visible?1:0, transition:"opacity 0.32s ease" }}
+      style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(0,0,0,0.88)", backdropFilter:"blur(20px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, opacity: visible?1:0, transition:"opacity 0.32s ease" }}
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
     >
       <div style={{
-        background:"transparent", border:`1px solid ${G.gold}44`, borderRadius:24,
+        background:"rgba(4,6,18,0.99)", border:`1px solid ${G.gold}44`, borderRadius:24,
         maxWidth:700, width:"100%", maxHeight:"90vh", overflowY:"auto",
         boxShadow:`0 40px 120px rgba(0,0,0,0.97), 0 0 100px ${G.gold}0d, inset 0 1px 0 rgba(212,175,55,0.08)`,
         transform: visible ? "translateY(0) scale(1)" : "translateY(32px) scale(0.95)",
@@ -125,7 +125,7 @@ const SAFlashPanel: React.FC<SAFlashPanelProps> = ({
         <div style={{ position:"absolute", top:-60, left:"50%", transform:"translateX(-50%)", width:300, height:120, background:`radial-gradient(ellipse, ${G.gold}18, transparent 70%)`, pointerEvents:"none", borderRadius:"50%" }} />
 
         {/* Header */}
-        <div style={{ padding:"28px 32px 22px", borderBottom:`1px solid rgba(212,175,55,0.08)`, background:"transparent", borderRadius:"24px 24px 0 0", position:"relative" }}>
+        <div style={{ padding:"28px 32px 22px", borderBottom:`1px solid rgba(212,175,55,0.08)`, background:`linear-gradient(135deg,${G.gold}07,${G.purple}06)`, borderRadius:"24px 24px 0 0", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16 }}>
             <div>
               <div style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"3px 12px", borderRadius:6, background:`${G.gold}18`, border:`1px solid ${G.gold}44`, fontSize:9, fontWeight:800, color:G.gold, textTransform:"uppercase", letterSpacing:"1.4px", marginBottom:14 }}>
@@ -276,101 +276,7 @@ const SADashboard: React.FC = () => {
   const greetedRef   = useRef(false);
   const flashVoiceRef = useRef(false);
 
-  // Task detail modal
-  const [showTaskDetail, setShowTaskDetail] = useState(false);
-  const [detailTask, setDetailTask] = useState<Task | null>(null);
-
-  // All-tasks tab filters
-  const [taskSearch, setTaskSearch] = useState("");
-  const [taskFilter, setTaskFilter] = useState("all");
-
-  // Flash alert messages (timed banners)
-  const [flashAlerts, setFlashAlerts] = useState<{id:number;msg:string;color:string}[]>([]);
-  const flashIdRef = useRef(0);
-
-  // Hourly voice interval ref
-  const hourlyVoiceRef = useRef<ReturnType<typeof setInterval>|null>(null);
-
-  // Auto-refresh ref (2 hours)
-  const autoRefreshRef = useRef<ReturnType<typeof setTimeout>|null>(null);
-
   useEffect(() => { setTimeout(() => setMounted(true), 50); }, []);
-
-  // ── Flash alert helper ────────────────────────────────────────────────────
-  const pushFlashAlert = (msg: string, color = G.amber) => {
-    const id = ++flashIdRef.current;
-    setFlashAlerts(prev => [...prev.slice(-4), { id, msg, color }]);
-    setTimeout(() => setFlashAlerts(prev => prev.filter(a => a.id !== id)), 7000);
-  };
-
-  // ── Hourly voice briefing ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    const runHourlyBriefing = async () => {
-      const allT     = (tasks as Task[]);
-      const pending  = allT.filter(t => t.approvalStatus === "admin-approved").length;
-      const tat      = allT.filter(t => (t as any).tatBreached).length;
-      const frozen   = allT.filter(t => (t as any).isFrozen).length;
-      const tickets  = (assistanceTickets ?? []).length;
-      const projCount = (projects as any[]).filter((p:any) => !(p as any).status || (p as any).status === "active").length;
-
-      // Who has the most TAT breaches
-      const tatMap: Record<string,number> = {};
-      allT.filter(t=>(t as any).tatBreached).forEach(t => { tatMap[t.assignedTo] = (tatMap[t.assignedTo]||0)+1; });
-      const topBreacher = Object.entries(tatMap).sort((a,b)=>b[1]-a[1])[0];
-      const topName = topBreacher ? `${teamMembers.find((m:any)=>m.email===topBreacher[0])?.name||topBreacher[0]} with ${topBreacher[1]} breach${topBreacher[1]>1?"es":""}` : "none";
-
-      const script = [
-        `Hourly system update.`,
-        `Total tasks: ${allT.length}.`,
-        pending > 0 ? `${pending} task${pending>1?"s":""} pending your final approval.` : `No pending approvals.`,
-        tat > 0 ? `${tat} TAT breach${tat>1?"es":""} detected. Top breacher: ${topName}.` : `No TAT breaches.`,
-        frozen > 0 ? `${frozen} task${frozen>1?"s are":" is"} frozen.` : "",
-        tickets > 0 ? `${tickets} assistance ticket${tickets>1?"s":""} open.` : "",
-        `Active projects: ${projCount}.`,
-        `Platform status: ${pending===0&&tat===0&&frozen===0 ? "all clear" : "attention required"}.`,
-      ].filter(Boolean).join(" ");
-
-      await speakText(script);
-      pushFlashAlert(`⏰ Hourly update: ${pending} pending · ${tat} TAT breach${tat!==1?"es":""} · ${tickets} ticket${tickets!==1?"s":""}`, G.cyan);
-    };
-
-    // Run every hour
-    hourlyVoiceRef.current = setInterval(runHourlyBriefing, 60 * 60 * 1000);
-    return () => { if (hourlyVoiceRef.current) clearInterval(hourlyVoiceRef.current); };
-  }, [user, tasks, assistanceTickets, projects, teamMembers]);
-
-  // ── Auto-refresh every 2 hours ────────────────────────────────────────────
-  useEffect(() => {
-    autoRefreshRef.current = setTimeout(() => {
-      pushFlashAlert("🔄 Auto-refreshing dashboard...", G.purple);
-      setTimeout(() => window.location.reload(), 1500);
-    }, 2 * 60 * 60 * 1000);
-    return () => { if (autoRefreshRef.current) clearTimeout(autoRefreshRef.current); };
-  }, []);
-
-  // ── Watch for new tasks and push flash alerts ─────────────────────────────
-  const prevTaskCountRef = useRef<number>((tasks as Task[]).length);
-  useEffect(() => {
-    const curr = (tasks as Task[]).length;
-    if (curr > prevTaskCountRef.current) {
-      const diff = curr - prevTaskCountRef.current;
-      pushFlashAlert(`✨ ${diff} new task${diff>1?"s":""} added to the platform`, G.success);
-    }
-    prevTaskCountRef.current = curr;
-  }, [(tasks as Task[]).length]);
-
-  // ── Watch for new TAT breaches ────────────────────────────────────────────
-  const prevTatRef = useRef<number>(0);
-  useEffect(() => {
-    const curr = (tasks as Task[]).filter(t=>(t as any).tatBreached).length;
-    if (curr > prevTatRef.current && prevTatRef.current > 0) {
-      const newBreaches = curr - prevTatRef.current;
-      pushFlashAlert(`⚠ ${newBreaches} new TAT breach${newBreaches>1?"es":""} detected!`, G.danger);
-      speakText(`Alert. ${newBreaches} new turnaround time breach${newBreaches>1?"es have":" has"} been detected.`);
-    }
-    prevTatRef.current = curr;
-  }, [(tasks as Task[]).filter(t=>(t as any).tatBreached).length]);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.load();
@@ -507,7 +413,7 @@ const SADashboard: React.FC = () => {
         if (photo.startsWith("data:")) { const m = photo.match(/data:([^;]+);base64,(.+)/); if (m) { mime = m[1]; base64 = m[2]; } }
         contentArray.push({ type:"image", source:{ type:"base64", media_type:mime, data:base64 } });
       }
-      const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
+      const res = await fetch("http://localhost:5000/api/review-attachments", {
         method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ taskId: selectedTask?.id, contentArray }),
       });
@@ -539,8 +445,7 @@ const SADashboard: React.FC = () => {
     showSuccess("✓ Background video updated");
   };
 
-  const openLightbox     = (photos: string[], index = 0) => { setLightboxPhotos(photos); setLightboxIndex(index); setShowLightbox(true); };
-  const openTaskDetail   = (task: Task) => { setDetailTask(task); setShowTaskDetail(true); };
+  const openLightbox   = (photos: string[], index = 0) => { setLightboxPhotos(photos); setLightboxIndex(index); setShowLightbox(true); };
   const openReviewModal = (task: Task) => { setSelectedTask(task); setReviewComments(""); setAiReviewResults(null); setReviewPanelOpen(false); setShowReviewModal(true); };
   const handleLogout   = () => { logout(); navigate("/login"); };
   const showSuccess    = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(""), 3500); };
@@ -573,7 +478,6 @@ const SADashboard: React.FC = () => {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id:"home",      label:"Home",      icon:<Home size={17} /> },
-    { id:"tasks",     label:"All Tasks",  icon:<FileText size={17} />,   count: tasks.length },
     { id:"overview",  label:"Overview",  icon:<BarChart2 size={17} /> },
     { id:"approvals", label:"Approvals", icon:<CheckCircle size={17} />, count: pendingApprovals.length },
     { id:"projects",  label:"Projects",  icon:<Briefcase size={17} />,  count: projects.length },
@@ -611,7 +515,7 @@ const SADashboard: React.FC = () => {
           --sa-cyan: #00e5ff; --sa-purple: #a855f7; --sa-success: #10b981;
           --sa-danger: #ef4444; --sa-amber: #f59e0b; --sa-magenta: #ec4899;
           --sa-text: #f5ead8; --sa-text-s: #d4c5b0; --sa-text-m: #8b7355;
-          --sa-border: rgba(212,175,55,0.15); --sa-bg: transparent;
+          --sa-border: rgba(212,175,55,0.15); --sa-bg: #040612;
         }
 
         @keyframes sa-fadeUp   { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:translateY(0); } }
@@ -630,22 +534,28 @@ const SADashboard: React.FC = () => {
         .sa-spin     { animation: sa-spin 1s linear infinite; }
         .sa-pulse-anim { animation: sa-pulse 1.5s ease-in-out infinite; }
 
-        body { background: transparent; color: var(--sa-text); font-family:'DM Sans',sans-serif; }
+        body { background: var(--sa-bg); color: var(--sa-text); font-family:'DM Sans',sans-serif; }
 
         /* Video background wrapper */
         .sa-video-bg {
           position: fixed; inset: 0; z-index: 0; overflow: hidden;
         }
         .sa-video-bg video {
-          width:100%; height:100%; object-fit:cover; opacity:1;
+          width:100%; height:100%; object-fit:cover; opacity:0.28;
         }
         .sa-video-overlay {
           position: absolute; inset: 0;
-          background: transparent;
+          background: linear-gradient(
+            135deg,
+            rgba(4,6,18,0.82) 0%,
+            rgba(10,8,5,0.75) 40%,
+            rgba(26,20,10,0.68) 100%
+          );
         }
         .sa-video-overlay::after {
           content:''; position:absolute; inset:0;
-          background: transparent;
+          background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,175,55,0.06) 0%, transparent 65%),
+                      radial-gradient(ellipse 60% 80% at 90% 90%, rgba(0,229,255,0.04) 0%, transparent 60%);
         }
 
         /* App shell */
@@ -657,8 +567,7 @@ const SADashboard: React.FC = () => {
         /* SIDEBAR */
         .sa-sidebar {
           width: 72px; min-height:100vh;
-          background: rgba(4,4,16,0.5);
-          backdrop-filter: blur(18px);
+          background: linear-gradient(180deg, rgba(8,6,20,0.98) 0%, rgba(4,4,12,0.99) 100%);
           border-right: 1px solid rgba(212,175,55,0.12);
           display: flex; flex-direction:column; align-items:center;
           padding: 20px 0; gap:8px; position:sticky; top:0; height:100vh;
@@ -697,7 +606,7 @@ const SADashboard: React.FC = () => {
         }
         .sa-nav-tooltip {
           position:absolute; left:58px; top:50%; transform:translateY(-50%);
-          background:rgba(0,0,0,0.7); border:1px solid rgba(212,175,55,0.2);
+          background:rgba(4,6,18,0.96); border:1px solid rgba(212,175,55,0.2);
           color:var(--sa-text); font-size:11px; font-weight:600;
           padding:5px 10px; border-radius:7px; white-space:nowrap;
           pointer-events:none; opacity:0; transition:opacity 0.18s;
@@ -714,7 +623,7 @@ const SADashboard: React.FC = () => {
         /* TOP BAR */
         .sa-topbar {
           position:sticky; top:0; z-index:15;
-          background:rgba(4,4,16,0.55); backdrop-filter:blur(18px);
+          background:rgba(4,6,18,0.92); backdrop-filter:blur(20px);
           border-bottom:1px solid rgba(212,175,55,0.1);
           padding:0 32px; height:60px;
           display:flex; align-items:center; justify-content:space-between; gap:16px;
@@ -766,12 +675,10 @@ const SADashboard: React.FC = () => {
           display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:18px; margin-bottom:36px;
         }
         .sa-stat-card {
-          background: linear-gradient(145deg, rgba(10,8,20,0.72) 0%, rgba(20,14,8,0.68) 100%);
-          border:1px solid rgba(212,175,55,0.16); border-radius:16px;
+          background:linear-gradient(145deg, rgba(4,6,18,0.85) 0%, rgba(16,12,8,0.9) 100%);
+          border:1px solid rgba(212,175,55,0.12); border-radius:16px;
           padding:22px 20px; cursor:pointer; transition:all 0.28s ease;
           position:relative; overflow:hidden;
-          backdrop-filter: blur(12px);
-          box-shadow: 0 4px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
         }
         .sa-stat-card::before {
           content:''; position:absolute; top:0; left:0; right:0; height:1px;
@@ -779,7 +686,6 @@ const SADashboard: React.FC = () => {
         }
         .sa-stat-card:hover {
           transform:translateY(-5px) scale(1.01);
-          background: linear-gradient(145deg, rgba(16,12,28,0.82) 0%, rgba(26,18,10,0.78) 100%);
           box-shadow:0 20px 60px rgba(0,0,0,0.5);
         }
         .sa-stat-card.urgent { animation:sa-glow 2.4s ease-in-out infinite; }
@@ -806,13 +712,11 @@ const SADashboard: React.FC = () => {
 
         /* CARDS */
         .sa-card {
-          background: linear-gradient(145deg, rgba(8,6,22,0.76) 0%, rgba(18,12,6,0.72) 100%);
-          border:1px solid rgba(212,175,55,0.14); border-radius:16px;
+          background:linear-gradient(145deg,rgba(6,8,22,0.9),rgba(14,10,6,0.92));
+          border:1px solid rgba(212,175,55,0.12); border-radius:16px;
           padding:24px; transition:all 0.25s; position:relative; overflow:hidden;
-          backdrop-filter: blur(14px);
-          box-shadow: 0 4px 28px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04);
         }
-        .sa-card:hover { border-color:rgba(212,175,55,0.28); box-shadow:0 12px 48px rgba(0,0,0,0.5); background: linear-gradient(145deg, rgba(12,8,28,0.84) 0%, rgba(22,16,8,0.8) 100%); }
+        .sa-card:hover { border-color:rgba(212,175,55,0.25); box-shadow:0 12px 48px rgba(0,0,0,0.4); }
         .sa-card::before {
           content:''; position:absolute; top:0; left:0; right:0; height:1px;
           background:linear-gradient(90deg,transparent,rgba(212,175,55,0.2),transparent);
@@ -820,9 +724,8 @@ const SADashboard: React.FC = () => {
 
         /* TASK CARDS */
         .sa-task-card {
-          background: linear-gradient(145deg, rgba(8,6,20,0.74) 0%, rgba(18,12,6,0.7) 100%);
-          backdrop-filter: blur(12px);
-          border:1px solid rgba(212,175,55,0.12); border-radius:14px;
+          background:linear-gradient(145deg,rgba(6,8,22,0.88),rgba(14,10,6,0.9));
+          border:1px solid rgba(212,175,55,0.1); border-radius:14px;
           padding:20px 24px; margin-bottom:12px; transition:all 0.22s;
           position:relative; overflow:hidden;
         }
@@ -874,8 +777,7 @@ const SADashboard: React.FC = () => {
 
         /* TABLE */
         .sa-table-wrap {
-          background: linear-gradient(145deg, rgba(8,6,20,0.72) 0%, rgba(18,12,6,0.68) 100%);
-          backdrop-filter: blur(12px);
+          background:linear-gradient(145deg,rgba(4,6,18,0.9),rgba(14,10,6,0.92));
           border:1px solid rgba(212,175,55,0.12); border-radius:16px; overflow:hidden;
         }
         .sa-table { width:100%; border-collapse:collapse; }
@@ -894,9 +796,8 @@ const SADashboard: React.FC = () => {
 
         /* PROJECT CARDS */
         .sa-project-card {
-          background: linear-gradient(145deg, rgba(8,6,20,0.72) 0%, rgba(18,12,6,0.68) 100%);
-          backdrop-filter: blur(12px);
-          border:1px solid rgba(212,175,55,0.12); border-radius:16px; padding:22px;
+          background:linear-gradient(145deg,rgba(4,6,18,0.88),rgba(14,10,6,0.9));
+          border:1px solid rgba(212,175,55,0.1); border-radius:16px; padding:22px;
           transition:all 0.28s; position:relative; overflow:hidden;
         }
         .sa-project-card:hover { border-color:rgba(212,175,55,0.3); transform:translateY(-4px); box-shadow:0 16px 50px rgba(0,0,0,0.5); }
@@ -905,7 +806,7 @@ const SADashboard: React.FC = () => {
         .sa-form-group { margin-bottom:20px; }
         .sa-form-label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--sa-text-m); margin-bottom:8px; }
         .sa-form-input, .sa-form-select, .sa-form-textarea {
-          width:100%; padding:11px 14px; background:rgba(8,6,20,0.6); border:1px solid rgba(212,175,55,0.18);
+          width:100%; padding:11px 14px; background:rgba(4,6,18,0.9); border:1px solid rgba(212,175,55,0.18);
           border-radius:10px; color:var(--sa-text); font-size:13px; font-family:'DM Sans',sans-serif;
           transition:all 0.2s; outline:none;
         }
@@ -920,7 +821,7 @@ const SADashboard: React.FC = () => {
         /* TOAST */
         .sa-toast {
           position:fixed; bottom:32px; right:32px; z-index:9999;
-          padding:14px 22px; background:rgba(8,6,20,0.95);
+          padding:14px 22px; background:linear-gradient(135deg,rgba(4,6,18,0.98),rgba(14,10,6,0.96));
           border:1px solid rgba(212,175,55,0.35); border-radius:12px;
           color:var(--sa-gold); font-size:13px; font-weight:600;
           box-shadow:0 12px 48px rgba(0,0,0,0.5), 0 0 30px rgba(212,175,55,0.15);
@@ -931,13 +832,12 @@ const SADashboard: React.FC = () => {
 
         /* OVERLAY / MODAL */
         .sa-overlay {
-          position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(16px);
+          position:fixed; inset:0; background:rgba(0,0,0,0.88); backdrop-filter:blur(16px);
           z-index:500; display:flex; align-items:center; justify-content:center; padding:20px;
           animation:sa-fadeIn 0.22s ease;
         }
         .sa-modal {
-          background: linear-gradient(160deg, rgba(6,4,18,0.96) 0%, rgba(14,10,6,0.96) 100%);
-          backdrop-filter: blur(20px);
+          background:linear-gradient(160deg,rgba(4,6,18,0.99),rgba(16,12,8,0.99));
           border:1px solid rgba(212,175,55,0.2); border-radius:18px;
           width:100%; max-width:660px; max-height:90vh; overflow-y:auto;
           animation:sa-scaleIn 0.3s ease;
@@ -946,7 +846,7 @@ const SADashboard: React.FC = () => {
         .sa-modal-header {
           padding:28px 28px 24px; border-bottom:1px solid rgba(212,175,55,0.12);
           display:flex; justify-content:space-between; align-items:flex-start;
-          background:transparent;
+          background:linear-gradient(135deg,rgba(212,175,55,0.06),transparent);
         }
         .sa-modal-title { font-size:20px; font-weight:700; color:var(--sa-text); font-family:'Oswald',sans-serif; letter-spacing:"0.3px"; }
         .sa-modal-sub { font-size:11px; color:var(--sa-text-m); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px; }
@@ -961,14 +861,14 @@ const SADashboard: React.FC = () => {
         /* EMPTY STATE */
         .sa-empty {
           text-align:center; padding:64px 20px;
-          background:transparent; border:1px dashed rgba(212,175,55,0.15);
+          background:rgba(4,6,18,0.7); border:1px dashed rgba(212,175,55,0.15);
           border-radius:16px;
         }
         .sa-empty-icon { font-size:48px; opacity:0.25; margin-bottom:16px; }
         .sa-empty-text { font-size:16px; color:var(--sa-text-m); }
 
         /* LIGHTBOX */
-        .sa-lightbox { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:600; display:flex; align-items:center; justify-content:center; padding:20px; }
+        .sa-lightbox { position:fixed; inset:0; background:rgba(0,0,0,0.97); z-index:600; display:flex; align-items:center; justify-content:center; padding:20px; }
         .sa-lightbox-img { max-width:90vw; max-height:85vh; object-fit:contain; border-radius:10px; }
         .sa-lightbox-close, .sa-lightbox-nav { position:absolute; background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.25); color:#fff; border-radius:9px; width:42px; height:42px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s; }
         .sa-lightbox-close:hover, .sa-lightbox-nav:hover { background:rgba(212,175,55,0.28); }
@@ -983,7 +883,7 @@ const SADashboard: React.FC = () => {
         }
         .sa-home-hero-bg {
           position:absolute; inset:0;
-          background:transparent;
+          background:linear-gradient(135deg,rgba(212,175,55,0.04) 0%, rgba(0,229,255,0.02) 50%, transparent 100%);
           pointer-events:none;
         }
         .sa-home-hero-bg::before {
@@ -1106,7 +1006,6 @@ const SADashboard: React.FC = () => {
                   {activeTab === "projects"  && <>Project <em>Portfolio</em></>}
                   {activeTab === "users"     && <>Team <em>Directory</em></>}
                   {activeTab === "addUser"   && <>Add <em>Member</em></>}
-                  {activeTab === "tasks"     && <>All <em>Tasks</em></>}
                   {activeTab === "ai"        && <>Claude <em>AI</em></>}
                 </div>
                 <div className="sa-topbar-sub">{today}</div>
@@ -1136,19 +1035,6 @@ const SADashboard: React.FC = () => {
           {/* TOAST */}
           <div className={`sa-toast ${successMsg ? "visible" : "hidden"}`}>{successMsg}</div>
 
-          {/* ── FLASH ALERTS BAR ──────────────────────────────────────── */}
-          {flashAlerts.length > 0 && (
-            <div style={{ position:"sticky", top:60, zIndex:14, display:"flex", flexDirection:"column", gap:4, padding:"8px 32px 0", pointerEvents:"none" }}>
-              {flashAlerts.map(a => (
-                <div key={a.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 16px", borderRadius:9, background:`linear-gradient(90deg,${a.color}18,${a.color}0a)`, border:`1px solid ${a.color}35`, backdropFilter:"blur(12px)", animation:"sa-fadeUp 0.3s ease both", pointerEvents:"auto" }}>
-                  <div style={{ width:7, height:7, borderRadius:"50%", background:a.color, boxShadow:`0 0 8px ${a.color}`, flexShrink:0 }} />
-                  <span style={{ fontSize:12, fontWeight:600, color:a.color }}>{a.msg}</span>
-                  <button onClick={() => setFlashAlerts(p => p.filter(x=>x.id!==a.id))} style={{ marginLeft:"auto", background:"none", border:"none", color:a.color, cursor:"pointer", opacity:0.6, fontSize:13, padding:"0 4px" }}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* ── HOME TAB ──────────────────────────────────────────────── */}
           {activeTab === "home" && (
             <div className="sa-fade-in">
@@ -1161,7 +1047,7 @@ const SADashboard: React.FC = () => {
                       <Shield size={9} /> Superadmin Dashboard
                     </div>
                     <div className="sa-welcome-text">
-                      {timeGreet}, <em>{(user as any)?.name || user?.email?.split("@")[0] || "Admin"}</em>
+                      {timeGreet}, <em>{(user as any)?.name?.split(" ")[0] || "Admin"}</em>
                     </div>
                     <div className="sa-welcome-date">Today is {today}</div>
                   </div>
@@ -1323,77 +1209,6 @@ const SADashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ── BAR CHARTS ─────────────────────────────────────── */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:32 }}>
-
-                  {/* Task Status Bar Chart */}
-                  <div style={{ background:"linear-gradient(145deg,rgba(8,6,22,0.76),rgba(18,12,6,0.72))", backdropFilter:"blur(14px)", border:"1px solid rgba(212,175,55,0.14)", borderRadius:16, padding:24, boxShadow:"0 4px 28px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.04)" }}>
-                    <div style={{ fontSize:10, fontWeight:800, textTransform:"uppercase" as const, letterSpacing:"1.2px", color:G.textMuted, marginBottom:4 }}>Task Status Breakdown</div>
-                    <div style={{ fontSize:13, color:G.textSecondary, marginBottom:20 }}>By approval stage</div>
-                    {(() => {
-                      const bars = [
-                        { label:"Assigned",   value: tasks.filter((t:Task)=>t.approvalStatus==="assigned").length,            color:G.textMuted },
-                        { label:"In Review",  value: inReview.length,                                                          color:G.cyan },
-                        { label:"Adm Apprvd", value: pendingApprovals.length,                                                  color:G.amber },
-                        { label:"Approved",   value: fullyApproved.length,                                                     color:G.success },
-                        { label:"Rejected",   value: tasks.filter((t:Task)=>t.approvalStatus==="rejected").length,            color:G.danger },
-                      ];
-                      const max = Math.max(...bars.map(b=>b.value), 1);
-                      const chartH = 120;
-                      return (
-                        <div>
-                          {/* Bars */}
-                          <div style={{ display:"flex", alignItems:"flex-end", gap:10, height:chartH, marginBottom:10 }}>
-                            {bars.map((b,i) => (
-                              <div key={i} style={{ flex:1, display:"flex", flexDirection:"column" as const, alignItems:"center", gap:4, height:"100%", justifyContent:"flex-end" }}>
-                                <span style={{ fontSize:11, fontWeight:700, color:b.color, fontFamily:"'Oswald',sans-serif" }}>{b.value}</span>
-                                <div style={{ width:"100%", borderRadius:"4px 4px 0 0", background:`linear-gradient(180deg,${b.color},${b.color}66)`, height:`${Math.max((b.value/max)*100,4)}%`, transition:"height 0.6s ease", boxShadow:`0 0 12px ${b.color}44`, minHeight:4 }} />
-                              </div>
-                            ))}
-                          </div>
-                          {/* X labels */}
-                          <div style={{ display:"flex", gap:10 }}>
-                            {bars.map((b,i) => (
-                              <div key={i} style={{ flex:1, textAlign:"center" as const, fontSize:9, color:G.textMuted, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:"0.3px", lineHeight:1.3 }}>{b.label}</div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Team & Tickets Horizontal Bar Chart */}
-                  <div style={{ background:"linear-gradient(145deg,rgba(8,6,22,0.76),rgba(18,12,6,0.72))", backdropFilter:"blur(14px)", border:"1px solid rgba(212,175,55,0.14)", borderRadius:16, padding:24, boxShadow:"0 4px 28px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.04)" }}>
-                    <div style={{ fontSize:10, fontWeight:800, textTransform:"uppercase" as const, letterSpacing:"1.2px", color:G.textMuted, marginBottom:4 }}>Platform Metrics</div>
-                    <div style={{ fontSize:13, color:G.textSecondary, marginBottom:20 }}>Horizontal view</div>
-                    {(() => {
-                      const bars = [
-                        { label:"Total Tasks",      value: tasks.length,                                                                color:G.cyan },
-                        { label:"Pending SA",       value: pendingApprovals.length,                                                     color:G.amber },
-                        { label:"TAT Breached",     value: tatBreached.length,                                                          color:G.danger },
-                        { label:"Frozen",           value: frozenTasks.length,                                                          color:"#b06af3" },
-                        { label:"Assist Tickets",   value: allAssistTickets.length,                                                     color:G.magenta },
-                        { label:"Team Members",     value: teamMembers.length,                                                          color:G.gold },
-                      ];
-                      const max = Math.max(...bars.map(b=>b.value), 1);
-                      return (
-                        <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
-                          {bars.map((b,i) => (
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
-                              <div style={{ width:88, fontSize:10, color:G.textMuted, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:"0.3px", flexShrink:0, lineHeight:1.3 }}>{b.label}</div>
-                              <div style={{ flex:1, height:14, background:"rgba(255,255,255,0.04)", borderRadius:7, overflow:"hidden" }}>
-                                <div style={{ height:"100%", width:`${Math.max((b.value/max)*100,2)}%`, background:`linear-gradient(90deg,${b.color},${b.color}88)`, borderRadius:7, transition:"width 0.7s ease", boxShadow:`0 0 8px ${b.color}44` }} />
-                              </div>
-                              <div style={{ width:26, textAlign:"right" as const, fontSize:12, fontWeight:700, color:b.color, fontFamily:"'Oswald',sans-serif", flexShrink:0 }}>{b.value}</div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                </div>
-
                 {/* RECENT PENDING — quick view */}
                 {pendingApprovals.length > 0 && (
                   <>
@@ -1449,447 +1264,69 @@ const SADashboard: React.FC = () => {
           )}
 
           {/* ── OVERVIEW TAB ──────────────────────────────────────────────── */}
-
-          {/* ── ALL TASKS TAB ─────────────────────────────────────────────── */}
-          {activeTab === "tasks" && (() => {
-            const statusColors: Record<string,string> = {
-              "assigned": G.textMuted, "in-review": G.cyan, "admin-approved": G.amber,
-              "superadmin-approved": G.success, "rejected": G.danger,
-            };
-            const filtered = (tasks as Task[]).filter((t: Task) => {
-              const matchSearch = !taskSearch || t.title.toLowerCase().includes(taskSearch.toLowerCase()) ||
-                t.assignedTo.toLowerCase().includes(taskSearch.toLowerCase());
-              const matchFilter = taskFilter === "all" ||
-                (taskFilter === "pending" && t.approvalStatus !== "superadmin-approved") ||
-                (taskFilter === "breached" && (t as any).tatBreached) ||
-                (taskFilter === "frozen" && (t as any).isFrozen) ||
-                t.approvalStatus === taskFilter;
-              return matchSearch && matchFilter;
-            });
-            const filters = [
-              { key:"all", label:`All (${tasks.length})` },
-              { key:"assigned", label:"Assigned" },
-              { key:"in-review", label:"In Review" },
-              { key:"admin-approved", label:"Adm. Approved" },
-              { key:"superadmin-approved", label:"SA Approved" },
-              { key:"pending", label:"Pending" },
-              { key:"breached", label:"TAT Breached" },
-              { key:"frozen", label:"Frozen" },
-            ];
-            return (
-              <div className="sa-page sa-fade-in">
-                <div className="sa-page-header">
-                  <div>
-                    <h1 className="sa-page-title">All <em>Tasks</em></h1>
-                    <p className="sa-page-sub">Complete lifecycle view of every task across all users</p>
-                  </div>
-                  <button className="sa-btn sa-btn-primary" onClick={() => setShowCreateModal(true)}>
-                    <Plus size={15} /> Assign Task
-                  </button>
-                </div>
-
-                {/* Search + filters */}
-                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:10, marginBottom:24, alignItems:"center" }}>
-                  <input
-                    className="sa-form-input"
-                    placeholder="🔍 Search by title or assignee…"
-                    value={taskSearch}
-                    onChange={e => setTaskSearch(e.target.value)}
-                    style={{ width:260, padding:"9px 14px", fontSize:12 }}
-                  />
-                  <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
-                    {filters.map(f => (
-                      <button key={f.key}
-                        onClick={() => setTaskFilter(f.key)}
-                        style={{ padding:"7px 13px", borderRadius:20, fontSize:11, fontWeight:600, cursor:"pointer",
-                          background: taskFilter===f.key ? `${G.gold}22` : "rgba(255,255,255,0.04)",
-                          border: `1px solid ${taskFilter===f.key ? G.gold+"55" : "rgba(255,255,255,0.1)"}`,
-                          color: taskFilter===f.key ? G.gold : G.textMuted, transition:"all 0.18s" }}>
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                  <span style={{ fontSize:11, color:G.textMuted, marginLeft:"auto" }}>{filtered.length} task{filtered.length!==1?"s":""}</span>
-                </div>
-
-                {/* Task cards */}
-                {filtered.length === 0 ? (
-                  <div className="sa-empty"><div className="sa-empty-icon">📋</div><div className="sa-empty-text">No tasks match filter</div></div>
-                ) : (
-                  <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
-                    {filtered.map((task: Task, idx: number) => {
-                      const attachments = (task as any).attachments || [];
-                      const history = (task as any).activityLog || (task as any).history || [];
-                      const isFrozen = (task as any).isFrozen;
-                      const isTat = (task as any).tatBreached;
-                      const statusColor = statusColors[task.approvalStatus] || G.textMuted;
-                      const proj = (projects as any[]).find((p:any)=>p.id===task.projectId);
-                      // Progress %
-                      const progressMap: Record<string,number> = {
-                        "assigned":20, "in-review":50, "admin-approved":75, "superadmin-approved":100, "rejected":10
-                      };
-                      const progress = progressMap[task.approvalStatus] || 0;
-                      return (
-                        <div key={task.id} className="sa-task-card sa-fade-up" style={{ animationDelay:`${Math.min(idx,8)*40}ms`, borderColor: isFrozen ? "#b06af355" : isTat ? `${G.danger}35` : undefined }}>
-                          {/* Header row */}
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:16, marginBottom:12 }}>
-                            <div style={{ flex:1 }}>
-                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                                {isFrozen && <span style={{ fontSize:9, padding:"2px 7px", borderRadius:3, background:"#b06af322", color:"#b06af3", border:"1px solid #b06af355", fontWeight:700, textTransform:"uppercase" as const }}>🔒 Frozen</span>}
-                                {isTat    && <span style={{ fontSize:9, padding:"2px 7px", borderRadius:3, background:`${G.danger}18`, color:G.danger, border:`1px solid ${G.danger}44`, fontWeight:700, textTransform:"uppercase" as const }}>⚠ TAT</span>}
-                                {proj && <span style={{ fontSize:9, color:G.textMuted }}>📁 {proj.name}</span>}
-                              </div>
-                              <div className="sa-task-title" style={{ marginBottom:4 }}>{task.title}</div>
-                              <div className="sa-task-desc">{task.description?.slice(0,140)}{(task.description?.length||0)>140?"…":""}</div>
-                            </div>
-                            <div style={{ display:"flex", flexDirection:"column" as const, gap:6, flexShrink:0, alignItems:"flex-end" }}>
-                              <button className="sa-btn sa-btn-primary" style={{ padding:"7px 13px", fontSize:11 }} onClick={() => openTaskDetail(task)}>
-                                <Eye size={12} /> Details
-                              </button>
-                              {task.approvalStatus === "admin-approved" && (
-                                <button className="sa-btn sa-btn-success" style={{ padding:"7px 13px", fontSize:11 }} onClick={() => openReviewModal(task)}>
-                                  <CheckCircle size={12} /> Review
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Progress bar */}
-                          <div style={{ marginBottom:12 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-                              <span style={{ fontSize:10, color:statusColor, fontWeight:700, textTransform:"uppercase" as const, letterSpacing:"0.5px" }}>
-                                {task.approvalStatus?.replace(/-/g," ")}
-                              </span>
-                              <span style={{ fontSize:10, color:G.textMuted }}>{progress}%</span>
-                            </div>
-                            <div style={{ height:5, background:"rgba(255,255,255,0.05)", borderRadius:3, overflow:"hidden" }}>
-                              <div style={{ height:"100%", width:`${progress}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}bb)`, borderRadius:3, transition:"width 0.6s ease", boxShadow:`0 0 8px ${statusColor}55` }} />
-                            </div>
-                          </div>
-
-                          {/* Meta row */}
-                          <div className="sa-task-meta">
-                            <span className="sa-badge sa-badge-purple"><User size={10} /> {getStaffName(task.assignedTo)}</span>
-                            {task.priority && <span className={priClass(task.priority)}><Flag size={10} /> {task.priority}</span>}
-                            <span className="sa-badge sa-badge-cyan"><Calendar size={10} /> {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}</span>
-                            {attachments.length > 0 && (
-                              <span className="sa-badge sa-badge-gold" style={{ cursor:"pointer" }} onClick={()=>openLightbox(attachments)}>
-                                📎 {attachments.length} attachment{attachments.length!==1?"s":""}
-                              </span>
-                            )}
-                            {history.length > 0 && (
-                              <span className="sa-badge" style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:G.textMuted, fontSize:10 }}>
-                                🕐 {history.length} event{history.length!==1?"s":""}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {activeTab === "overview" && (() => {
-            // ── Pie chart helper (SVG) ───────────────────────────────────
-            const PieChart = ({ slices, size=160 }: { slices:{value:number;color:string;label:string}[]; size?:number }) => {
-              const total = slices.reduce((s,x)=>s+x.value,0) || 1;
-              const r = size/2 - 16;
-              const cx = size/2; const cy = size/2;
-              let angle = -Math.PI/2;
-              const paths = slices.map(s=>{
-                const pct = s.value/total;
-                const a1 = angle; const a2 = angle + pct*2*Math.PI;
-                const laf = pct > 0.5 ? 1 : 0;
-                const x1=cx+r*Math.cos(a1); const y1=cy+r*Math.sin(a1);
-                const x2=cx+r*Math.cos(a2); const y2=cy+r*Math.sin(a2);
-                const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${laf} 1 ${x2} ${y2} Z`;
-                angle = a2;
-                return { ...s, d, pct };
-              });
-              return (
-                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-                  {paths.map((p,i)=>(
-                    <path key={i} d={p.d} fill={p.color} opacity={0.85}
-                      style={{ filter:`drop-shadow(0 0 6px ${p.color}66)` }} />
-                  ))}
-                  <circle cx={cx} cy={cy} r={r*0.52} fill="rgba(4,4,18,0.9)" />
-                  <text x={cx} y={cy-5} textAnchor="middle" fill={G.textPrimary} fontSize={18} fontWeight={800} fontFamily="Oswald">{total}</text>
-                  <text x={cx} y={cy+14} textAnchor="middle" fill={G.textMuted} fontSize={8} fontWeight={600} letterSpacing={1}>TOTAL</text>
-                </svg>
-              );
-            };
-
-            // ── Bar chart helper ─────────────────────────────────────────
-            const BarChart = ({ bars, height=100 }: { bars:{label:string;value:number;color:string}[]; height?:number }) => {
-              const max = Math.max(...bars.map(b=>b.value), 1);
-              return (
+          {activeTab === "overview" && (
+            <div className="sa-page sa-fade-in">
+              <div className="sa-page-header">
                 <div>
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:8, height }}>
-                    {bars.map((b,i)=>(
-                      <div key={i} style={{ flex:1, display:"flex", flexDirection:"column" as const, alignItems:"center", gap:4, height:"100%", justifyContent:"flex-end" }}>
-                        <span style={{ fontSize:11, fontWeight:700, color:b.color, fontFamily:"'Oswald',sans-serif" }}>{b.value}</span>
-                        <div style={{ width:"100%", borderRadius:"4px 4px 0 0", background:`linear-gradient(180deg,${b.color},${b.color}55)`,
-                          height:`${Math.max((b.value/max)*100,3)}%`, boxShadow:`0 0 10px ${b.color}44`, minHeight:3 }} />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                    {bars.map((b,i)=>(
-                      <div key={i} style={{ flex:1, textAlign:"center" as const, fontSize:8, color:G.textMuted, fontWeight:600,
-                        textTransform:"uppercase" as const, letterSpacing:"0.3px", lineHeight:1.3 }}>{b.label}</div>
-                    ))}
-                  </div>
+                  <h1 className="sa-page-title">Command <em>Centre</em></h1>
+                  <p className="sa-page-sub">Full visibility across tasks, approvals and team members</p>
                 </div>
-              );
-            };
-
-            // ── Data ─────────────────────────────────────────────────────
-            const statusSlices = [
-              { label:"Assigned",  value:(tasks as Task[]).filter(t=>t.approvalStatus==="assigned").length,           color:G.textMuted },
-              { label:"In Review", value:inReview.length,                                                              color:G.cyan },
-              { label:"Adm Appvd", value:pendingApprovals.length,                                                     color:G.amber },
-              { label:"Approved",  value:fullyApproved.length,                                                         color:G.success },
-              { label:"Rejected",  value:(tasks as Task[]).filter(t=>t.approvalStatus==="rejected").length,           color:G.danger },
-            ];
-            const riskSlices = [
-              { label:"On Track", value:Math.max((tasks as Task[]).length - tatBreached.length - frozenTasks.length,0), color:G.success },
-              { label:"TAT",      value:tatBreached.length,                                                             color:G.danger },
-              { label:"Frozen",   value:frozenTasks.length,                                                             color:"#b06af3" },
-            ];
-
-            // TAT per user (bar chart)
-            const tatMap: Record<string,number> = {};
-            (tasks as Task[]).filter(t=>(t as any).tatBreached).forEach(t => { tatMap[t.assignedTo]=(tatMap[t.assignedTo]||0)+1; });
-            const tatBars = Object.entries(tatMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([email,val])=>({
-              label:(teamMembers as any[]).find(m=>m.email===email)?.name?.split(" ")[0]||email.split("@")[0], value:val, color:G.danger
-            }));
-
-            // Completion over projects (bar)
-            const projCompletionBars = (projects as any[]).slice(0,6).map((p:any) => {
-              const projTasks = (tasks as Task[]).filter(t=>t.projectId===p.id);
-              const done = projTasks.filter(t=>t.approvalStatus==="superadmin-approved").length;
-              return { label:p.name?.slice(0,6)||"—", value:done, color:G.success };
-            });
-
-            // Pending per user
-            const pendingMap: Record<string,number> = {};
-            (tasks as Task[]).filter(t=>t.approvalStatus!=="superadmin-approved").forEach(t=>{pendingMap[t.assignedTo]=(pendingMap[t.assignedTo]||0)+1;});
-            const pendingBars = Object.entries(pendingMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([email,val])=>({
-              label:(teamMembers as any[]).find(m=>m.email===email)?.name?.split(" ")[0]||email.split("@")[0], value:val, color:G.amber
-            }));
-
-            const card = (children: React.ReactNode, delay=0) => (
-              <div style={{ background:"linear-gradient(145deg,rgba(8,6,22,0.76),rgba(18,12,6,0.72))", backdropFilter:"blur(14px)",
-                border:"1px solid rgba(212,175,55,0.14)", borderRadius:16, padding:24, animationDelay:`${delay}ms`,
-                boxShadow:"0 4px 28px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.04)" }} className="sa-fade-up">
-                {children}
+                <button className="sa-btn sa-btn-primary" onClick={() => setShowCreateModal(true)}>
+                  <Plus size={15} /> Assign Task
+                </button>
               </div>
-            );
-            const cardTitle = (icon:string, title:string, sub?:string) => (
-              <div style={{ marginBottom:18 }}>
-                <div style={{ fontSize:9, fontWeight:800, textTransform:"uppercase" as const, letterSpacing:"1.2px", color:G.textMuted, marginBottom:4 }}>{icon} {title}</div>
-                {sub && <div style={{ fontSize:12, color:G.textSecondary }}>{sub}</div>}
-              </div>
-            );
 
-            return (
-              <div className="sa-page sa-fade-in">
-                <div className="sa-page-header">
-                  <div>
-                    <h1 className="sa-page-title">Command <em>Centre</em></h1>
-                    <p className="sa-page-sub">Real-time analytics, charts and full platform visibility</p>
+              <div className="sa-stats-grid">
+                {[
+                  { icon:"⏳", num:pendingApprovals.length,  label:"Pending Approval",   color:G.amber },
+                  { icon:"✓",  num:fullyApproved.length,     label:"Fully Approved",     color:G.success },
+                  { icon:"◈",  num:inReview.length,          label:"Under Review",       color:G.cyan },
+                  { icon:"⚠",  num:tatBreached.length,       label:"TAT Breached",       color:G.danger },
+                  { icon:"🔒", num:frozenTasks.length,       label:"Frozen",             color:"#b06af3" },
+                  { icon:"🎫", num:allAssistTickets.length,  label:"Assist. Tickets",    color:G.magenta },
+                  { icon:"👥", num:teamMembers.length,       label:"Team Members",       color:G.gold },
+                  { icon:"🏗",  num:projects.length,          label:"Projects",           color:G.purple },
+                ].map((s,i) => (
+                  <div className={`sa-stat-card sa-fade-up`} key={i} style={{ animationDelay:`${i*55}ms` }}>
+                    <div className="sa-stat-dot" style={{ background:s.color }} />
+                    <div className="sa-stat-icon">{s.icon}</div>
+                    <div className="sa-stat-num" style={{ background:`linear-gradient(135deg,${s.color},${s.color}99)`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{s.num}</div>
+                    <div className="sa-stat-label">{s.label}</div>
                   </div>
-                  <button className="sa-btn sa-btn-primary" onClick={() => setShowCreateModal(true)}>
-                    <Plus size={15} /> Assign Task
-                  </button>
-                </div>
-
-                {/* Stat strip */}
-                <div className="sa-stats-grid" style={{ marginBottom:28 }}>
-                  {[
-                    { icon:"⏳", num:pendingApprovals.length,  label:"Pending SA",      color:G.amber },
-                    { icon:"✓",  num:fullyApproved.length,     label:"Fully Approved",  color:G.success },
-                    { icon:"◈",  num:inReview.length,          label:"In Review",       color:G.cyan },
-                    { icon:"⚠",  num:tatBreached.length,       label:"TAT Breached",    color:G.danger },
-                    { icon:"🔒", num:frozenTasks.length,       label:"Frozen",          color:"#b06af3" },
-                    { icon:"🎫", num:allAssistTickets.length,  label:"Tickets",         color:G.magenta },
-                    { icon:"👥", num:teamMembers.length,       label:"Team",            color:G.gold },
-                    { icon:"🏗",  num:projects.length,          label:"Projects",        color:G.purple },
-                  ].map((s,i) => (
-                    <div className="sa-stat-card sa-fade-up" key={i} style={{ animationDelay:`${i*40}ms` }}>
-                      <div className="sa-stat-dot" style={{ background:s.color }} />
-                      <div className="sa-stat-icon">{s.icon}</div>
-                      <div className="sa-stat-num" style={{ background:`linear-gradient(135deg,${s.color},${s.color}99)`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{s.num}</div>
-                      <div className="sa-stat-label">{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ROW 1: Pie charts */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
-                  {card(
-                    <>
-                      {cardTitle("🥧","Task Status Distribution","By approval stage")}
-                      <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" as const }}>
-                        <PieChart slices={statusSlices} size={160} />
-                        <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:8 }}>
-                          {statusSlices.map((s,i) => (
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                              <div style={{ width:8, height:8, borderRadius:"50%", background:s.color, flexShrink:0 }} />
-                              <span style={{ fontSize:11, color:G.textSecondary, flex:1 }}>{s.label}</span>
-                              <span style={{ fontSize:13, fontWeight:700, color:s.color, fontFamily:"'Oswald',sans-serif" }}>{s.value}</span>
-                              <span style={{ fontSize:10, color:G.textMuted, width:30, textAlign:"right" as const }}>
-                                {tasks.length ? Math.round(s.value/tasks.length*100) : 0}%
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>, 50
-                  )}
-                  {card(
-                    <>
-                      {cardTitle("🎯","Risk Distribution","On-track vs at-risk tasks")}
-                      <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" as const }}>
-                        <PieChart slices={riskSlices} size={160} />
-                        <div style={{ flex:1, display:"flex", flexDirection:"column" as const, gap:8 }}>
-                          {riskSlices.map((s,i) => (
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                              <div style={{ width:8, height:8, borderRadius:"50%", background:s.color, flexShrink:0 }} />
-                              <span style={{ fontSize:11, color:G.textSecondary, flex:1 }}>{s.label}</span>
-                              <span style={{ fontSize:13, fontWeight:700, color:s.color, fontFamily:"'Oswald',sans-serif" }}>{s.value}</span>
-                            </div>
-                          ))}
-                          <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(212,175,55,0.08)" }}>
-                            <div style={{ fontSize:10, color:G.textMuted, marginBottom:4 }}>Assist. tickets by status</div>
-                            {[
-                              { label:"Open",     value:(allAssistTickets as any[]).filter(t=>t.status==="open").length,           color:G.cyan },
-                              { label:"Pending",  value:(allAssistTickets as any[]).filter(t=>t.status==="pending-admin").length,  color:G.amber },
-                              { label:"Resolved", value:(allAssistTickets as any[]).filter(t=>t.status==="resolved").length,       color:G.success },
-                            ].map((row,i)=>(
-                              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0" }}>
-                                <span style={{ fontSize:11, color:G.textSecondary }}>{row.label}</span>
-                                <span style={{ fontSize:11, fontWeight:700, color:row.color }}>{row.value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </>, 80
-                  )}
-                </div>
-
-                {/* ROW 2: Bar charts */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
-                  {tatBars.length > 0 ? card(
-                    <>
-                      {cardTitle("⚠","TAT Breach by User","Who has the most deadline misses")}
-                      <BarChart bars={tatBars} height={110} />
-                    </>, 100
-                  ) : card(
-                    <>
-                      {cardTitle("⚠","TAT Breach Analysis","")}
-                      <div style={{ textAlign:"center" as const, padding:"30px 0", color:G.success, fontSize:13 }}>✓ No TAT breaches — all on track!</div>
-                    </>, 100
-                  )}
-                  {card(
-                    <>
-                      {cardTitle("📊","Pending Tasks per User","Active workload distribution")}
-                      {pendingBars.length > 0 ? <BarChart bars={pendingBars} height={110} /> : (
-                        <div style={{ textAlign:"center" as const, padding:"30px 0", color:G.success, fontSize:13 }}>✓ No pending tasks</div>
-                      )}
-                    </>, 130
-                  )}
-                </div>
-
-                {/* ROW 3: Project completion + team breakdown */}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
-                  {card(
-                    <>
-                      {cardTitle("✅","Completion per Project","Fully approved tasks by project")}
-                      {projCompletionBars.length > 0 ? <BarChart bars={projCompletionBars} height={100} /> : (
-                        <div style={{ textAlign:"center" as const, padding:"20px 0", color:G.textMuted, fontSize:12 }}>No projects yet</div>
-                      )}
-                    </>, 160
-                  )}
-                  {card(
-                    <>
-                      {cardTitle("👥","Team Breakdown",`${teamMembers.length} members across all roles`)}
-                      <BarChart bars={[
-                        { label:"Superadmin", value:(teamMembers as any[]).filter(m=>m.role==="superadmin").length, color:G.gold },
-                        { label:"Admin",      value:(teamMembers as any[]).filter(m=>m.role==="admin").length,      color:G.cyan },
-                        { label:"Staff",      value:(teamMembers as any[]).filter(m=>m.role==="staff").length,      color:G.purple },
-                      ]} height={100} />
-                      <div style={{ marginTop:16, paddingTop:14, borderTop:"1px solid rgba(212,175,55,0.08)" }}>
-                        <div style={{ fontSize:10, color:G.textMuted, marginBottom:4 }}>Avg tasks per staff member</div>
-                        <div style={{ fontSize:22, fontWeight:900, color:G.gold, fontFamily:"'Oswald',sans-serif" }}>
-                          {(teamMembers as any[]).filter(m=>m.role==="staff").length > 0
-                            ? ((tasks as Task[]).length / (teamMembers as any[]).filter(m=>m.role==="staff").length).toFixed(1) : "—"}
-                          <span style={{ fontSize:12, color:G.textMuted, marginLeft:4 }}>avg</span>
-                        </div>
-                      </div>
-                    </>, 190
-                  )}
-                </div>
-
-                {/* Full task table */}
-                <div className="sa-section-label">📋 All Tasks ({tasks.length})</div>
-                {tasks.length === 0 ? (
-                  <div className="sa-empty"><div className="sa-empty-icon">📋</div><div className="sa-empty-text">No tasks yet</div></div>
-                ) : (
-                  <div className="sa-table-wrap">
-                    <table className="sa-table">
-                      <thead><tr>
-                        <th>Task</th><th>Assigned To</th><th>Progress</th><th>Approval</th><th>Due Date</th><th>Action</th>
-                      </tr></thead>
-                      <tbody>
-                        {(tasks as Task[]).map((task: Task) => {
-                          const progressMap: Record<string,number> = {"assigned":20,"in-review":50,"admin-approved":75,"superadmin-approved":100,"rejected":10};
-                          const sc: Record<string,string> = {"assigned":G.textMuted,"in-review":G.cyan,"admin-approved":G.amber,"superadmin-approved":G.success,"rejected":G.danger};
-                          const p = progressMap[task.approvalStatus] || 0;
-                          const c = sc[task.approvalStatus] || G.textMuted;
-                          return (
-                            <tr key={task.id}>
-                              <td style={{ color:G.textPrimary, fontWeight:500, maxWidth:200 }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                                  {(task as any).tatBreached && <span style={{ fontSize:8, color:G.danger }}>⚠</span>}
-                                  {(task as any).isFrozen && <span style={{ fontSize:8, color:"#b06af3" }}>🔒</span>}
-                                  {task.title}
-                                </div>
-                              </td>
-                              <td style={{ fontSize:12 }}>{getStaffName(task.assignedTo)}</td>
-                              <td style={{ minWidth:100 }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                                  <div style={{ flex:1, height:5, background:"rgba(255,255,255,0.05)", borderRadius:2, overflow:"hidden" }}>
-                                    <div style={{ height:"100%", width:`${p}%`, background:`linear-gradient(90deg,${c},${c}88)`, borderRadius:2 }} />
-                                  </div>
-                                  <span style={{ fontSize:10, color:c, width:26, flexShrink:0 }}>{p}%</span>
-                                </div>
-                              </td>
-                              <td>
-                                <span className={`sa-badge sa-badge-${task.approvalStatus==="superadmin-approved"?"success":task.approvalStatus==="admin-approved"?"gold":task.approvalStatus==="rejected"?"danger":"warning"}`} style={{ fontSize:9 }}>
-                                  {task.approvalStatus?.replace(/-/g," ")}
-                                </span>
-                              </td>
-                              <td style={{ fontFamily:"'Space Mono',monospace", fontSize:10 }}>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}</td>
-                              <td>
-                                <button className="sa-btn sa-btn-secondary" style={{ padding:"5px 10px", fontSize:10 }} onClick={()=>openTaskDetail(task)}>
-                                  <Eye size={11} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                ))}
               </div>
-            );
-          })()}
+
+              <div className="sa-section-label">All Tasks ({tasks.length})</div>
+              {tasks.length === 0 ? (
+                <div className="sa-empty"><div className="sa-empty-icon">📋</div><div className="sa-empty-text">No tasks yet</div></div>
+              ) : (
+                <div className="sa-table-wrap">
+                  <table className="sa-table">
+                    <thead>
+                      <tr>
+                        <th>Title</th><th>Assigned To</th><th>Status</th><th>Approval</th><th>Due Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tasks.map((task: Task) => (
+                        <tr key={task.id}>
+                          <td style={{ color:G.textPrimary, fontWeight:500 }}>{task.title}</td>
+                          <td>{getStaffName(task.assignedTo)}</td>
+                          <td>{task.status}</td>
+                          <td>
+                            <span className={`sa-badge sa-badge-${task.approvalStatus==="superadmin-approved"?"success":task.approvalStatus==="admin-approved"?"gold":task.approvalStatus==="rejected"?"danger":"warning"}`}>
+                              {task.approvalStatus}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily:"'Space Mono',monospace", fontSize:11 }}>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── APPROVALS TAB ─────────────────────────────────────────────── */}
           {activeTab === "approvals" && (
@@ -1980,7 +1417,10 @@ const SADashboard: React.FC = () => {
                         {project.sqft        && <div style={{ fontSize:12, color:G.textMuted }}>📐 {project.sqft} sq.ft</div>}
                         {project.priceRange  && <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, color:G.textMuted }}><DollarSign size={13} />{project.priceRange}</div>}
                       </div>
-                      <div style={{ marginTop:12, fontSize:11, color:G.textMuted }}>{tasks.filter((t:Task)=>t.projectId===project.id).length} tasks</div>
+                      <div style={{ marginTop:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div style={{ fontSize:11, color:G.textMuted }}>{tasks.filter((t:Task)=>t.projectId===project.id).length} tasks</div>
+                        <button onClick={() => { if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return; fetch(`https://roswalt-backend-production.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" }).then(r => r.json()).then(() => { showSuccess(`Project "${project.name}" deleted`); window.location.reload(); }).catch(() => showSuccess("Failed to delete project")); }} style={{ background:"rgba(255,59,48,0.15)", border:"1px solid rgba(255,59,48,0.3)", color:"#ff3b30", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑 Delete</button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2258,144 +1698,6 @@ const SADashboard: React.FC = () => {
         </div>
       )}
 
-
-      {/* ── MODAL: TASK DETAIL (full lifecycle) ───────────────────────────── */}
-      {showTaskDetail && detailTask && (() => {
-        const attachments = (detailTask as any).attachments || [];
-        const history     = (detailTask as any).activityLog || (detailTask as any).history || [];
-        const reviewHist  = (detailTask as any).reviewHistory || [];
-        const isFrozen    = (detailTask as any).isFrozen;
-        const isTat       = (detailTask as any).tatBreached;
-        const proj        = (projects as any[]).find((p:any)=>p.id===detailTask.projectId);
-        const progressMap: Record<string,number> = {
-          "assigned":20,"in-review":50,"admin-approved":75,"superadmin-approved":100,"rejected":10
-        };
-        const statusColor: Record<string,string> = {
-          "assigned":G.textMuted,"in-review":G.cyan,"admin-approved":G.amber,
-          "superadmin-approved":G.success,"rejected":G.danger,
-        };
-        const progress = progressMap[detailTask.approvalStatus] || 0;
-        const sc = statusColor[detailTask.approvalStatus] || G.textMuted;
-        return (
-          <div className="sa-overlay" onClick={e=>{if(e.target===e.currentTarget){setShowTaskDetail(false);setDetailTask(null);}}}>
-            <div className="sa-modal" style={{ maxWidth:720, maxHeight:"90vh", overflowY:"auto" }}>
-              <div className="sa-modal-header">
-                <div>
-                  <div className="sa-modal-sub">Task Lifecycle — Full View</div>
-                  <div className="sa-modal-title">{detailTask.title}</div>
-                </div>
-                <button className="sa-modal-close" onClick={()=>{setShowTaskDetail(false);setDetailTask(null);}}><X size={17} /></button>
-              </div>
-              <div className="sa-modal-body">
-                {/* Status + progress */}
-                <div style={{ marginBottom:20 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                    <span style={{ fontSize:11, fontWeight:700, color:sc, textTransform:"uppercase" as const, letterSpacing:"0.6px" }}>
-                      {detailTask.approvalStatus?.replace(/-/g," ")} · {progress}% complete
-                    </span>
-                    <div style={{ display:"flex", gap:8 }}>
-                      {isFrozen && <span style={{ fontSize:9, padding:"3px 9px", borderRadius:4, background:"#b06af322", color:"#b06af3", border:"1px solid #b06af355", fontWeight:700 }}>🔒 FROZEN</span>}
-                      {isTat    && <span style={{ fontSize:9, padding:"3px 9px", borderRadius:4, background:`${G.danger}18`, color:G.danger, border:`1px solid ${G.danger}44`, fontWeight:700 }}>⚠ TAT BREACH</span>}
-                    </div>
-                  </div>
-                  <div style={{ height:8, background:"rgba(255,255,255,0.05)", borderRadius:4, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${progress}%`, background:`linear-gradient(90deg,${sc},${sc}88)`, borderRadius:4, boxShadow:`0 0 12px ${sc}55`, transition:"width 0.7s ease" }} />
-                  </div>
-                </div>
-
-                {/* Badges */}
-                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8, marginBottom:20 }}>
-                  <span className="sa-badge sa-badge-purple"><User size={11} /> {getStaffName(detailTask.assignedTo)}</span>
-                  {detailTask.priority && <span className={priClass(detailTask.priority)}><Flag size={11} /> {detailTask.priority}</span>}
-                  <span className="sa-badge sa-badge-cyan"><Calendar size={11} /> Due {detailTask.dueDate ? new Date(detailTask.dueDate).toLocaleDateString() : "—"}</span>
-                  {proj && <span className="sa-badge sa-badge-gold">📁 {proj.name}</span>}
-                  {(detailTask as any).assignedBy && <span className="sa-badge" style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:G.textMuted, fontSize:10 }}>📤 by {getStaffName((detailTask as any).assignedBy)}</span>}
-                </div>
-
-                {/* Description */}
-                <div style={{ padding:"14px 18px", background:"rgba(4,6,18,0.7)", border:"1px solid rgba(212,175,55,0.12)", borderRadius:10, marginBottom:20, fontSize:13, color:G.textSecondary, lineHeight:1.65 }}>
-                  {detailTask.description || "No description provided."}
-                </div>
-
-                {/* Attachments */}
-                {attachments.length > 0 && (
-                  <div style={{ marginBottom:20 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:10 }}>
-                      📎 Attachments ({attachments.length})
-                    </div>
-                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:10 }}>
-                      {attachments.map((url: string, i: number) => (
-                        <div key={i} onClick={()=>openLightbox(attachments,i)}
-                          style={{ width:88, height:88, borderRadius:10, overflow:"hidden", border:"1px solid rgba(212,175,55,0.2)", cursor:"pointer", background:"rgba(4,6,18,0.8)" }}>
-                          <img src={url} alt={`att-${i}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Review history */}
-                {reviewHist.length > 0 && (
-                  <div style={{ marginBottom:20 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:10 }}>
-                      🔍 Review History
-                    </div>
-                    <div style={{ display:"flex", flexDirection:"column" as const, gap:8 }}>
-                      {reviewHist.map((r: any, i: number) => (
-                        <div key={i} style={{ padding:"10px 14px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <span style={{ fontSize:11, fontWeight:600, color: r.action==="approved"?G.success:r.action==="rejected"?G.danger:G.amber }}>
-                              {r.action === "approved" ? "✓ Approved" : r.action === "rejected" ? "✕ Rejected" : "📝 Reviewed"}
-                            </span>
-                            <span style={{ fontSize:10, color:G.textMuted }}>{r.by || "—"} · {r.at ? new Date(r.at).toLocaleString() : ""}</span>
-                          </div>
-                          {r.comment && <div style={{ fontSize:12, color:G.textSecondary }}>{r.comment}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Activity log */}
-                {history.length > 0 && (
-                  <div style={{ marginBottom:20 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:10 }}>
-                      🕐 Activity Log
-                    </div>
-                    <div style={{ display:"flex", flexDirection:"column" as const, gap:6, maxHeight:200, overflowY:"auto" }}>
-                      {history.slice().reverse().map((h: any, i: number) => (
-                        <div key={i} style={{ display:"flex", gap:10, padding:"9px 12px", background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.05)", borderRadius:7 }}>
-                          <div style={{ width:6, height:6, borderRadius:"50%", background:G.gold, flexShrink:0, marginTop:4 }} />
-                          <div>
-                            <div style={{ fontSize:12, color:G.textSecondary }}>{h.action || h.event || h.text || JSON.stringify(h)}</div>
-                            {h.timestamp && <div style={{ fontSize:10, color:G.textMuted, marginTop:2 }}>{new Date(h.timestamp).toLocaleString()}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div style={{ display:"flex", gap:10, marginTop:8 }}>
-                  {detailTask.approvalStatus === "admin-approved" && (
-                    <>
-                      <button className="sa-btn sa-btn-success" style={{ flex:1 }} onClick={()=>{setShowTaskDetail(false);openReviewModal(detailTask);}}>
-                        <CheckCircle size={14} /> Approve
-                      </button>
-                      <button className="sa-btn sa-btn-danger" style={{ flex:1 }} onClick={()=>{setShowTaskDetail(false);openReviewModal(detailTask);}}>
-                        <RotateCw size={14} /> Send Back
-                      </button>
-                    </>
-                  )}
-                  <button className="sa-btn sa-btn-secondary" onClick={()=>{setShowTaskDetail(false);setDetailTask(null);}}><X size={14} /></button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── LIGHTBOX ──────────────────────────────────────────────────────── */}
       {showLightbox && lightboxPhotos.length > 0 && (
         <div className="sa-lightbox" onClick={()=>setShowLightbox(false)}>
@@ -2411,3 +1713,4 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
+
