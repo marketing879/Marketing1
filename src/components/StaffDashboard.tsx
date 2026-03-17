@@ -1865,6 +1865,25 @@ const StaffDashboard: React.FC = () => {
     setReadingDeductions(false);
   };
 
+  const downloadScoreReport = (task: any, score: any, doerName: string) => {
+    const now = new Date();
+    const ds = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+    const ts = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    const cats = (score.categories || []).map((c: any) =>
+      "<h4>" + c.name + ": " + c.score + "/20</h4>" +
+      (c.subcriteria || []).map((s: any) =>
+        "<div><span style='color:" + (s.score===s.max?"green":"red") + "'>" + s.score + "/" + s.max + "</span> <b>" + s.label + "</b><div style='color:#666;font-size:11px'>" + (s.note||"") + "</div></div>"
+      ).join("")
+    ).join("");
+    const html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SmartCue Score Report</title></head><body style='font-family:Arial,sans-serif;padding:32px'><h1>SmartCue AI Score Report</h1><p>Generated: " + ds + " at " + ts + " | ID: " + (task?.id||"") + "-" + Date.now() + "</p><p style='color:red;font-size:12px'>Auto-generated. Read-only. Cannot be altered.</p><hr/><h2>Task: " + (task?.title||"") + "</h2><p><b>Doer:</b> " + doerName + " | <b>By:</b> " + (task?.assignedBy||"-") + " | <b>Purpose:</b> " + (task?.purpose||"-") + "</p><hr/><h2>Score: " + score.percentScore + "/100 - Grade " + score.grade + "</h2><p>" + (score.verdict||"") + "</p><h3>Categories</h3>" + cats + ((score.strengths||[]).length?"<h3 style='color:green'>Strengths</h3>"+(score.strengths||[]).map((s:any)=>"<p>+ "+s+"</p>").join(""):"") + ((score.improvements||[]).length?"<h3 style='color:orange'>Improvements</h3>"+(score.improvements||[]).map((s:any)=>"<p>- "+s+"</p>").join(""):"") + "<hr/><p style='color:#999;font-size:11px'>SmartCue AI - Roswalt Realty | " + ds + "</p></body></html>";
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "SmartCue_Report_" + (task?.title||"task").replace(/\s+/g,"_") + "_" + now.toISOString().slice(0,10) + ".html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
   const getProjectName = (projectId: string) => {
     try { return getProjectById(projectId)?.name || "—"; }
     catch { return "—"; }
@@ -3208,6 +3227,26 @@ const StaffDashboard: React.FC = () => {
               )}
             </div>
 
+            {/* ── DOWNLOAD REPORT ── */}
+            <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#00d4ff" }}>📄 Score Report Ready</div>
+                <div style={{ fontSize: 10, color: "#7e84a3", marginTop: 2 }}>Download your full scoring report. This report is permanent and cannot be altered.</div>
+              </div>
+              <button onClick={() => downloadScoreReport(pendingSubmitTask, aiScoreResult, (user as any)?.name || (user as any)?.email || "Doer")} style={{ flexShrink: 0, marginLeft: 12, padding: "8px 14px", background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 8, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>↓ Download Report</button>
+            </div>
+
+            {/* ── DOWNLOAD REPORT ── */}
+            <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#00d4ff" }}>Score Report Ready</div>
+                <div style={{ fontSize: 10, color: "#7e84a3", marginTop: 2 }}>Download your full AI scoring report. Permanent and read-only.</div>
+              </div>
+              <button onClick={() => downloadScoreReport(pendingSubmitTask, aiScoreResult, (user as any)?.name || (user as any)?.email || "Doer")} style={{ flexShrink: 0, padding: "8px 14px", background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 8, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                Download Report
+              </button>
+            </div>
+
             {/* ── ACTION BUTTONS ── */}
             <div style={{ display: "flex", gap: 10 }}>
               <button
@@ -3846,3 +3885,10 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
+
+
+
+
+
+
+
