@@ -3131,6 +3131,26 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       </div>
                     </div>
                   )}
+                  {(selectedTask as any).scoreData && (
+                    <div style={{ padding: "16px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 12, marginBottom: 14 }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.cyan, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 12 }}>AI Score Report</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 28, fontWeight: 900, color: (selectedTask as any).scoreData.percentScore >= 75 ? G.success : (selectedTask as any).scoreData.percentScore >= 55 ? G.gold : G.danger }}>{(selectedTask as any).scoreData.percentScore}/100</div>
+                          <div style={{ fontSize: 11, color: G.textMuted }}>Grade: {(selectedTask as any).scoreData.grade}</div>
+                        </div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: G.textSecondary }}>{(selectedTask as any).scoreData.verdict}</div></div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        {((selectedTask as any).scoreData.categories || []).map((cat: any, i: number) => (
+                          <div key={i} style={{ padding: "8px 10px", background: "rgba(0,0,0,0.2)", borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 11, color: G.textSecondary }}>{cat.name}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: cat.score >= 16 ? G.success : cat.score >= 12 ? G.gold : G.danger }}>{cat.score}/20</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
@@ -3644,5 +3664,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
+
 
 
