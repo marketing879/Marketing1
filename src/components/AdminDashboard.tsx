@@ -865,7 +865,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     );
     useEffect(() => {
       const poll = () =>
-        fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
+        fetch(`https://roswalt-backend-production.up.railway.app/api/tasks?email=${encodeURIComponent(user?.email ?? "")}&role=${encodeURIComponent((user as any)?.role ?? "")}`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
           .then((data: any[]) => {
             const mapped = data.map((t: any) => ({ ...t, id: t.id || String(t._id) }));
@@ -874,7 +874,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           })
           .catch(err => console.warn("[Poll] Failed to fetch tasks:", err));
       poll(); // immediate on mount
-      const iv = setInterval(poll, 8000); // every 8s
+      const iv = setInterval(poll, 30000); // every 8s
       return () => clearInterval(iv);
     }, [user?.email]); // re-poll when user changes (login/logout)
 
@@ -3644,3 +3644,4 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
