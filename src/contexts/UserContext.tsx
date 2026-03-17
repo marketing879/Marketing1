@@ -207,7 +207,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: any[]) => setProjects(data.map(normalizeProject)))
       .catch((err) => console.error("[UserContext] Failed to load projects:", err));
-  }, []);
+  }, [user?.email]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const validateLogin = (email: string, password: string): boolean =>
@@ -478,6 +478,7 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
 
 
 
