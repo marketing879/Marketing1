@@ -865,7 +865,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     );
     useEffect(() => {
       const poll = () =>
-        fetch(`https://roswalt-backend-production.up.railway.app/api/tasks?email=${encodeURIComponent(user?.email ?? "")}&role=${encodeURIComponent((user as any)?.role ?? "")}`)
+        fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks?email=${encodeURIComponent(user?.email ?? "")}&role=${encodeURIComponent((user as any)?.role ?? "")}`)
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
           .then((data: any[]) => {
             const mapped = data.map((t: any) => ({ ...t, id: t.id || String(t._id) }));
@@ -904,7 +904,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         message: `Delete "${task.title}"? This action cannot be undone.`,
         onConfirm: () => {
           deleteTask(task.id);
-          fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`, { method: "DELETE" }).catch(() => {});
+          fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks/${task.id}`, { method: "DELETE" }).catch(() => {});
           toast("🗑 Task deleted.");
           setConfirmDelete(null);
         },
@@ -916,7 +916,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         message: `Delete ALL ${(freshTasks as Task[]).length} tasks permanently? This cannot be undone.`,
         onConfirm: () => {
           deleteAllTasks();
-          fetch("https://roswalt-backend-production.up.railway.app/api/tasks/all", { method: "DELETE" }).catch(() => {});
+          fetch("https://adaptable-patience-production-45da.up.railway.app/api/tasks/all", { method: "DELETE" }).catch(() => {});
           toast("🗑 All tasks deleted.");
           setConfirmDelete(null);
         },
@@ -1236,7 +1236,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     // ── Backend helpers ──────────────────────────────────────────────────────
     // NOTE: addTask() from UserContext already POSTs to backend — do NOT call
     // any separate POST here or you will get duplicate writes.
-    const API = "https://roswalt-backend-production.up.railway.app";
+    const API = "https://adaptable-patience-production-45da.up.railway.app";
 
     const syncTaskToBackend = async (task: Task): Promise<void> => {
       try {
@@ -1397,7 +1397,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       if (!submitTask || !submitNotes.trim()) { toast("⚠ Write some notes first."); return; }
       setAiDrafting(true);
       try {
-        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
+        const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/draft-notes", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, notes: submitNotes }),
         });
@@ -1424,7 +1424,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           }
           contentArray.push({ type: "image", source: { type: "base64", media_type: mime, data: base64 } });
         }
-        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
+        const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, contentArray }),
         });
@@ -3644,4 +3644,5 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
 

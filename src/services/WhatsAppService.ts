@@ -27,7 +27,7 @@ const USE_TWILIO    = process.env.REACT_APP_USE_TWILIO    === "true";
 const USE_CLOUD_API = process.env.REACT_APP_USE_CLOUD_API === "true";
 
 // Backend URL (server.js running on port 5000)
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://roswalt-backend-production.up.railway.app";
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://adaptable-patience-production-45da.up.railway.app";
 
 // WhatsApp Cloud API credentials (only used if USE_CLOUD_API=true)n
 
@@ -200,3 +200,4 @@ export async function sendTaskWhatsApp(
 export function getWhatsAppLink(payload: WhatsAppTaskPayload): string {
   return buildWaLink(payload.recipientPhone, buildMessage(payload));
 }
+

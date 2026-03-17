@@ -39,7 +39,7 @@ interface ChartTipProps {
 // VOICE MODULE
 // ═══════════════════════════════════════════════════════════════════════════
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
+const API_BASE = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
 
 let _selectedVoice: string | null = null;
 const _lastIndex: Record<string, number> = {};
@@ -2204,3 +2204,4 @@ Use realistic, research-backed numbers based on the context provided. Output JSO
     </>
   );
 }
+

@@ -1419,7 +1419,7 @@ const SADashboard: React.FC = () => {
                       </div>
                       <div style={{ marginTop:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                         <div style={{ fontSize:11, color:G.textMuted }}>{tasks.filter((t:Task)=>t.projectId===project.id).length} tasks</div>
-                        <button onClick={() => { if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return; fetch(`https://roswalt-backend-production.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" }).then(r => r.json()).then(() => { showSuccess(`Project "${project.name}" deleted`); window.location.reload(); }).catch(() => showSuccess("Failed to delete project")); }} style={{ background:"rgba(255,59,48,0.15)", border:"1px solid rgba(255,59,48,0.3)", color:"#ff3b30", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑 Delete</button>
+                        <button onClick={() => { if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return; fetch(`https://adaptable-patience-production-45da.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" }).then(r => r.json()).then(() => { showSuccess(`Project "${project.name}" deleted`); window.location.reload(); }).catch(() => showSuccess("Failed to delete project")); }} style={{ background:"rgba(255,59,48,0.15)", border:"1px solid rgba(255,59,48,0.3)", color:"#ff3b30", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑 Delete</button>
                       </div>
                     </div>
                   ))}
@@ -1713,4 +1713,5 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
+
 

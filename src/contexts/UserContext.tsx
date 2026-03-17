@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
+const API_URL = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
 
 // ── CHANGE 1: Added "supremo" to the Role type ───────────────────────────────
 export type Role = "staff" | "admin" | "superadmin" | "supremo";
