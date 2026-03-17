@@ -19,7 +19,7 @@ type VoiceEvent =
 
 // ── Backend Config ────────────────────────────────────────────────────────────
 const API_BASE =
-  process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
+  process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
 
 // ── Voice Selection Controller ────────────────────────────────────────────────
 let _selectedVoice: string | null = null;

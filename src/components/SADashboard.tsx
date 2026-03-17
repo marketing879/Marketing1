@@ -507,7 +507,7 @@ const SADashboard: React.FC = () => {
         if (photo.startsWith("data:")) { const m = photo.match(/data:([^;]+);base64,(.+)/); if (m) { mime = m[1]; base64 = m[2]; } }
         contentArray.push({ type:"image", source:{ type:"base64", media_type:mime, data:base64 } });
       }
-      const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
+      const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
         method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ taskId: selectedTask?.id, contentArray }),
       });
@@ -1994,7 +1994,7 @@ const SADashboard: React.FC = () => {
                         <button
                           onClick={() => {
                             if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
-                            fetch(`https://roswalt-backend-production.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" })
+                            fetch(`https://adaptable-patience-production-45da.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" })
                               .then(r => r.json())
                               .then(() => { showSuccess(`✓ Project "${project.name}" deleted`); window.location.reload(); })
                               .catch(() => showSuccess("✕ Failed to delete project"));
@@ -2433,5 +2433,6 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
+
 
 

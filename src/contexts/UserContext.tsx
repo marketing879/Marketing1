@@ -198,7 +198,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Bootstrap: load tasks & projects from backend on mount ───────────────
   useEffect(() => {
-    fetch(`${API_URL}/api/tasks`)
+    const u = user as any; const q = u ? `?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}` : ""; fetch(`${API_URL}/api/tasks${q}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: any[]) => setTasks(data.map(normalizeTask)))
       .catch((err) => console.error("[UserContext] Failed to load tasks:", err));
@@ -478,3 +478,5 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
+
