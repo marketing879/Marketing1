@@ -900,6 +900,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     } | null>(null);
 
     const requestDeleteTask = (task: Task) => {
+      if ((user as any)?.role !== "superadmin" && (user as any)?.role !== "supremo") { toast("⚠ Only Superadmin can delete tasks. Raise an assistance ticket instead."); return; }
       if ((user as any)?.role !== "superadmin" && (user as any)?.role !== "supremo") {
         toast("⚠ Only Superadmin can delete tasks.");
         return;
@@ -2445,7 +2446,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                             </div>
                             <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
                               <button className="g-btn-ghost" onClick={() => { setReassignTask(task); setShowReassignModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><RotateCw size={13} />Reassign</button>
-                              <button className="g-btn-delete" onClick={() => requestDeleteTask(task)} style={{ padding: "9px 14px" }}><Trash2 size={13} />Delete</button>
+                              
                             </div>
                           </div>
                         </div>
@@ -3729,6 +3730,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
+
 
 
 
