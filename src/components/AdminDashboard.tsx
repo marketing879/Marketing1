@@ -900,6 +900,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     } | null>(null);
 
     const requestDeleteTask = (task: Task) => {
+      if ((user as any)?.role !== "superadmin" && (user as any)?.role !== "supremo") {
+        toast("⚠ Only Superadmin can delete tasks.");
+        return;
+      }
       setConfirmDelete({
         message: `Delete "${task.title}"? This action cannot be undone.`,
         onConfirm: () => {
@@ -3725,6 +3729,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
 
 
 
