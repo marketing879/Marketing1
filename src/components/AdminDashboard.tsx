@@ -3097,6 +3097,64 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             </div>
           )}
 
+          {showAdminSubmitModal && adminSubmitTask && (
+            <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); } }}>
+              <div className="g-modal" style={{ maxHeight: "90vh" }}>
+                <ModalHeader title={`Submit: ${adminSubmitTask.title}`} sub="Choose where to route this task after submission" onClose={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }} accent={G.gold} />
+                <div style={{ padding: "24px 28px 28px" }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <label className="g-label">Completion Notes</label>
+                    <textarea className="g-input" value={adminSubmitNotes} onChange={(e) => setAdminSubmitNotes(e.target.value)} placeholder="Describe what was completed..." style={{ minHeight: 100, resize: "vertical" as const }} />
+                  </div>
+                  <div style={{ padding: "12px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 10, marginBottom: 16, fontSize: 12, color: G.textSecondary }}>
+                    Where should this task go after submission?
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexDirection: "column" }}>
+                    <button className="g-btn-success" style={{ flex: 1 }} onClick={() => {
+                      const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "completed", by: user?.email ?? "", notes: `Submitted to Admin for review. ${adminSubmitNotes}` };
+                      appendHistoryEntry(adminSubmitTask.id, h, user?.email);
+                      const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "in-review" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] };
+                      updateTask(adminSubmitTask.id, updated as never);
+                      syncTaskToBackend(updated as Task);
+                      toast("✓ Task submitted to Admin for review.");
+                      setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes("");
+                    }}><CheckCircle size={14} />Send to Admin for Review</button>
+                    <button className="g-btn-gold" style={{ flex: 1 }} onClick={() => {
+                      const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: `Directly submitted to Superadmin. ${adminSubmitNotes}` };
+                      appendHistoryEntry(adminSubmitTask.id, h, user?.email);
+                      const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "admin-approved" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] };
+                      updateTask(adminSubmitTask.id, updated as never);
+                      syncTaskToBackend(updated as Task);
+                      toast("✓ Task sent directly to Superadmin.");
+                      setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes("");
+                    }}><Shield size={14} />Send to Superadmin Directly</button>
+                    <button className="g-btn-ghost" onClick={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {showAdminSubmitModal && adminSubmitTask && (
+            <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); } }}>
+              <div className="g-modal" style={{ maxHeight: "90vh" }}>
+                <ModalHeader title={`Submit: ${adminSubmitTask.title}`} sub="Choose where to route this task after submission" onClose={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }} accent={G.gold} />
+                <div style={{ padding: "24px 28px 28px" }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <label className="g-label">Completion Notes</label>
+                    <textarea className="g-input" value={adminSubmitNotes} onChange={(e) => setAdminSubmitNotes(e.target.value)} placeholder="Describe what was completed..." style={{ minHeight: 100, resize: "vertical" as const }} />
+                  </div>
+                  <div style={{ padding: "12px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 10, marginBottom: 16, fontSize: 12, color: G.textSecondary }}>
+                    Where should this task go after submission?
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexDirection: "column" }}>
+                    <button className="g-btn-success" onClick={() => { const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "completed", by: user?.email ?? "", notes: `Submitted to Admin for review. ${adminSubmitNotes}` }; appendHistoryEntry(adminSubmitTask.id, h, user?.email); const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "in-review" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] }; updateTask(adminSubmitTask.id, updated as never); syncTaskToBackend(updated as Task); toast("Task submitted to Admin for review."); setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}><CheckCircle size={14} />Send to Admin for Review</button>
+                    <button className="g-btn-gold" onClick={() => { const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: `Directly submitted to Superadmin. ${adminSubmitNotes}` }; appendHistoryEntry(adminSubmitTask.id, h, user?.email); const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "admin-approved" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] }; updateTask(adminSubmitTask.id, updated as never); syncTaskToBackend(updated as Task); toast("Task sent directly to Superadmin."); setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}><Shield size={14} />Send to Superadmin Directly</button>
+                    <button className="g-btn-ghost" onClick={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {showReviewModal && selectedTask && (
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); } }}>
               <div className="g-modal g-modal-wide" style={{ maxHeight: "90vh" }}>
@@ -3664,6 +3722,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
+
+
+
+
+
 
 
 
