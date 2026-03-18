@@ -153,7 +153,7 @@ const defaultUsers: StoredUser[] = [
   { id: "0",  name: "Supremo",                      email: "supremo@roswalt.com",             role: "supremo",    isDoer: false, password: "000000" },
   { id: "1",  name: "Pushkaraj Gore",               email: "pushkaraj.gore@roswalt.com",      role: "superadmin", isDoer: false, password: "100001" },
   { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
-  { id: "3",  name: "Vinay Dinkar Vanmali",         email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "100003" },
+  { id: "3",  name: "Vinay Dinkar Vanmali",         email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "300003" },
   { id: "4",  name: "Jalal Chandmiya Shaikh",       email: "jalal.shaikh@roswalt.com",        role: "admin",      isDoer: false, password: "100004" },
   { id: "5",  name: "Nidhi Mehta",                  email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
   { id: "6",  name: "Keerti Barua",                 email: "keerti.barua@roswalt.com",        role: "admin",      isDoer: false, password: "100006", phone: "+919167388013" },
@@ -171,6 +171,13 @@ const defaultUsers: StoredUser[] = [
   { id: "18", name: "Raj Sachin Vichare",           email: "raj.vichare@roswalt.com",         role: "staff",      isDoer: true,  password: "100018", phone: "+919321181236" },
   { id: "19", name: "Rohan Fernandes",              email: "rohan.fernandes@roswalt.com",     role: "staff",      isDoer: true,  password: "100019", phone: "+91XXXXXXXXXX" },
   { id: "20", name: "Vaibhavi Gujjeti",             email: "vaibhavi.gujjeti@roswalt.com",    role: "staff",      isDoer: true,  password: "100020", phone: "+919870826798" },
+  { id: "21", name: "Isha Sawant",                  email: "isha.sawant@roswalt.com",          role: "staff",      isDoer: true,  password: "100021", phone: "+91XXXXXXXXXX" },
+  { id: "22", name: "Sahil Jain",                   email: "sahil.jain@roswalt.com",           role: "admin",      isDoer: false, password: "100022" },
+  { id: "23", name: "Rohit Singh",                  email: "rohit.singh@roswalt.com",          role: "admin",      isDoer: false, password: "100023" },
+  { id: "24", name: "Veena Shetye",                 email: "veena.shetye@roswalt.com",         role: "admin",      isDoer: false, password: "100024" },
+  { id: "25", name: "Rahul Shinde",                 email: "rahul.shinde@roswalt.com",         role: "staff",      isDoer: true,  password: "100025", phone: "+91XXXXXXXXXX" },
+  { id: "26", name: "Savli Patil",                  email: "savli.patil97@gmail.com",          role: "staff",      isDoer: true,  password: "100026", phone: "+91XXXXXXXXXX" },
+  { id: "27", name: "Harshil Tater",                email: "harshil.tater@roswalt.com",        role: "staff",      isDoer: true,  password: "100027", phone: "+91XXXXXXXXXX" },
 ];
 
 // ── Helper: normalize a raw backend task so `id` is always the UUID field ────
@@ -478,7 +485,3 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
-
-
-
-
