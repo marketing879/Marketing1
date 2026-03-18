@@ -962,6 +962,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const [reassignTask,       setReassignTask]       = useState<Task | null>(null);
     const [reassignTo,         setReassignTo]         = useState("");
     const [reassignReason,     setReassignReason]     = useState("");
+    const [showAdminSubmitModal, setShowAdminSubmitModal] = useState(false);
+    const [adminSubmitTask,      setAdminSubmitTask]      = useState<Task | null>(null);
+    const [adminSubmitNotes,     setAdminSubmitNotes]     = useState("");
 
     // ── TAT Extension review state ────────────────────────────────────────────
     const [showTatExtModal,    setShowTatExtModal]    = useState(false);
@@ -3722,6 +3725,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
 
 
 
