@@ -838,7 +838,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       getTasksForAdminReview, getAssignedTasks, submitTaskCompletion,
       adminReviewTask, logout, user, teamMembers, addTask, projects, updateTask,
       deleteTask, deleteAllTasks, tasks: allContextTasks,
-      assistanceTickets, approveAssistanceTicket,
+      assistanceTickets, approveAssistanceTicket, raiseAssistanceTicket,
     } = useUser() as ReturnType<typeof useUser> & {
       deleteTask: (id: string) => void;
       deleteAllTasks: () => void;
@@ -3730,6 +3730,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
+
+
+
 
 
 
