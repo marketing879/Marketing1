@@ -1843,10 +1843,22 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!selectedTask || !pendingSubmitTask) return;
-    // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
-    // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
+    const doerName = (user as any)?.name || (user as any)?.email || "Doer";
+
+    // 1. If score exists, upload report to Cloudinary first (non-blocking on failure)
+    let scoreReportUrl: string | undefined;
+    if (aiScoreResult) {
+      showSuccess("⏳ Uploading score report…");
+      const url = await uploadAndAttachScoreReport(selectedTask, aiScoreResult, doerName);
+      if (url) {
+        scoreReportUrl = url;
+        showSuccess("✓ Score report attached");
+      }
+    }
+
+    // 2. Single atomic update — approvalStatus + scoreData + attachments + scoreReportUrl
     updateTask?.(selectedTask.id, {
       title:           selectedTask.title,
       description:     selectedTask.description,
@@ -1859,6 +1871,7 @@ const StaffDashboard: React.FC = () => {
       attachments:     uploadedPhotos[selectedTask.id] || [],
       approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
+      ...(scoreReportUrl ? { scoreReportUrl } : {}),
       scoreData:       aiScoreResult ? {
         percentScore:  aiScoreResult.percentScore,
         grade:         aiScoreResult.grade,
@@ -1871,7 +1884,7 @@ const StaffDashboard: React.FC = () => {
         submittedAt:   new Date().toISOString(),
       } : undefined,
     } as any);
-    // submitTaskCompletion removed — merged into updateTask above to avoid overwrite
+
     speakText("Successfully submitted for admin approval. Well done!");
     showSuccess("Task submitted for review ✓");
     setAiScoreResult(null);
@@ -1885,7 +1898,7 @@ const StaffDashboard: React.FC = () => {
     setReadingDeductions(false);
   };
 
-  const downloadScoreReport = (task: any, score: any, doerName: string) => {
+  const buildScoreReportHtml = (task: any, score: any, doerName: string): string => {
     const now = new Date();
     const ds = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
     const ts = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -1895,9 +1908,37 @@ const StaffDashboard: React.FC = () => {
         "<div><span style='color:" + (s.score===s.max?"green":"red") + "'>" + s.score + "/" + s.max + "</span> <b>" + s.label + "</b><div style='color:#666;font-size:11px'>" + (s.note||"") + "</div></div>"
       ).join("")
     ).join("");
-    const html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SmartCue Score Report</title></head><body style='font-family:Arial,sans-serif;padding:32px'><h1>SmartCue AI Score Report</h1><p>Generated: " + ds + " at " + ts + " | ID: " + (task?.id||"") + "-" + Date.now() + "</p><p style='color:red;font-size:12px'>Auto-generated. Read-only. Cannot be altered.</p><hr/><h2>Task: " + (task?.title||"") + "</h2><p><b>Doer:</b> " + doerName + " | <b>By:</b> " + (task?.assignedBy||"-") + " | <b>Purpose:</b> " + (task?.purpose||"-") + "</p><hr/><h2>Score: " + score.percentScore + "/100 - Grade " + score.grade + "</h2><p>" + (score.verdict||"") + "</p><h3>Categories</h3>" + cats + ((score.strengths||[]).length?"<h3 style='color:green'>Strengths</h3>"+(score.strengths||[]).map((s:any)=>"<p>+ "+s+"</p>").join(""):"") + ((score.improvements||[]).length?"<h3 style='color:orange'>Improvements</h3>"+(score.improvements||[]).map((s:any)=>"<p>- "+s+"</p>").join(""):"") + "<hr/><p style='color:#999;font-size:11px'>SmartCue AI - Roswalt Realty | " + ds + "</p></body></html>";
+    return "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SmartCue Score Report</title></head><body style='font-family:Arial,sans-serif;padding:32px'><h1>SmartCue AI Score Report</h1><p>Generated: " + ds + " at " + ts + " | ID: " + (task?.id||"") + "-" + Date.now() + "</p><p style='color:red;font-size:12px'>Auto-generated. Read-only. Cannot be altered.</p><hr/><h2>Task: " + (task?.title||"") + "</h2><p><b>Doer:</b> " + doerName + " | <b>By:</b> " + (task?.assignedBy||"-") + " | <b>Purpose:</b> " + (task?.purpose||"-") + "</p><hr/><h2>Score: " + score.percentScore + "/100 - Grade " + score.grade + "</h2><p>" + (score.verdict||"") + "</p><h3>Categories</h3>" + cats + ((score.strengths||[]).length?"<h3 style='color:green'>Strengths</h3>"+(score.strengths||[]).map((s:any)=>"<p>+ "+s+"</p>").join(""):"") + ((score.improvements||[]).length?"<h3 style='color:orange'>Improvements</h3>"+(score.improvements||[]).map((s:any)=>"<p>- "+s+"</p>").join(""):"") + "<hr/><p style='color:#999;font-size:11px'>SmartCue AI - Roswalt Realty | " + ds + "</p></body></html>";
+  };
+
+  // Upload score report HTML to Cloudinary and attach URL to task (immutable — doer cannot delete)
+  const uploadAndAttachScoreReport = async (task: any, score: any, doerName: string): Promise<string | null> => {
+    const html = buildScoreReportHtml(task, score, doerName);
+    const filename = "SmartCue_Report_" + (task?.title || "task").replace(/\s+/g, "_") + "_" + new Date().toISOString().slice(0, 10);
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
+      const res = await fetch(`${API_URL}/api/upload-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html, filename }),
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        // Attach to task in MongoDB — immutable (we never expose a delete button for this)
+        updateTask?.(task.id, { scoreReportUrl: data.url } as any);
+        return data.url;
+      }
+    } catch (err) {
+      console.error("[ScoreReport] Upload failed:", err);
+    }
+    return null;
+  };
+
+  const downloadScoreReport = (task: any, score: any, doerName: string) => {
+    const html = buildScoreReportHtml(task, score, doerName);
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
+    const now = new Date();
     const a = document.createElement("a");
     a.href = url;
     a.download = "SmartCue_Report_" + (task?.title||"task").replace(/\s+/g,"_") + "_" + now.toISOString().slice(0,10) + ".html";

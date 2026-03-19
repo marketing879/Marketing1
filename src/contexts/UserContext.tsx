@@ -107,6 +107,7 @@ export interface Task {
   attachments?:   string[];
   isFrozen?:      boolean;
   frozenTicketId?: string;
+  scoreReportUrl?: string;  // Cloudinary URL of the auto-uploaded score PDF/HTML report
   scoreData?: {
     percentScore:  number;
     grade:         string;

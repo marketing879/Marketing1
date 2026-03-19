@@ -1884,6 +1884,25 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       prevAdminTaskIdsRef.current   = currentIds;
     }, [myAssignedTasks.length]);
 
+    // Voice: read score aloud when admin opens the review modal
+    useEffect(() => {
+      if (!showReviewModal || !selectedTask) return;
+      const score = (selectedTask as any).scoreData;
+      const doerName = getName(selectedTask.assignedTo);
+      if (score) {
+        speakText(
+          `Reviewing task: ${selectedTask.title}, assigned to ${doerName}. ` +
+          `AI Score: ${score.percentScore} out of 100. Grade: ${score.grade}. ` +
+          `${score.verdict || ""} ` +
+          (score.grammarClean === false ? `Grammar issues detected. ` : `Grammar is clean. `) +
+          `Please review the attachments and score report before approving.`
+        );
+      } else {
+        speakText(`Reviewing task: ${selectedTask.title}, assigned to ${doerName}. No AI score available. Please review the submission.`);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showReviewModal, selectedTask?.id]);
+
     const TABS = [
       { id: "analytics",  label: "Analytics",  icon: TrendingUp  },
       { id: "overview",   label: "Overview",   icon: BarChart3   },
@@ -3366,7 +3385,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               </div>
             </div>
           )}
-          {showReviewModal && selectedTask && (
+          {showReviewModal && selectedTask && (() => {
+            const scoreData = (selectedTask as any).scoreData;
+            const scoreReportUrl = (selectedTask as any).scoreReportUrl;
+            return (
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); } }}>
               <div className="g-modal g-modal-wide" style={{ maxHeight: "90vh" }}>
                 <ModalHeader title={`Review: ${selectedTask.title}`} sub="Approve to forward to Superadmin, or send back for rework" onClose={() => { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); }} accent={G.gold} />
@@ -3378,6 +3400,57 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     {selectedTask.timeSlot && <span className="g-badge g-badge-muted"><Clock size={9} />{selectedTask.timeSlot}</span>}
                     {selectedTask.purpose && <span className="g-badge" style={{ background: "rgba(0,212,255,0.08)", color: G.cyan, border: `1px solid ${G.cyan}44` }}>{selectedTask.purpose}</span>}
                   </div>
+
+                  {/* ── AI Score Panel ── */}
+                  {scoreData && (
+                    <div style={{ padding: "16px 18px", background: "rgba(0,212,255,0.05)", border: `1px solid rgba(0,212,255,0.2)`, borderRadius: 12, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap" as const, gap: 10 }}>
+                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.cyan, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>🎯 AI Score Report</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: scoreData.percentScore >= 75 ? G.success : scoreData.percentScore >= 55 ? G.amber : G.danger, fontFamily: "'Oswald',sans-serif" }}>
+                            {scoreData.percentScore}/100
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 800, padding: "3px 10px", borderRadius: 6, background: scoreData.percentScore >= 75 ? "rgba(0,255,136,0.15)" : scoreData.percentScore >= 55 ? "rgba(255,149,0,0.15)" : "rgba(255,51,102,0.15)", color: scoreData.percentScore >= 75 ? G.success : scoreData.percentScore >= 55 ? G.amber : G.danger }}>
+                            Grade {scoreData.grade}
+                          </span>
+                          {scoreReportUrl && (
+                            <a href={scoreReportUrl} target="_blank" rel="noreferrer"
+                              style={{ padding: "4px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 7, color: G.cyan, fontSize: 10, fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 5 }}>
+                              📄 Full Report
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      {scoreData.verdict && <p style={{ fontSize: 12, color: G.textSecondary, marginBottom: 10, lineHeight: 1.6 }}>{scoreData.verdict}</p>}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                        <span style={{ fontSize: 10, padding: "3px 9px", borderRadius: 5, background: scoreData.grammarClean ? "rgba(0,255,136,0.1)" : "rgba(255,51,102,0.1)", color: scoreData.grammarClean ? G.success : G.danger, border: `1px solid ${scoreData.grammarClean ? "rgba(0,255,136,0.3)" : "rgba(255,51,102,0.3)"}` }}>
+                          {scoreData.grammarClean ? "✓ Grammar Clean" : "⚠ Grammar Issues"}
+                        </span>
+                        {(scoreData.categories || []).map((c: any) => (
+                          <span key={c.name} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 5, background: "rgba(255,255,255,0.04)", color: G.textSecondary, border: "1px solid rgba(255,255,255,0.08)" }}>
+                            {c.name}: {c.score}/20
+                          </span>
+                        ))}
+                      </div>
+                      {(scoreData.strengths || []).length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 9, color: G.success, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 4 }}>Strengths</div>
+                          {scoreData.strengths.slice(0, 3).map((s: string, i: number) => (
+                            <div key={i} style={{ fontSize: 11, color: G.textSecondary, marginBottom: 2 }}>+ {s}</div>
+                          ))}
+                        </div>
+                      )}
+                      {(scoreData.improvements || []).length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 9, color: G.amber, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 4 }}>Improvements</div>
+                          {scoreData.improvements.slice(0, 3).map((s: string, i: number) => (
+                            <div key={i} style={{ fontSize: 11, color: G.textSecondary, marginBottom: 2 }}>- {s}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, marginBottom: 14 }}>
                     <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>Description</div>
                     <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.65 }}>{selectedTask.description}</p>
@@ -3391,12 +3464,24 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {selectedTask.attachments && selectedTask.attachments.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>Attachments ({selectedTask.attachments.length})</div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        {selectedTask.attachments.map((src, i) => (
-                          <div key={i} style={{ position: "relative", cursor: "pointer" }} onClick={() => openLightbox(selectedTask.attachments!, i)}>
-                            <img src={src} alt={`Attachment ${i + 1}`} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: `1px solid ${G.cyan}33` }} />
-                          </div>
-                        ))}
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" as const }}>
+                        {selectedTask.attachments.map((src, i) => {
+                          const isImage = src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("image");
+                          return (
+                            <div key={i} style={{ position: "relative" as const, cursor: "pointer" }}>
+                              {isImage ? (
+                                <img src={src} alt={`Attachment ${i + 1}`}
+                                  onClick={() => openLightbox(selectedTask.attachments!, i)}
+                                  style={{ width: 80, height: 80, objectFit: "cover" as const, borderRadius: 8, border: `1px solid ${G.cyan}33` }} />
+                              ) : (
+                                <a href={src} target="_blank" rel="noreferrer"
+                                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 80, height: 80, background: "rgba(255,255,255,0.04)", border: `1px solid ${G.cyan}33`, borderRadius: 8, color: G.cyan, fontSize: 10, fontWeight: 700, textDecoration: "none", flexDirection: "column" as const, gap: 4 }}>
+                                  <FileText size={22} /><span>View</span>
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -3440,7 +3525,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {showSubmitModal && submitTask && (
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeSubmitModal(); }}>

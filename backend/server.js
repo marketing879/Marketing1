@@ -442,7 +442,9 @@ app.get("/api/tasks", async (req, res) => {
       : callerEmail
         ? { $or: [{ assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } }, { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } }] }
         : {};
-    const tasks = await Task.find(filter).select("-attachments -scoreData").sort({ createdAt: -1 }).lean();
+    // Include scoreData — it's structured JSON, not large.
+    // Exclude nothing heavy by default; attachments are now Cloudinary URLs (small strings).
+    const tasks = await Task.find(filter).sort({ createdAt: -1 }).lean();
     const normalized = tasks.map(t => { if (!t.id) t.id = String(t._id); return t; });
     res.json(normalized);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -542,8 +544,28 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ACTIVITY LOG ROUTES
+// POST /api/upload-report  — accepts { html, filename } and uploads as raw HTML to Cloudinary
+// Returns: { url, publicId }
+app.post("/api/upload-report", async (req, res) => {
+  const { html, filename } = req.body;
+  if (!html) return res.status(400).json({ success: false, message: "No HTML content provided." });
+  try {
+    const buffer = Buffer.from(html, "utf-8");
+    const result = await uploadBufferToCloudinary(buffer, {
+      folder:        "roswalt/score-reports",
+      resource_type: "raw",
+      public_id:     (filename || "report_" + Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_"),
+      format:        "html",
+    });
+    console.log(`[Cloudinary] Score report uploaded: ${result.public_id}`);
+    res.json({ success: true, url: result.secure_url, publicId: result.public_id });
+  } catch (err) {
+    console.error("[Cloudinary] Report upload failed:", err.message);
+    res.status(500).json({ success: false, message: "Report upload failed: " + err.message });
+  }
+});
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GET – fetch activity log (superadmin/supremo see all; others see own actions)
