@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import rateLimit from "express-rate-limit";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -7,9 +8,33 @@ import mongoose from "mongoose";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
+
+// General API rate limit — 100 requests per 15 minutes per IP
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: "Too many requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Strict limiter for sensitive endpoints — 10 requests per 15 minutes
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { success: false, message: "Too many attempts. Please wait before trying again." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/", apiLimiter);
+app.use("/api/tts", strictLimiter);
+app.use("/api/score-content", strictLimiter);
+app.use("/api/draft-notes", strictLimiter);
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: ["https://marketing1-delta.vercel.app", "https://www.roswaltsmartcue.com", "https://roswaltsmartcue.com", process.env.FRONTEND_URL].filter(Boolean),
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -17,7 +42,7 @@ app.use(cors({
 app.options("/{*path}", cors());
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
-    res.header("Access-Control-Allow-Origin", process.env.FRONTEND_URL);
+    const allowedOrigins = ["https://marketing1-delta.vercel.app", "https://www.roswaltsmartcue.com", "https://roswaltsmartcue.com"]; const reqOrigin = req.headers.origin; res.header("Access-Control-Allow-Origin", allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0]);
     res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
     res.header("Access-Control-Allow-Credentials", "true");
@@ -36,6 +61,9 @@ if (!process.env.ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 console.log("✔ ANTHROPIC_API_KEY is configured");
+
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
@@ -75,7 +103,7 @@ const projectSchema = new mongoose.Schema({
   description:        { type: String, default: "" },
   color:              { type: String, default: "#c9a96e" },
   projectCode:        { type: String, required: true, unique: true, uppercase: true, trim: true },
-  concernedDoerEmail: { type: String, required: true, lowercase: true, trim: true },
+  concernedDoerEmail: { type: String, required: false, lowercase: true, trim: true },
   launchDate:         { type: String, required: true },
   status:             { type: String, enum: ["active", "inactive"], default: "active" },
   createdBy:          { type: String },
@@ -99,10 +127,61 @@ const taskSchema = new mongoose.Schema({
   lastReminderAt:  { type: String, default: null },
 }, { timestamps: true, strict: false }); // strict:false keeps any extra fields the frontend sends
 
+taskSchema.index({ assignedBy: 1 });
+taskSchema.index({ assignedTo: 1 });
+taskSchema.index({ approvalStatus: 1 });
 const Project = mongoose.model("Project", projectSchema);
 const Task    = mongoose.model("Task",    taskSchema);
 
-let inMemoryProjects = [];
+// ── TICKET SCHEMA ─────────────────────────────────────────────────────────────
+const ticketSchema = new mongoose.Schema({
+  id:                   { type: String, index: true },
+  taskId:               { type: String, required: true },
+  taskTitle:            { type: String, default: "" },
+  taskDueDate:          { type: String, default: "" },
+  assignedTo:           { type: String },   // reviewer's email
+  assignedBy:           { type: String },   // raiser's email
+  raisedBy:             { type: String },   // raiser's display name
+  ticketType:           { type: String, enum: ["delete-request","small-activity","general-query","task-delegation"], default: "small-activity" },
+  status:               { type: String, enum: ["open","pending-admin","admin-approved","superadmin-pending","superadmin-approved","rejected","resolved"], default: "open" },
+  reason:               { type: String, default: "" },
+  staffNote:            { type: String, default: "" },
+  adminComment:         { type: String },
+  approvedAt:           { type: String },
+  approvedBy:           { type: String },
+  rejectedAt:           { type: String },
+  rejectedBy:           { type: String },
+  rejectionReason:      { type: String },
+  attachments:          [{ type: String }],   // base64
+  targetTaskId:         { type: String },
+  superadminApprovedAt: { type: String },
+  superadminApprovedBy: { type: String },
+}, { timestamps: true, strict: false });
+ticketSchema.index({ assignedTo: 1 });
+ticketSchema.index({ assignedBy: 1 });
+ticketSchema.index({ status: 1 });
+const Ticket = mongoose.model("Ticket", ticketSchema);
+
+// ── ACTIVITY LOG SCHEMA ───────────────────────────────────────────────────────
+const activitySchema = new mongoose.Schema({
+  id:          { type: String, index: true },
+  timestamp:   { type: String, required: true },
+  category:    { type: String, enum: ["task","ticket","project","user","auth","approval"], default: "task" },
+  action:      { type: String, required: true },
+  actorEmail:  { type: String, default: "" },
+  actorName:   { type: String, default: "" },
+  targetId:    { type: String },
+  targetName:  { type: String },
+  meta:        { type: mongoose.Schema.Types.Mixed, default: {} },
+}, { timestamps: true });
+activitySchema.index({ timestamp: -1 });
+activitySchema.index({ actorEmail: 1 });
+activitySchema.index({ category: 1 });
+const ActivityLog = mongoose.model("ActivityLog", activitySchema);
+
+let inMemoryActivity  = [];
+let inMemoryTickets   = [];
+let inMemoryProjects  = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TEAM DIRECTORY
@@ -253,8 +332,7 @@ const validateProject = (req, res, next) => {
   const missing = [
     !name               && "name",
     !projectCode        && "projectCode",
-    !concernedDoerEmail && "concernedDoerEmail",
-    !launchDate         && "launchDate",
+        !launchDate         && "launchDate",
   ].filter(Boolean);
   if (missing.length)
     return res.status(400).json({ message: `Missing: ${missing.join(", ")}.` });
@@ -326,12 +404,16 @@ app.put("/api/projects/:id", requireRole("superadmin", "supremo"), validateProje
 // GET – normalize so every task has an `id` the frontend can use
 app.get("/api/tasks", async (req, res) => {
   try {
-    const tasks = await Task.find().sort({ createdAt: -1 });
-    const normalized = tasks.map(t => {
-      const obj = t.toObject();
-      if (!obj.id) obj.id = String(obj._id); // backfill for any legacy docs
-      return obj;
-    });
+    const callerEmail = (req.query.email ?? "").toLowerCase();
+    const callerRole  = (req.query.role  ?? "").toLowerCase();
+    // Superadmin and supremo see all tasks; admins see only their own
+    const filter = (callerRole === "superadmin" || callerRole === "supremo")
+      ? {}
+      : callerEmail
+        ? { $or: [{ assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } }, { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } }] }
+        : {};
+    const tasks = await Task.find(filter).select("-attachments -scoreData").sort({ createdAt: -1 }).lean();
+    const normalized = tasks.map(t => { if (!t.id) t.id = String(t._id); return t; });
     res.json(normalized);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -385,6 +467,137 @@ app.delete("/api/tasks/:id", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY LOG ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET – fetch activity log (superadmin/supremo see all; others see own actions)
+app.get("/api/activity", async (req, res) => {
+  try {
+    const callerEmail = (req.query.email ?? "").toLowerCase();
+    const callerRole  = (req.query.role  ?? "").toLowerCase();
+    const limit       = Math.min(parseInt(req.query.limit ?? "200"), 500);
+    const filter = (callerRole === "superadmin" || callerRole === "supremo")
+      ? {}
+      : callerEmail ? { actorEmail: { $regex: new RegExp("^" + callerEmail + "$", "i") } } : {};
+    if (mongoose.connection.readyState === 1) {
+      const entries = await ActivityLog.find(filter).sort({ timestamp: -1 }).limit(limit).lean();
+      return res.json(entries.map(e => ({ ...e, id: e.id || String(e._id) })));
+    }
+    const filtered = callerRole === "superadmin" || callerRole === "supremo"
+      ? inMemoryActivity
+      : inMemoryActivity.filter(e => e.actorEmail?.toLowerCase() === callerEmail);
+    res.json(filtered.slice(0, limit));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST – append a new activity entry
+app.post("/api/activity", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      const created = await ActivityLog.create(data);
+      const obj = created.toObject();
+      if (!obj.id) obj.id = String(obj._id);
+      return res.status(201).json(obj);
+    }
+    inMemoryActivity.unshift(data);
+    if (inMemoryActivity.length > 500) inMemoryActivity = inMemoryActivity.slice(0, 500);
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// DELETE – clear all activity (superadmin only, for maintenance)
+app.delete("/api/activity", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await ActivityLog.deleteMany({});
+      return res.json({ success: true });
+    }
+    inMemoryActivity = [];
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKET ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET – all tickets, scoped by role/email
+app.get("/api/tickets", async (req, res) => {
+  try {
+    const callerEmail = (req.query.email ?? "").toLowerCase();
+    const callerRole  = (req.query.role  ?? "").toLowerCase();
+    let filter = {};
+    if (callerRole === "superadmin" || callerRole === "supremo") {
+      filter = {}; // see all
+    } else if (callerEmail) {
+      filter = { $or: [
+        { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } },
+        { assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } },
+      ]};
+    }
+    if (mongoose.connection.readyState === 1) {
+      const tickets = await Ticket.find(filter).sort({ createdAt: -1 }).lean();
+      const normalized = tickets.map(t => { if (!t.id) t.id = String(t._id); return t; });
+      return res.json(normalized);
+    }
+    res.json(inMemoryTickets.filter(t => {
+      if (callerRole === "superadmin" || callerRole === "supremo") return true;
+      return t.assignedTo?.toLowerCase() === callerEmail || t.assignedBy?.toLowerCase() === callerEmail;
+    }));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST – create ticket
+app.post("/api/tickets", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      const created = await Ticket.create(data);
+      const obj = created.toObject();
+      if (!obj.id) obj.id = String(obj._id);
+      return res.status(201).json(obj);
+    }
+    inMemoryTickets.unshift(data);
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// PUT – update ticket (status changes, approve, reject, notes)
+app.put("/api/tickets/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let t = await Ticket.findOneAndUpdate(
+        { id: req.params.id }, { $set: req.body }, { new: true }
+      );
+      if (!t) t = await Ticket.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+      if (!t) return res.status(404).json({ message: "Ticket not found." });
+      const obj = t.toObject();
+      if (!obj.id) obj.id = String(obj._id);
+      return res.json(obj);
+    }
+    const idx = inMemoryTickets.findIndex(t => t.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "Ticket not found." });
+    inMemoryTickets[idx] = { ...inMemoryTickets[idx], ...req.body };
+    res.json(inMemoryTickets[idx]);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// DELETE – single ticket
+app.delete("/api/tickets/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let t = await Ticket.findOneAndDelete({ id: req.params.id });
+      if (!t) t = await Ticket.findByIdAndDelete(req.params.id);
+      if (!t) return res.status(404).json({ message: "Ticket not found." });
+      return res.json({ success: true });
+    }
+    inMemoryTickets = inMemoryTickets.filter(t => t.id !== req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DRAFT NOTES
 // ─────────────────────────────────────────────────────────────────────────────
 app.post("/api/draft-notes", async (req, res) => {
@@ -394,7 +607,7 @@ app.post("/api/draft-notes", async (req, res) => {
     console.log("[INFO] 📝 Drafting notes...");
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 1000,
         messages: [{
           role: "user",
@@ -423,7 +636,7 @@ app.post("/api/review-attachments", async (req, res) => {
     console.log(`[INFO] 👁️  Reviewing ${contentArray.filter(c => c.type === "image").length} images...`);
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 2000,
         messages: [{ role: "user", content: contentArray }],
       })
@@ -460,8 +673,9 @@ app.post("/api/score-content", async (req, res) => {
     console.log(`[INFO] 🎯 Scoring content – ${imageCount} image(s)...`);
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2500,
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 4000,
+        temperature: 0,
         system: systemPrompt,
         messages: [{ role: "user", content: userContent }],
       })
@@ -497,7 +711,7 @@ app.post("/api/chat", async (req, res) => {
     console.log("[INFO] 🤖 SmartCue AI chat request...");
     const response = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
-        model:      model      || "claude-sonnet-4-20250514",
+        model:      model      || "claude-haiku-4-5-20251001",
         max_tokens: max_tokens || 1024,
         system:     system     || "You are SmartCue, an elite AI assistant for Roswalt Realty.",
         messages,
@@ -532,8 +746,8 @@ app.post("/api/tts", async (req, res) => {
         },
         body: JSON.stringify({
           text,
-          model_id: "eleven_monolingual_v1",
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          model_id: "eleven_turbo_v2_5",
+          voice_settings: { stability: 0.35, similarity_boost: 0.85, style: 0.40, use_speaker_boost: true },
         }),
       }
     );
@@ -573,6 +787,8 @@ app.listen(PORT, () => {
   console.log(`╠══════════════════════════════════════════════════════╣`);
   console.log(`║  Projects:   GET/POST/PUT  /api/projects             ║`);
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
+  console.log(`║  Tickets:    GET/POST/PUT/DELETE /api/tickets        ║`);
+  console.log(`║  Activity:   GET/POST/DELETE     /api/activity       ║`);
   console.log(`║  AI:         POST /api/draft-notes                   ║`);
   console.log(`║              POST /api/review-attachments            ║`);
   console.log(`║              POST /api/score-content                 ║`);
@@ -582,9 +798,13 @@ app.listen(PORT, () => {
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
   console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✔ Loaded" : "✗ Missing");
 
+  setInterval(() => {
+    fetch("https://adaptable-patience-production-45da.up.railway.app/health").catch(() => {});
+  }, 300000); // ping every 14 minutes to prevent sleep
+
   setTimeout(() => {
     console.log("⏱  TAT monitor started – checking every 60 seconds");
     runTATMonitor();
-    setInterval(runTATMonitor, 60_000);
+    setInterval(runTATMonitor, 14400000);
   }, 5_000);
 });

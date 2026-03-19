@@ -14,20 +14,36 @@ export interface User {
   phone?: string;
 }
 
+export type TicketType =
+  | "delete-request"
+  | "small-activity"
+  | "general-query"
+  | "task-delegation";
+
 export interface AssistanceTicket {
   id:           string;
   taskId:       string;
   taskTitle:    string;
   taskDueDate:  string;
-  assignedTo:   string;
-  assignedBy:   string;
+  assignedTo:   string;   // person the ticket is sent TO (admin who reviews)
+  assignedBy:   string;   // person who raised the ticket
+  raisedBy:     string;   // display name of raiser
   raisedAt:     string;
-  status:       "open" | "pending-admin" | "admin-approved" | "resolved";
+  status:       "open" | "pending-admin" | "admin-approved" | "superadmin-pending" | "superadmin-approved" | "rejected" | "resolved";
+  ticketType:   TicketType;
   reason:       string;
   staffNote:    string;
   adminComment?: string;
   approvedAt?:  string;
   approvedBy?:  string;
+  rejectedAt?:  string;
+  rejectedBy?:  string;
+  rejectionReason?: string;
+  attachments?: string[];  // base64 encoded files
+  // For delete-request: superadmin must approve before task can be deleted
+  targetTaskId?: string;   // task to delete (may differ from taskId)
+  superadminApprovedAt?: string;
+  superadminApprovedBy?: string;
 }
 
 export interface HistoryEntry {
@@ -37,6 +53,26 @@ export interface HistoryEntry {
   by: string;
   to?: string;
   notes?: string;
+}
+
+export type ActivityCategory =
+  | "task"
+  | "ticket"
+  | "project"
+  | "user"
+  | "auth"
+  | "approval";
+
+export interface ActivityEntry {
+  id:         string;
+  timestamp:  string;
+  category:   ActivityCategory;
+  action:     string;        // e.g. "Task Assigned", "Ticket Raised", "Task Deleted"
+  actorEmail: string;
+  actorName:  string;
+  targetId?:  string;        // taskId / ticketId / projectId
+  targetName?: string;       // task title / ticket title etc.
+  meta?:      Record<string, string>; // extra key/value pairs
 }
 
 export interface Task {
@@ -140,6 +176,10 @@ interface UserContextType {
   updateAssistanceTicket: (ticketId: string, updates: Partial<AssistanceTicket>) => void;
   submitTicketToAdmin: (ticketId: string) => void;
   approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
+  rejectAssistanceTicket: (ticketId: string, reason: string) => void;
+  superadminApproveTicket: (ticketId: string, approve: boolean, comment: string) => void;
+  activityLog: ActivityEntry[];
+  logActivity: (entry: Omit<ActivityEntry, "id" | "timestamp">) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -199,11 +239,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tasks,            setTasks]            = useState<Task[]>([]);
   const [projects,         setProjects]         = useState<Project[]>([]);
   const [assistanceTickets,setAssistanceTickets]= useState<AssistanceTicket[]>([]);
+  const [activityLog,      setActivityLog]      = useState<ActivityEntry[]>([]);
   const [voiceAccessGranted, setVoiceAccessGranted] = useState<boolean>(false);
+
+  // ── logActivity: append entry + persist to backend ───────────────────────
+  const logActivity = (entry: Omit<ActivityEntry, "id" | "timestamp">): void => {
+    const full: ActivityEntry = {
+      ...entry,
+      id:        "ACT-" + Date.now().toString(36).toUpperCase(),
+      timestamp: new Date().toISOString(),
+    };
+    setActivityLog(prev => [full, ...prev].slice(0, 500));
+    fetch(`${API_URL}/api/activity`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(full),
+    }).catch(() => {});
+  };
 
   const teamMembers: User[] = storedUsers.map(({ password: _p, ...u }) => u);
 
-  // ── Bootstrap: load tasks & projects from backend on mount ───────────────
+  // ── Bootstrap: load tasks, projects & tickets from backend on mount ───────
   useEffect(() => {
     const u = user as any; const q = u ? `?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}` : ""; fetch(`${API_URL}/api/tasks${q}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
@@ -214,6 +270,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: any[]) => setProjects(data.map(normalizeProject)))
       .catch((err) => console.error("[UserContext] Failed to load projects:", err));
+
+    if (u) {
+      fetch(`${API_URL}/api/tickets?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
+        .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+        .then((data: any[]) => setAssistanceTickets(data.map((t: any) => ({ ...t, id: t.id || String(t._id) }))))
+        .catch((err) => console.error("[UserContext] Failed to load tickets:", err));
+
+      // Load activity log (superadmin/supremo see all; others see own)
+      fetch(`${API_URL}/api/activity?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
+        .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+        .then((data: any[]) => setActivityLog(data))
+        .catch(() => {});
+    }
   }, [user?.email]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -231,6 +300,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(userWithoutPassword);
       setVoiceAccessGranted(true);
       try { sessionStorage.setItem("sc_user", JSON.stringify(userWithoutPassword)); } catch {}
+      logActivity({ category: "auth", action: "Login", actorEmail: found.email, actorName: found.name });
     }
   };
 
@@ -253,6 +323,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
     if (exists) return { success: false, message: "Email already exists." };
     setStoredUsers((prev) => [...prev, { ...newUser, id: Date.now().toString() }]);
+    logActivity({ category: "user", action: "User Added", actorEmail: user?.email || "", actorName: user?.name || "", targetName: newUser.name, meta: { role: newUser.role, email: newUser.email } });
     return { success: true, message: "User created successfully." };
   };
 
@@ -277,7 +348,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((saved: any) => {
         console.log("[UserContext] addTask saved to DB:", saved.id || saved._id);
-        // Re-fetch all tasks so every dashboard is in sync
+        logActivity({ category: "task", action: "Task Assigned", actorEmail: saved.assignedBy || "", actorName: saved.assignedBy || "", targetId: saved.id || String(saved._id), targetName: saved.title, meta: { assignedTo: saved.assignedTo || "", priority: saved.priority || "", dueDate: saved.dueDate || "" } });
         fetch(`${API_URL}/api/tasks`)
           .then((r) => r.ok ? r.json() : Promise.reject(r.status))
           .then((data: any[]) => setTasks(data.map(normalizeTask)))
@@ -317,6 +388,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const adminReviewTask = (taskId: string, approved: boolean, comments: string): void => {
+    const task = tasks.find(t => t.id === taskId);
     updateTask(taskId, {
       adminApproved:   approved,
       adminComments:   comments,
@@ -324,19 +396,24 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       approvalStatus:  approved ? "admin-approved" : "rejected",
       status:          approved ? "approved" : "rework",
     });
+    logActivity({ category: "approval", action: approved ? "Task Admin-Approved" : "Task Sent for Rework", actorEmail: user?.email || "", actorName: user?.name || "Admin", targetId: taskId, targetName: task?.title || taskId, meta: { comments } });
   };
 
   const superadminReviewTask = (taskId: string, approved: boolean, comments: string): void => {
+    const task = tasks.find(t => t.id === taskId);
     updateTask(taskId, {
       approvalStatus:  approved ? "superadmin-approved" : "rejected",
       adminComments:   comments,
       adminReviewedBy: user?.name || "Superadmin",
       status:          approved ? "approved" : "rework",
     });
+    logActivity({ category: "approval", action: approved ? "Task Superadmin-Approved" : "Task Rejected by Superadmin", actorEmail: user?.email || "", actorName: user?.name || "Superadmin", targetId: taskId, targetName: task?.title || taskId, meta: { comments } });
   };
 
   const deleteTask = (id: string): void => {
+    const task = tasks.find(t => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
+    logActivity({ category: "task", action: "Task Deleted", actorEmail: user?.email || "", actorName: user?.name || "", targetId: id, targetName: task?.title || id });
     fetch(`${API_URL}/api/tasks/${id}`, { method: "DELETE" })
       .catch((err) => console.error("[UserContext] deleteTask failed:", err));
   };
@@ -384,7 +461,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body:    JSON.stringify(payload),
     })
       .then((r) => r.ok ? r.json() : r.json().then(e => Promise.reject(e)))
-      .then((saved: any) => setProjects((prev) => [normalizeProject(saved), ...prev]))
+      .then((saved: any) => {
+        setProjects((prev) => [normalizeProject(saved), ...prev]);
+        logActivity({ category: "project", action: "Project Created", actorEmail: user?.email || "", actorName: user?.name || "", targetId: saved.id || String(saved._id), targetName: saved.name });
+      })
       .catch((err) => console.error("[UserContext] addProject failed:", JSON.stringify(err)));
   };
 
@@ -392,32 +472,53 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const raiseAssistanceTicket = (
     ticket: Omit<AssistanceTicket, "id" | "raisedAt" | "status">
   ): void => {
-    const existing = assistanceTickets.find(
-      (t) => t.taskId === ticket.taskId && t.status !== "resolved"
-    );
-    if (existing) return;
+    // For non-delete tickets: deduplicate by taskId
+    if (ticket.ticketType !== "delete-request") {
+      const existing = assistanceTickets.find(
+        (t) => t.taskId === ticket.taskId && t.status !== "resolved" && t.status !== "rejected"
+      );
+      if (existing) return;
+    }
     const newTicket: AssistanceTicket = {
       ...ticket,
       id:       "TKT-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 5).toUpperCase(),
       raisedAt: new Date().toISOString(),
-      status:   "open",
+      status:   ticket.ticketType === "delete-request" ? "superadmin-pending" : "open",
     };
     setAssistanceTickets((prev) => [...prev, newTicket]);
+    logActivity({ category: "ticket", action: `Ticket Raised: ${newTicket.ticketType}`, actorEmail: newTicket.assignedBy, actorName: newTicket.raisedBy, targetId: newTicket.id, targetName: newTicket.taskTitle, meta: { assignedTo: newTicket.assignedTo, type: newTicket.ticketType } });
+    fetch(`${API_URL}/api/tickets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newTicket),
+    }).catch((err) => console.error("[UserContext] raiseAssistanceTicket persist failed:", err));
   };
 
-  const updateAssistanceTicket = (ticketId: string, updates: Partial<AssistanceTicket>): void =>
+  const updateAssistanceTicket = (ticketId: string, updates: Partial<AssistanceTicket>): void => {
     setAssistanceTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, ...updates } : t))
     );
+    fetch(`${API_URL}/api/tickets/${ticketId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }).catch((err) => console.error("[UserContext] updateAssistanceTicket persist failed:", err));
+  };
 
   const submitTicketToAdmin = (ticketId: string): void => {
+    const updates = { status: "pending-admin" as const };
     setAssistanceTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, status: "pending-admin" } : t))
+      prev.map((t) => (t.id === ticketId ? { ...t, ...updates } : t))
     );
     const ticket = assistanceTickets.find((t) => t.id === ticketId);
     if (ticket) {
       updateTask(ticket.taskId, { isFrozen: true, frozenTicketId: ticketId });
     }
+    fetch(`${API_URL}/api/tickets/${ticketId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }).catch((err) => console.error("[UserContext] submitTicketToAdmin persist failed:", err));
   };
 
   const approveAssistanceTicket = (ticketId: string, adminComment: string): void => {
@@ -437,6 +538,54 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
     updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
+    logActivity({ category: "ticket", action: "Ticket Approved", actorEmail: user?.email || "", actorName: user?.name || "Admin", targetId: ticketId, targetName: ticket.taskTitle, meta: { comment: adminComment } });
+    fetch(`${API_URL}/api/tickets/${ticketId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "admin-approved", adminComment, approvedAt: new Date().toISOString(), approvedBy: user?.name ?? "Admin" }),
+    }).catch(() => {});
+  };
+
+  const rejectAssistanceTicket = (ticketId: string, reason: string): void => {
+    const ticket = assistanceTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    const updates = { status: "rejected" as const, rejectionReason: reason, rejectedAt: new Date().toISOString(), rejectedBy: user?.name ?? "Admin" };
+    setAssistanceTickets((prev) =>
+      prev.map((t) => t.id === ticketId ? { ...t, ...updates } : t)
+    );
+    updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
+    fetch(`${API_URL}/api/tickets/${ticketId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }).catch(() => {});
+  };
+
+  // Superadmin approves/rejects delete-request tickets
+  const superadminApproveTicket = (ticketId: string, approve: boolean, comment: string): void => {
+    const ticket = assistanceTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    if (approve) {
+      const updates = { status: "superadmin-approved" as const, adminComment: comment, superadminApprovedAt: new Date().toISOString(), superadminApprovedBy: user?.name ?? "Superadmin" };
+      setAssistanceTickets((prev) =>
+        prev.map((t) => t.id === ticketId ? { ...t, ...updates } : t)
+      );
+      if (ticket.ticketType === "delete-request") {
+        const taskToDelete = ticket.targetTaskId || ticket.taskId;
+        if (taskToDelete) deleteTask(taskToDelete);
+      }
+      fetch(`${API_URL}/api/tickets/${ticketId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      }).catch(() => {});
+    } else {
+      const updates = { status: "rejected" as const, rejectionReason: comment, rejectedAt: new Date().toISOString(), rejectedBy: user?.name ?? "Superadmin" };
+      setAssistanceTickets((prev) =>
+        prev.map((t) => t.id === ticketId ? { ...t, ...updates } : t)
+      );
+      fetch(`${API_URL}/api/tickets/${ticketId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      }).catch(() => {});
+    }
   };
 
   return (
@@ -473,6 +622,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateAssistanceTicket,
         submitTicketToAdmin,
         approveAssistanceTicket,
+        rejectAssistanceTicket,
+        superadminApproveTicket,
+        activityLog,
+        logActivity,
       }}
     >
       {children}

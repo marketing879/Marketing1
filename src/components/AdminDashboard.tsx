@@ -839,12 +839,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       adminReviewTask, logout, user, teamMembers, addTask, projects, updateTask,
       deleteTask, deleteAllTasks, tasks: allContextTasks,
       assistanceTickets, approveAssistanceTicket, raiseAssistanceTicket,
+      rejectAssistanceTicket,
     } = useUser() as ReturnType<typeof useUser> & {
       deleteTask: (id: string) => void;
       deleteAllTasks: () => void;
       tasks: Task[];
       assistanceTickets: import("../contexts/UserContext").AssistanceTicket[];
       approveAssistanceTicket: (ticketId: string, adminComment: string) => void;
+      rejectAssistanceTicket: (ticketId: string, reason: string) => void;
+      raiseAssistanceTicket: (ticket: any) => void;
     };
 
     // ── One-time clear of stale localStorage history (now using MongoDB as source of truth) ──
@@ -865,7 +868,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     );
     useEffect(() => {
       const poll = () =>
-        fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks?email=${encodeURIComponent(user?.email ?? "")}&role=${encodeURIComponent((user as any)?.role ?? "")}`)
+        fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
           .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
           .then((data: any[]) => {
             const mapped = data.map((t: any) => ({ ...t, id: t.id || String(t._id) }));
@@ -874,7 +877,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           })
           .catch(err => console.warn("[Poll] Failed to fetch tasks:", err));
       poll(); // immediate on mount
-      const iv = setInterval(poll, 30000); // every 8s
+      const iv = setInterval(poll, 8000); // every 8s
       return () => clearInterval(iv);
     }, [user?.email]); // re-poll when user changes (login/logout)
 
@@ -893,35 +896,79 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const profileInputRef = useRef<HTMLInputElement | null>(null);
     const logoInputRef = useRef<HTMLInputElement | null>(null);
 
-    // ── Delete confirmation state ─────────────────────────────────────────────
+    // ── Delete restriction: admins must raise a delete-request ticket ────────
+    // Raise-ticket modal state
+    const [showRaiseTicketModal, setShowRaiseTicketModal] = useState(false);
+    const [raiseTicketTask,      setRaiseTicketTask]      = useState<Task | null>(null);
+    const [raiseTicketType,      setRaiseTicketType]      = useState<"delete-request" | "small-activity" | "general-query" | "task-delegation">("small-activity");
+    const [raiseTicketNote,      setRaiseTicketNote]      = useState("");
+    const [raiseTicketAssignTo,  setRaiseTicketAssignTo]  = useState("");
+    const [raiseTicketAttachments, setRaiseTicketAttachments] = useState<string[]>([]);
+    const raiseTicketFileRef = useRef<HTMLInputElement | null>(null);
+
+    const requestDeleteTask = (task: Task) => {
+      // Admin cannot delete directly — must raise a delete-request ticket to superadmin
+      setRaiseTicketTask(task);
+      setRaiseTicketType("delete-request");
+      setRaiseTicketNote("");
+      setRaiseTicketAttachments([]);
+      setShowRaiseTicketModal(true);
+    };
+
+    const handleRaiseTicketAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          setRaiseTicketAttachments(prev => [...prev, ev.target?.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+
+    const handleSubmitRaiseTicket = () => {
+      if (!raiseTicketNote.trim() || !raiseTicketTask) return;
+      const adminMembers = allMembers.filter(m => m.role === "superadmin" || m.role === "supremo");
+      const targetAdmin  = adminMembers[0];
+      raiseAssistanceTicket({
+        taskId:       raiseTicketTask.id,
+        taskTitle:    raiseTicketTask.title,
+        taskDueDate:  raiseTicketTask.dueDate ?? "",
+        assignedTo:   targetAdmin?.email ?? "pushkaraj.gore@roswalt.com",
+        assignedBy:   user?.email ?? "",
+        raisedBy:     user?.name  ?? "",
+        ticketType:   raiseTicketType,
+        reason:       raiseTicketNote,
+        staffNote:    raiseTicketNote,
+        attachments:  raiseTicketAttachments,
+        targetTaskId: raiseTicketTask.id,
+      });
+      speakText(
+        raiseTicketType === "delete-request"
+          ? `Delete request submitted for ${raiseTicketTask.title}. Awaiting superadmin approval.`
+          : `Assistance ticket raised for ${raiseTicketTask.title}.`
+      );
+      toast(raiseTicketType === "delete-request"
+        ? "🎫 Delete request sent to superadmin for approval"
+        : "🎫 Assistance ticket raised");
+      setShowRaiseTicketModal(false);
+      setRaiseTicketTask(null);
+      setRaiseTicketNote("");
+      setRaiseTicketAttachments([]);
+    };
+
+    // ── Delete confirmation state (kept for deleteAllTasks only) ─────────────
     const [confirmDelete, setConfirmDelete] = useState<{
       message: string;
       onConfirm: () => void;
     } | null>(null);
-
-    const requestDeleteTask = (task: Task) => {
-      if ((user as any)?.role !== "superadmin" && (user as any)?.role !== "supremo") { toast("⚠ Only Superadmin can delete tasks. Raise an assistance ticket instead."); return; }
-      if ((user as any)?.role !== "superadmin" && (user as any)?.role !== "supremo") {
-        toast("⚠ Only Superadmin can delete tasks.");
-        return;
-      }
-      setConfirmDelete({
-        message: `Delete "${task.title}"? This action cannot be undone.`,
-        onConfirm: () => {
-          deleteTask(task.id);
-          fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks/${task.id}`, { method: "DELETE" }).catch(() => {});
-          toast("🗑 Task deleted.");
-          setConfirmDelete(null);
-        },
-      });
-    };
 
     const requestDeleteAll = () => {
       setConfirmDelete({
         message: `Delete ALL ${(freshTasks as Task[]).length} tasks permanently? This cannot be undone.`,
         onConfirm: () => {
           deleteAllTasks();
-          fetch("https://adaptable-patience-production-45da.up.railway.app/api/tasks/all", { method: "DELETE" }).catch(() => {});
+          fetch("https://roswalt-backend-production.up.railway.app/api/tasks/all", { method: "DELETE" }).catch(() => {});
           toast("🗑 All tasks deleted.");
           setConfirmDelete(null);
         },
@@ -1244,7 +1291,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     // ── Backend helpers ──────────────────────────────────────────────────────
     // NOTE: addTask() from UserContext already POSTs to backend — do NOT call
     // any separate POST here or you will get duplicate writes.
-    const API = "https://adaptable-patience-production-45da.up.railway.app";
+    const API = "https://roswalt-backend-production.up.railway.app";
 
     const syncTaskToBackend = async (task: Task): Promise<void> => {
       try {
@@ -1405,7 +1452,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       if (!submitTask || !submitNotes.trim()) { toast("⚠ Write some notes first."); return; }
       setAiDrafting(true);
       try {
-        const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/draft-notes", {
+        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, notes: submitNotes }),
         });
@@ -1432,7 +1479,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           }
           contentArray.push({ type: "image", source: { type: "base64", media_type: mime, data: base64 } });
         }
-        const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
+        const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: submitTask.id, contentArray }),
         });
@@ -1785,9 +1832,50 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const activeSmartAssistCount = countActiveTickets(smartAssistTickets);
     // Assistance tickets sent to THIS admin for review
     const pendingAssistanceTickets = (assistanceTickets ?? []).filter(
-      t => t.status === "pending-admin" &&
-           (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+      t => (t.status === "pending-admin" || t.status === "open") &&
+           (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
+
+    // Voice alert when a new ticket arrives for this admin
+    const prevTicketCountRef = React.useRef(pendingAssistanceTickets.length);
+    useEffect(() => {
+      const prev = prevTicketCountRef.current;
+      const curr = pendingAssistanceTickets.length;
+      if (curr > prev) {
+        const newest = pendingAssistanceTickets[0];
+        const typeLabel = newest?.ticketType === "delete-request"
+          ? "delete request"
+          : newest?.ticketType?.replace("-", " ") ?? "assistance ticket";
+        speakText(`Attention. You have a new ${typeLabel} from ${newest?.raisedBy ?? "a team member"} regarding ${newest?.taskTitle ?? "a task"}. Please review at your earliest.`);
+      }
+      prevTicketCountRef.current = curr;
+    }, [pendingAssistanceTickets.length]);
+
+    // Voice alert when a new task is assigned TO this admin (admin acting as doer)
+    const prevAdminTaskCountRef = React.useRef<number | null>(null);
+    const prevAdminTaskIdsRef   = React.useRef<Set<string>>(new Set());
+    useEffect(() => {
+      if (myAssignedTasks.length === 0) return;
+      const currentIds = new Set(myAssignedTasks.map((t: Task) => t.id));
+      const prev = prevAdminTaskCountRef.current;
+      if (prev !== null && myAssignedTasks.length > prev) {
+        const newTasks = myAssignedTasks.filter((t: Task) => !prevAdminTaskIdsRef.current.has(t.id));
+        newTasks.forEach((task: Task) => {
+          const from = task.assignedBy
+            ? allMembers.find(m => m.email === task.assignedBy)?.name ?? task.assignedBy
+            : "a colleague";
+          const due = task.dueDate
+            ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
+            : "no deadline set";
+          speakText(
+            `Attention. You have been assigned a new task by ${from}. ` +
+            `Task: ${task.title}. Priority: ${task.priority ?? "medium"}. Due by ${due}.`
+          );
+        });
+      }
+      prevAdminTaskCountRef.current = myAssignedTasks.length;
+      prevAdminTaskIdsRef.current   = currentIds;
+    }, [myAssignedTasks.length]);
 
     const TABS = [
       { id: "analytics",  label: "Analytics",  icon: TrendingUp  },
@@ -2445,8 +2533,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
+                              {(task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (task.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() && (
+                                <button className="g-btn-gold" onClick={() => { setAdminSubmitTask(task); setAdminSubmitNotes(task.completionNotes ?? ""); setShowAdminSubmitModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><Upload size={13} />Submit</button>
+                              )}
                               <button className="g-btn-ghost" onClick={() => { setReassignTask(task); setShowReassignModal(true); }} style={{ padding: "9px 14px", fontSize: 12 }}><RotateCw size={13} />Reassign</button>
-                              
+                              <button className="g-btn-delete" onClick={() => requestDeleteTask(task)} style={{ padding: "9px 14px" }} title="Admins must raise a delete request ticket"><Trash2 size={13} />Request Delete</button>
                             </div>
                           </div>
                         </div>
@@ -2509,27 +2600,35 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             {/* ══ ASSISTANCE TICKETS TAB ══ */}
             {activeTab === "tickets" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap" as const, gap: 12 }}>
                   <div>
                     <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>
                       Assistance <em style={{ color: "#ff9500" }}>Tickets</em>
                     </h2>
                     <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
-                      {pendingAssistanceTickets.length} pending · {(assistanceTickets ?? []).filter(t => t.assignedBy?.toLowerCase() === user?.email?.toLowerCase() && t.status === "admin-approved").length} approved
+                      {pendingAssistanceTickets.length} pending · {(assistanceTickets ?? []).filter(t => t.status === "admin-approved" || t.status === "superadmin-approved").length} approved
                     </p>
                   </div>
-                  {pendingAssistanceTickets.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
-                      <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#ff9500" }}>ACTION REQUIRED</span>
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {pendingAssistanceTickets.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
+                        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#ff9500" }}>ACTION REQUIRED</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => { setRaiseTicketTask(null as any); setRaiseTicketType("small-activity"); setRaiseTicketNote(""); setRaiseTicketAssignTo(""); setRaiseTicketAttachments([]); setShowRaiseTicketModal(true); }}
+                      style={{ padding: "8px 16px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 10, color: G.cyan, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Plus size={12} /> New Ticket
+                    </button>
+                  </div>
                 </div>
 
-                {/* All tickets for this admin (sent by staff they manage) */}
+                {/* All tickets for this admin (sent to this admin or raised by this admin) */}
                 {(() => {
                   const adminTickets = (assistanceTickets ?? []).filter(
-                    t => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+                    t => (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() ||
+                         (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
                   );
                   if (adminTickets.length === 0) {
                     return (
@@ -2546,7 +2645,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     );
                   }
 
-                  const statusOrder = { "pending-admin": 0, "open": 1, "admin-approved": 2, "resolved": 3 };
+                  const statusOrder: Record<string, number> = { "pending-admin": 0, "superadmin-pending": 0, "open": 1, "admin-approved": 2, "superadmin-approved": 2, "rejected": 3, "resolved": 4 };
                   const sorted = [...adminTickets].sort((a, b) =>
                     (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
                   );
@@ -2851,8 +2950,30 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     <button
                       onClick={() => {
                         if (!ticketReviewNote.trim()) return;
+                        rejectAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
+                        speakText(`Assistance ticket rejected for ${selectedTicket.taskTitle}. The staff member has been notified.`);
+                        setShowTicketModal(false);
+                        setSelectedTicket(null);
+                        toast("✗ Ticket rejected — doer notified");
+                      }}
+                      disabled={ticketReviewNote.trim().length < 5}
+                      style={{
+                        flex: 1, padding: "13px",
+                        background: ticketReviewNote.trim().length >= 5 ? "rgba(255,51,102,0.12)" : "rgba(255,255,255,0.04)",
+                        border: ticketReviewNote.trim().length >= 5 ? "1px solid rgba(255,51,102,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 10, color: ticketReviewNote.trim().length >= 5 ? G.danger : G.textMuted,
+                        fontSize: 12, fontWeight: 800,
+                        cursor: ticketReviewNote.trim().length >= 5 ? "pointer" : "not-allowed",
+                        fontFamily: "inherit", transition: "all 0.2s",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}
+                    >
+                      <X size={14} /> Reject
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!ticketReviewNote.trim()) return;
                         approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
-                        // Append to global history log so it's visible in Master History
                         const linkedTaskId = selectedTicket.taskId;
                         speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
                         setShowTicketModal(false);
@@ -2881,6 +3002,117 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       <CheckCircle size={14} /> Approve & Unfreeze Task
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Raise Assistance Ticket Modal ─────────────────────────────── */}
+          {showRaiseTicketModal && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+              onClick={e => { if (e.target === e.currentTarget) setShowRaiseTicketModal(false); }}>
+              <div style={{ background: "#1a1d2e", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 16, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#ff9500", textTransform: "uppercase" as const, letterSpacing: "1px", marginBottom: 4 }}>
+                      {raiseTicketType === "delete-request" ? "🗑 Delete Request Ticket" : "🎫 Raise Assistance Ticket"}
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#e8eaf6", fontFamily: "'Oswald',sans-serif" }}>
+                      {raiseTicketTask?.title}
+                    </div>
+                  </div>
+                  <button onClick={() => setShowRaiseTicketModal(false)} style={{ background: "none", border: "none", color: "#7e84a3", cursor: "pointer", fontSize: 20 }}>✕</button>
+                </div>
+
+                {raiseTicketType === "delete-request" && (
+                  <div style={{ padding: "10px 14px", background: "rgba(255,51,102,0.07)", border: "1px solid rgba(255,51,102,0.2)", borderRadius: 10, marginBottom: 16, fontSize: 11, color: "rgba(255,100,120,0.9)", lineHeight: 1.7 }}>
+                    ⚠ <strong>Admins cannot delete tasks directly.</strong> This ticket will be sent to the superadmin for approval. The task will remain active until the superadmin approves the deletion.
+                  </div>
+                )}
+
+                {/* Ticket Type (only shown when not delete-request) */}
+                {raiseTicketType !== "delete-request" && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Ticket Type</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+                      {(["small-activity","general-query","task-delegation"] as const).map(type => (
+                        <button key={type} onClick={() => setRaiseTicketType(type)}
+                          style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${raiseTicketType === type ? "#00d4ff" : "rgba(255,255,255,0.1)"}`, background: raiseTicketType === type ? "rgba(0,212,255,0.1)" : "transparent", color: raiseTicketType === type ? "#00d4ff" : "#7e84a3", fontSize: 11, fontWeight: 700, cursor: "pointer", textTransform: "capitalize" as const }}>
+                          {type.replace("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assign To */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>
+                    {raiseTicketType === "delete-request" ? "Assigned To (Superadmin)" : "Assign To"}
+                  </div>
+                  {raiseTicketType === "delete-request" ? (
+                    <div style={{ padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, fontSize: 12, color: "#c8ccdd" }}>
+                      Superadmin — Pushkaraj Gore
+                    </div>
+                  ) : (
+                    <select value={raiseTicketAssignTo} onChange={e => setRaiseTicketAssignTo(e.target.value)}
+                      style={{ width: "100%", padding: "10px 14px", background: "#12142a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#c8ccdd", fontSize: 12, outline: "none" }}>
+                      <option value="">— Select recipient —</option>
+                      {allMembers.filter(m => m.email !== user?.email).map(m => (
+                        <option key={m.id} value={m.email}>{m.name} ({m.role})</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Reason / Note */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>
+                    {raiseTicketType === "delete-request" ? "Reason for Deletion *" : "Description / Instructions *"}
+                  </div>
+                  <textarea value={raiseTicketNote} onChange={e => setRaiseTicketNote(e.target.value)}
+                    placeholder={raiseTicketType === "delete-request" ? "Explain why this task needs to be deleted…" : "Describe the activity, query, or delegation details…"}
+                    style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,149,0,0.2)", borderRadius: 10, color: "#e8eaf6", fontSize: 12, resize: "vertical", outline: "none", minHeight: 90, lineHeight: 1.6, fontFamily: "inherit", boxSizing: "border-box" as const }}
+                    onFocus={e => e.target.style.borderColor = "rgba(255,149,0,0.5)"}
+                    onBlur={e => e.target.style.borderColor = "rgba(255,149,0,0.2)"}
+                  />
+                </div>
+
+                {/* Document Attachments */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>
+                    Supporting Documents (optional)
+                  </div>
+                  <input ref={raiseTicketFileRef} type="file" accept="image/*,.pdf" multiple style={{ display: "none" }} onChange={handleRaiseTicketAttachment} />
+                  <button onClick={() => raiseTicketFileRef.current?.click()}
+                    style={{ padding: "8px 16px", background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 8, color: "#7e84a3", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Upload size={12} /> Attach Files
+                  </button>
+                  {raiseTicketAttachments.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#00d4ff" }}>
+                      ✓ {raiseTicketAttachments.length} file{raiseTicketAttachments.length > 1 ? "s" : ""} attached
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setShowRaiseTicketModal(false)}
+                    style={{ flex: 1, padding: "12px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleSubmitRaiseTicket}
+                    disabled={raiseTicketNote.trim().length < 5 || (raiseTicketType !== "delete-request" && !raiseTicketAssignTo)}
+                    style={{
+                      flex: 2, padding: "12px",
+                      background: raiseTicketNote.trim().length >= 5 ? "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,149,0,0.12))" : "rgba(255,255,255,0.04)",
+                      border: raiseTicketNote.trim().length >= 5 ? "1px solid rgba(255,149,0,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 10, color: raiseTicketNote.trim().length >= 5 ? "#ff9500" : "#7e84a3",
+                      fontSize: 12, fontWeight: 800, cursor: raiseTicketNote.trim().length >= 5 ? "pointer" : "not-allowed",
+                      fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
+                    🎫 {raiseTicketType === "delete-request" ? "Submit Delete Request" : "Raise Ticket"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -3115,10 +3347,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     <textarea className="g-input" value={adminSubmitNotes} onChange={(e) => setAdminSubmitNotes(e.target.value)} placeholder="Describe what was completed..." style={{ minHeight: 100, resize: "vertical" as const }} />
                   </div>
                   <div style={{ padding: "12px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 10, marginBottom: 16, fontSize: 12, color: G.textSecondary }}>
-                    Where should this task go after submission?
+                    📋 Where should this task go after submission?
                   </div>
                   <div style={{ display: "flex", gap: 10, flexDirection: "column" }}>
-                    <button className="g-btn-success" style={{ flex: 1 }} onClick={() => {
+                    <button className="g-btn-success" onClick={() => {
                       const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "completed", by: user?.email ?? "", notes: `Submitted to Admin for review. ${adminSubmitNotes}` };
                       appendHistoryEntry(adminSubmitTask.id, h, user?.email);
                       const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "in-review" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] };
@@ -3127,7 +3359,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       toast("✓ Task submitted to Admin for review.");
                       setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes("");
                     }}><CheckCircle size={14} />Send to Admin for Review</button>
-                    <button className="g-btn-gold" style={{ flex: 1 }} onClick={() => {
+                    <button className="g-btn-gold" onClick={() => {
                       const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: `Directly submitted to Superadmin. ${adminSubmitNotes}` };
                       appendHistoryEntry(adminSubmitTask.id, h, user?.email);
                       const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "admin-approved" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] };
@@ -3136,27 +3368,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       toast("✓ Task sent directly to Superadmin.");
                       setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes("");
                     }}><Shield size={14} />Send to Superadmin Directly</button>
-                    <button className="g-btn-ghost" onClick={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}>Cancel</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          {showAdminSubmitModal && adminSubmitTask && (
-            <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); } }}>
-              <div className="g-modal" style={{ maxHeight: "90vh" }}>
-                <ModalHeader title={`Submit: ${adminSubmitTask.title}`} sub="Choose where to route this task after submission" onClose={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }} accent={G.gold} />
-                <div style={{ padding: "24px 28px 28px" }}>
-                  <div style={{ marginBottom: 16 }}>
-                    <label className="g-label">Completion Notes</label>
-                    <textarea className="g-input" value={adminSubmitNotes} onChange={(e) => setAdminSubmitNotes(e.target.value)} placeholder="Describe what was completed..." style={{ minHeight: 100, resize: "vertical" as const }} />
-                  </div>
-                  <div style={{ padding: "12px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 10, marginBottom: 16, fontSize: 12, color: G.textSecondary }}>
-                    Where should this task go after submission?
-                  </div>
-                  <div style={{ display: "flex", gap: 10, flexDirection: "column" }}>
-                    <button className="g-btn-success" onClick={() => { const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "completed", by: user?.email ?? "", notes: `Submitted to Admin for review. ${adminSubmitNotes}` }; appendHistoryEntry(adminSubmitTask.id, h, user?.email); const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "in-review" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] }; updateTask(adminSubmitTask.id, updated as never); syncTaskToBackend(updated as Task); toast("Task submitted to Admin for review."); setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}><CheckCircle size={14} />Send to Admin for Review</button>
-                    <button className="g-btn-gold" onClick={() => { const h: HistoryEntry = { id: `hist_${Date.now()}`, timestamp: new Date().toISOString(), action: "approved", by: user?.email ?? "", notes: `Directly submitted to Superadmin. ${adminSubmitNotes}` }; appendHistoryEntry(adminSubmitTask.id, h, user?.email); const updated = { ...adminSubmitTask, completionNotes: adminSubmitNotes, approvalStatus: "admin-approved" as any, completedAt: new Date().toISOString(), history: [...(adminSubmitTask.history ?? []), h] }; updateTask(adminSubmitTask.id, updated as never); syncTaskToBackend(updated as Task); toast("Task sent directly to Superadmin."); setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}><Shield size={14} />Send to Superadmin Directly</button>
                     <button className="g-btn-ghost" onClick={() => { setShowAdminSubmitModal(false); setAdminSubmitTask(null); setAdminSubmitNotes(""); }}>Cancel</button>
                   </div>
                 </div>
@@ -3197,26 +3408,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       </div>
                     </div>
                   )}
-                  {(selectedTask as any).scoreData && (
-                    <div style={{ padding: "16px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 12, marginBottom: 14 }}>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.cyan, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 12 }}>AI Score Report</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-                        <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 28, fontWeight: 900, color: (selectedTask as any).scoreData.percentScore >= 75 ? G.success : (selectedTask as any).scoreData.percentScore >= 55 ? G.gold : G.danger }}>{(selectedTask as any).scoreData.percentScore}/100</div>
-                          <div style={{ fontSize: 11, color: G.textMuted }}>Grade: {(selectedTask as any).scoreData.grade}</div>
-                        </div>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 12, color: G.textSecondary }}>{(selectedTask as any).scoreData.verdict}</div></div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        {((selectedTask as any).scoreData.categories || []).map((cat: any, i: number) => (
-                          <div key={i} style={{ padding: "8px 10px", background: "rgba(0,0,0,0.2)", borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ fontSize: 11, color: G.textSecondary }}>{cat.name}</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: cat.score >= 16 ? G.success : cat.score >= 12 ? G.gold : G.danger }}>{cat.score}/20</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
@@ -3250,8 +3441,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     </button>
                   </div>
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-                    <button className="g-btn-delete" style={{ width: "100%" }} onClick={() => { setShowReviewModal(false); requestDeleteTask(selectedTask); }}>
-                      <Trash2 size={13} />Delete This Task
+                    <button className="g-btn-delete" style={{ width: "100%" }} onClick={() => { setShowReviewModal(false); requestDeleteTask(selectedTask!); }}>
+                      <Trash2 size={13} />Request Delete (Needs Superadmin Approval)
                     </button>
                   </div>
                 </div>
@@ -3730,21 +3921,3 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   export default AdminDashboard;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

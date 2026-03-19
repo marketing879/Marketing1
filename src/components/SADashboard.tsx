@@ -10,10 +10,11 @@ import {
   Zap, User, ChevronRight, Calendar, Flag,
   FileText, ArrowUpRight, MessageSquare, Shield, Sparkles, Loader,
   FolderPlus, Briefcase, Users, Settings, MapPin, Building2, Target, DollarSign,
-  Home, BarChart2, AlertTriangle, TrendingUp, Video, Image as ImageIcon,
+  Home, BarChart2, AlertTriangle, AlertCircle, TrendingUp, Video, Image as ImageIcon,
+  Activity, Search, Trash2,
 } from "lucide-react";
 
-type Tab = "home" | "overview" | "approvals" | "tasks" | "users" | "addUser" | "projects" | "ai";
+type Tab = "home" | "overview" | "approvals" | "tasks" | "users" | "addUser" | "projects" | "ai" | "tickets" | "activity";
 
 const DEFAULT_PASSWORDS: Record<string, string> = {
   "pushkaraj.gore@roswalt.com": "100001",
@@ -224,7 +225,8 @@ const SADashboard: React.FC = () => {
   const {
     tasks = [], teamMembers = [], addUser, superadminReviewTask, logout, user,
     addTask, projects = [], addProject, updateTask,
-    assistanceTickets,
+    assistanceTickets, superadminApproveTicket, deleteTask,
+    activityLog = [], logActivity,
   } = useUser() as any;
 
   const navigate = useNavigate();
@@ -432,6 +434,33 @@ const SADashboard: React.FC = () => {
   const assignableAdmins = teamMembers.filter((m: any) => m.role === "admin");
   const assignableStaff  = teamMembers.filter((m: any) => m.role === "staff");
 
+  // Delete-request tickets needing SA approval
+  const deleteRequestTickets = (allAssistTickets as any[]).filter((t: any) => t.ticketType === "delete-request" && t.status === "superadmin-pending");
+
+  // Ticket oversight state
+  const [saTicketFilter,     setSaTicketFilter]     = React.useState<"all"|"delete-request"|"small-activity"|"general-query"|"task-delegation">("all");
+  const [selectedSaTicket,   setSelectedSaTicket]   = React.useState<any>(null);
+  const [saTicketNote,       setSaTicketNote]       = React.useState("");
+  const [showSaTicketModal,  setShowSaTicketModal]  = React.useState(false);
+
+  // Activity Monitor state
+  const [activitySearch,     setActivitySearch]     = React.useState("");
+  const [activityCategory,   setActivityCategory]   = React.useState<"all"|"task"|"ticket"|"project"|"user"|"auth"|"approval">("all");
+  const [activityPage,       setActivityPage]       = React.useState(0);
+  const ACTIVITY_PAGE_SIZE = 50;
+
+  // Voice alert for new delete-request tickets
+  const prevDeleteReqRef = React.useRef(deleteRequestTickets.length);
+  React.useEffect(() => {
+    const prev = prevDeleteReqRef.current;
+    const curr = deleteRequestTickets.length;
+    if (curr > prev) {
+      const newest = deleteRequestTickets[0] as any;
+      speakText(`Urgent. A delete request has been submitted by ${newest?.raisedBy ?? "an admin"} for the task ${newest?.taskTitle ?? "unknown"}. Your approval is required.`);
+    }
+    prevDeleteReqRef.current = curr;
+  }, [deleteRequestTickets.length]);
+
   const handleApprove = (taskId: string) => {
     superadminReviewTask(taskId, true, reviewComments || "Approved by Superadmin");
     setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); setAiReviewResults(null);
@@ -576,9 +605,11 @@ const SADashboard: React.FC = () => {
     { id:"tasks",     label:"All Tasks",  icon:<FileText size={17} />,   count: tasks.length },
     { id:"overview",  label:"Overview",  icon:<BarChart2 size={17} /> },
     { id:"approvals", label:"Approvals", icon:<CheckCircle size={17} />, count: pendingApprovals.length },
+    { id:"tickets",   label:"Tickets",   icon:<AlertCircle size={17} />, count: (allAssistTickets as any[]).filter((t:any) => t.status === "superadmin-pending").length || undefined },
     { id:"projects",  label:"Projects",  icon:<Briefcase size={17} />,  count: projects.length },
     { id:"users",     label:"Users",     icon:<Users size={17} />,      count: teamMembers.length },
     { id:"addUser",   label:"Add User",  icon:<Plus size={17} /> },
+    { id:"activity",  label:"Activity",  icon:<Activity size={17} /> },
     { id:"ai",        label:"Claude AI", icon:<Sparkles size={17} /> },
   ];
 
@@ -594,7 +625,7 @@ const SADashboard: React.FC = () => {
     { label:"Fully Approved",   value: fullyApproved.length,      color: G.success, sub:"Superadmin sign-off",  icon:"✓",  tab:"approvals" as Tab },
     { label:"TAT Breached",     value: tatBreached.length,        color: G.danger,  sub:"Deadline misses",      icon:"⚠",  tab:"overview" as Tab,  urgent: tatBreached.length > 0 },
     { label:"Frozen Tasks",     value: frozenTasks.length,        color: "#b06af3", sub:"Ticket-blocked",       icon:"🔒", tab:"overview" as Tab,  urgent: frozenTasks.length > 0 },
-    { label:"Assist. Tickets",  value: allAssistTickets.length,   color: G.magenta, sub:"Open escalations",     icon:"🎫", tab:"overview" as Tab },
+    { label:"Assist. Tickets",  value: allAssistTickets.length,   color: G.magenta, sub: deleteRequestTickets.length > 0 ? `${deleteRequestTickets.length} delete req pending` : "Open escalations", icon:"🎫", tab:"tickets" as Tab, urgent: deleteRequestTickets.length > 0 },
     { label:"Team Members",     value: teamMembers.length,        color: G.gold,    sub:"Across all roles",     icon:"👥", tab:"users" as Tab },
     { label:"Active Projects",  value: activeProjects.length,     color: G.purple,  sub:"Live properties",      icon:"🏗",  tab:"projects" as Tab },
   ];
@@ -1103,10 +1134,12 @@ const SADashboard: React.FC = () => {
                   {activeTab === "home"      && <>Superadmin <em>HQ</em></>}
                   {activeTab === "overview"  && <>Command <em>Centre</em></>}
                   {activeTab === "approvals" && <>Final <em>Approvals</em></>}
+                  {activeTab === "tickets"   && <>Ticket <em>Oversight</em></>}
                   {activeTab === "projects"  && <>Project <em>Portfolio</em></>}
                   {activeTab === "users"     && <>Team <em>Directory</em></>}
                   {activeTab === "addUser"   && <>Add <em>Member</em></>}
                   {activeTab === "tasks"     && <>All <em>Tasks</em></>}
+                  {activeTab === "activity"  && <>Activity <em>Monitor</em></>}
                   {activeTab === "ai"        && <>Claude <em>AI</em></>}
                 </div>
                 <div className="sa-topbar-sub">{today}</div>
@@ -2083,6 +2116,406 @@ const SADashboard: React.FC = () => {
             </div>
           )}
 
+
+          {/* ── TICKET OVERSIGHT TAB ───────────────────────────────────────── */}
+          {activeTab === "tickets" && (
+            <div className="sa-page sa-fade-in">
+              <div className="sa-page-header" style={{ marginBottom: 24 }}>
+                <div>
+                  <h1 className="sa-page-title">Ticket <em>Oversight</em></h1>
+                  <p className="sa-page-sub">All assistance tickets · delete requests require your approval</p>
+                </div>
+                {deleteRequestTickets.length > 0 && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 16px", background:"rgba(255,51,102,0.08)", border:"1px solid rgba(255,51,102,0.3)", borderRadius:10 }}>
+                    <span style={{ width:8, height:8, borderRadius:"50%", background:"#ff3366", boxShadow:"0 0 8px #ff3366", display:"inline-block" }} />
+                    <span style={{ fontSize:11, fontWeight:800, color:"#ff3366", fontFamily:"'IBM Plex Mono',monospace" }}>{deleteRequestTickets.length} DELETE REQUEST{deleteRequestTickets.length > 1 ? "S" : ""} PENDING</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary cards */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginBottom:28 }}>
+                {[
+                  { label:"Total",           value:(allAssistTickets as any[]).length,                                                        color:G.cyan    },
+                  { label:"Delete Requests", value:deleteRequestTickets.length,                                                                color:"#ff3366", urgent: deleteRequestTickets.length > 0 },
+                  { label:"Open",            value:(allAssistTickets as any[]).filter((t:any)=>t.status==="open").length,                     color:G.amber   },
+                  { label:"Pending Admin",   value:(allAssistTickets as any[]).filter((t:any)=>t.status==="pending-admin").length,            color:"#b06af3" },
+                  { label:"SA Pending",      value:(allAssistTickets as any[]).filter((t:any)=>t.status==="superadmin-pending").length,       color:G.cyan    },
+                  { label:"Resolved",        value:(allAssistTickets as any[]).filter((t:any)=>t.status==="resolved"||t.status==="superadmin-approved"||t.status==="admin-approved").length, color:G.success },
+                ].map(c => (
+                  <div key={c.label} style={{ padding:"14px 16px", background: c.urgent ? "rgba(255,51,102,0.07)" : "rgba(8,14,32,0.7)", border:`1px solid ${c.urgent ? "rgba(255,51,102,0.3)" : "rgba(255,255,255,0.07)"}`, borderRadius:12, textAlign:"center" as const }}>
+                    <div style={{ fontSize:22, fontWeight:800, color:c.color, fontFamily:"'Oswald',sans-serif" }}>{c.value}</div>
+                    <div style={{ fontSize:10, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.7px", marginTop:2 }}>{c.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Filter bar */}
+              <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" as const }}>
+                {(["all","delete-request","small-activity","general-query","task-delegation"] as const).map(f => (
+                  <button key={f} onClick={() => setSaTicketFilter(f)}
+                    style={{ padding:"6px 14px", borderRadius:8, border:`1px solid ${saTicketFilter===f ? G.amber : "rgba(255,255,255,0.1)"}`, background: saTicketFilter===f ? "rgba(212,175,55,0.1)" : "transparent", color: saTicketFilter===f ? G.amber : G.textMuted, fontSize:11, fontWeight:700, cursor:"pointer", textTransform:"capitalize" as const }}>
+                    {f === "all" ? "All Tickets" : f.replace(/-/g," ")}
+                    {f === "delete-request" && deleteRequestTickets.length > 0 && (
+                      <span style={{ marginLeft:6, background:"#ff3366", color:"#fff", borderRadius:"50%", padding:"1px 5px", fontSize:9, fontWeight:900 }}>{deleteRequestTickets.length}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Ticket list */}
+              {(() => {
+                const filtered = (allAssistTickets as any[]).filter((t:any) =>
+                  saTicketFilter === "all" ? true : t.ticketType === saTicketFilter
+                ).sort((a:any,b:any) => {
+                  // Delete requests first, then by date
+                  if (a.ticketType === "delete-request" && b.ticketType !== "delete-request") return -1;
+                  if (b.ticketType === "delete-request" && a.ticketType !== "delete-request") return 1;
+                  return new Date(b.raisedAt).getTime() - new Date(a.raisedAt).getTime();
+                });
+
+                if (filtered.length === 0) return (
+                  <div style={{ textAlign:"center" as const, padding:"60px 24px", background:"rgba(8,14,32,0.6)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16 }}>
+                    <div style={{ fontSize:36, marginBottom:12, opacity:0.25 }}>🎫</div>
+                    <div style={{ fontSize:18, fontWeight:700, color:G.textPrimary, fontFamily:"'Oswald',sans-serif" }}>No Tickets</div>
+                    <div style={{ fontSize:12, color:G.textMuted, marginTop:6 }}>No assistance tickets match this filter.</div>
+                  </div>
+                );
+
+                const statusColor: Record<string,string> = {
+                  "open":"#ff9500","pending-admin":"#b06af3","admin-approved":"#00ff88",
+                  "superadmin-pending":"#00d4ff","superadmin-approved":"#00ff88",
+                  "rejected":"#ff3366","resolved":"#00d4ff",
+                };
+                const typeColor: Record<string,string> = {
+                  "delete-request":"#ff3366","small-activity":"#ff9500",
+                  "general-query":"#00d4ff","task-delegation":"#b06af3",
+                };
+
+                return (
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                    {filtered.map((ticket:any) => {
+                      const isDeleteReq  = ticket.ticketType === "delete-request";
+                      const isPending    = ticket.status === "superadmin-pending";
+                      const raiserName   = teamMembers.find((m:any) => m.email?.toLowerCase() === ticket.assignedBy?.toLowerCase())?.name ?? ticket.raisedBy ?? ticket.assignedBy;
+                      const assigneeName = teamMembers.find((m:any) => m.email?.toLowerCase() === ticket.assignedTo?.toLowerCase())?.name ?? ticket.assignedTo;
+                      const linkedTask   = tasks.find((t:any) => t.id === (ticket.targetTaskId || ticket.taskId));
+                      return (
+                        <div key={ticket.id} onClick={() => { if (isPending || isDeleteReq) { setSelectedSaTicket(ticket); setSaTicketNote(""); setShowSaTicketModal(true); } }}
+                          style={{ padding:"16px 20px", background: isPending && isDeleteReq ? "rgba(255,51,102,0.05)" : "rgba(8,14,32,0.7)", border:`1px solid ${isPending && isDeleteReq ? "rgba(255,51,102,0.25)" : "rgba(255,255,255,0.08)"}`, borderRadius:14, cursor: (isPending || isDeleteReq) ? "pointer" : "default", transition:"all 0.2s" }}>
+                          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" as const }}>
+                            <div style={{ flex:1, minWidth:200 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" as const }}>
+                                <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:`${typeColor[ticket.ticketType]??G.amber}18`, color:typeColor[ticket.ticketType]??G.amber, fontWeight:800, textTransform:"uppercase" as const, border:`1px solid ${typeColor[ticket.ticketType]??G.amber}35`, fontFamily:"'IBM Plex Mono',monospace" }}>
+                                  {ticket.ticketType?.replace(/-/g," ")}
+                                </span>
+                                <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:`${statusColor[ticket.status]??G.amber}18`, color:statusColor[ticket.status]??G.amber, fontWeight:700, textTransform:"uppercase" as const, border:`1px solid ${statusColor[ticket.status]??G.amber}35`, fontFamily:"'IBM Plex Mono',monospace" }}>
+                                  {ticket.status?.replace(/-/g," ")}
+                                </span>
+                                <span style={{ fontSize:9, color:G.textMuted, fontFamily:"'IBM Plex Mono',monospace" }}>{ticket.id}</span>
+                              </div>
+                              <div style={{ fontSize:15, fontWeight:700, color:G.textPrimary, marginBottom:4 }}>{ticket.taskTitle}</div>
+                              <div style={{ fontSize:11, color:G.textMuted, display:"flex", gap:16, flexWrap:"wrap" as const }}>
+                                <span>👤 Raised by: <span style={{ color:G.textSecondary }}>{raiserName}</span></span>
+                                <span>📨 Assigned to: <span style={{ color:G.textSecondary }}>{assigneeName}</span></span>
+                                <span>🕐 {new Date(ticket.raisedAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
+                              </div>
+                              {ticket.reason && (
+                                <div style={{ marginTop:8, fontSize:12, color:G.textSecondary, lineHeight:1.6, borderLeft:`2px solid ${typeColor[ticket.ticketType]??G.amber}44`, paddingLeft:10 }}>
+                                  {ticket.reason.length > 140 ? ticket.reason.slice(0,140)+"…" : ticket.reason}
+                                </div>
+                              )}
+                              {ticket.rejectionReason && (
+                                <div style={{ marginTop:8, fontSize:11, color:"#ff3366", background:"rgba(255,51,102,0.06)", border:"1px solid rgba(255,51,102,0.2)", borderRadius:8, padding:"6px 10px" }}>
+                                  ✗ Rejected: {ticket.rejectionReason}
+                                </div>
+                              )}
+                            </div>
+                            {(isPending || (isDeleteReq && ticket.status !== "superadmin-approved" && ticket.status !== "rejected")) && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setSelectedSaTicket(ticket); setSaTicketNote(""); setShowSaTicketModal(true); }}
+                                style={{ padding:"8px 16px", background:"rgba(212,175,55,0.1)", border:"1px solid rgba(212,175,55,0.35)", borderRadius:10, color:G.amber, fontSize:11, fontWeight:800, cursor:"pointer", fontFamily:"'IBM Plex Mono',monospace", flexShrink:0 }}>
+                                {isDeleteReq ? "Review Delete" : "Review"}
+                              </button>
+                            )}
+                          </div>
+                          {ticket.attachments?.length > 0 && (
+                            <div style={{ marginTop:8, fontSize:10, color:G.textMuted }}>📎 {ticket.attachments.length} attachment{ticket.attachments.length > 1 ? "s" : ""}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* SA Ticket Review Modal */}
+              {showSaTicketModal && selectedSaTicket && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}
+                  onClick={e => { if (e.target === e.currentTarget) setShowSaTicketModal(false); }}>
+                  <div style={{ background:"#0d1020", border:`1px solid ${selectedSaTicket.ticketType==="delete-request" ? "rgba(255,51,102,0.4)" : "rgba(212,175,55,0.3)"}`, borderRadius:18, padding:32, width:"100%", maxWidth:520, maxHeight:"90vh", overflowY:"auto" as const }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                      <div>
+                        <div style={{ fontSize:10, fontWeight:900, color: selectedSaTicket.ticketType==="delete-request" ? "#ff3366" : G.amber, textTransform:"uppercase" as const, letterSpacing:"1px", marginBottom:4 }}>
+                          {selectedSaTicket.ticketType==="delete-request" ? "🗑 Delete Request — Superadmin Review" : "🎫 Assistance Ticket Review"}
+                        </div>
+                        <div style={{ fontSize:18, fontWeight:800, color:G.textPrimary, fontFamily:"'Oswald',sans-serif" }}>{selectedSaTicket.taskTitle}</div>
+                      </div>
+                      <button onClick={() => setShowSaTicketModal(false)} style={{ background:"none", border:"none", color:G.textMuted, cursor:"pointer", fontSize:20 }}>✕</button>
+                    </div>
+
+                    {selectedSaTicket.ticketType === "delete-request" && (
+                      <div style={{ padding:"10px 14px", background:"rgba(255,51,102,0.07)", border:"1px solid rgba(255,51,102,0.25)", borderRadius:10, marginBottom:16, fontSize:11, color:"rgba(255,100,120,0.9)", lineHeight:1.7 }}>
+                        ⚠ An admin has requested permanent deletion of this task. This action <strong>cannot be undone</strong>. Review the reason carefully before approving.
+                      </div>
+                    )}
+
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                      {[
+                        ["Ticket ID",   selectedSaTicket.id],
+                        ["Type",        selectedSaTicket.ticketType?.replace(/-/g," ")],
+                        ["Raised By",   teamMembers.find((m:any)=>m.email?.toLowerCase()===selectedSaTicket.assignedBy?.toLowerCase())?.name ?? selectedSaTicket.raisedBy ?? selectedSaTicket.assignedBy],
+                        ["Raised",      new Date(selectedSaTicket.raisedAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ padding:"10px 14px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10 }}>
+                          <div style={{ fontSize:9, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.7px", marginBottom:4 }}>{label}</div>
+                          <div style={{ fontSize:12, color:G.textPrimary, fontWeight:600, textTransform:"capitalize" as const }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {selectedSaTicket.reason && (
+                      <div style={{ marginBottom:16, padding:"12px 14px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12 }}>
+                        <div style={{ fontSize:9, fontWeight:800, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:8 }}>Reason / Description</div>
+                        <div style={{ fontSize:12, color:G.textSecondary, lineHeight:1.7 }}>{selectedSaTicket.reason}</div>
+                      </div>
+                    )}
+
+                    {selectedSaTicket.attachments?.length > 0 && (
+                      <div style={{ marginBottom:16, padding:"10px 14px", background:"rgba(0,212,255,0.04)", border:"1px solid rgba(0,212,255,0.15)", borderRadius:10 }}>
+                        <div style={{ fontSize:9, fontWeight:800, color:G.cyan, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:8 }}>📎 Attachments ({selectedSaTicket.attachments.length})</div>
+                        <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                          {selectedSaTicket.attachments.map((a:string, i:number) => (
+                            <a key={i} href={a} target="_blank" rel="noreferrer"
+                              style={{ padding:"5px 12px", background:"rgba(0,212,255,0.08)", border:"1px solid rgba(0,212,255,0.25)", borderRadius:8, color:G.cyan, fontSize:11, textDecoration:"none", fontWeight:700 }}>
+                              File {i+1}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ marginBottom:20 }}>
+                      <div style={{ fontSize:9, fontWeight:800, color:G.textMuted, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:8 }}>
+                        Your Decision Note <span style={{ color:"#ff3366" }}>*</span>
+                      </div>
+                      <textarea value={saTicketNote} onChange={e => setSaTicketNote(e.target.value)}
+                        placeholder={selectedSaTicket.ticketType === "delete-request" ? "State your reason for approving or denying this deletion…" : "Provide your feedback or instructions…"}
+                        style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.04)", border:`1px solid ${G.amber}33`, borderRadius:10, color:G.textPrimary, fontSize:12, resize:"vertical" as const, outline:"none", minHeight:80, lineHeight:1.6, fontFamily:"inherit", boxSizing:"border-box" as const }}
+                        onFocus={e=>e.target.style.borderColor=`${G.amber}66`}
+                        onBlur={e=>e.target.style.borderColor=`${G.amber}33`}
+                      />
+                    </div>
+
+                    <div style={{ display:"flex", gap:10 }}>
+                      <button onClick={() => setShowSaTicketModal(false)}
+                        style={{ flex:1, padding:"12px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:G.textMuted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                        Cancel
+                      </button>
+                      <button
+                        disabled={saTicketNote.trim().length < 5}
+                        onClick={() => {
+                          if (saTicketNote.trim().length < 5) return;
+                          superadminApproveTicket(selectedSaTicket.id, false, saTicketNote.trim());
+                          speakText(`Ticket ${selectedSaTicket.id} has been rejected.`);
+                          showSuccess("✗ Ticket rejected");
+                          setShowSaTicketModal(false); setSelectedSaTicket(null); setSaTicketNote("");
+                        }}
+                        style={{ flex:1, padding:"12px", background: saTicketNote.trim().length >= 5 ? "rgba(255,51,102,0.12)" : "rgba(255,255,255,0.04)", border: saTicketNote.trim().length >= 5 ? "1px solid rgba(255,51,102,0.4)" : "1px solid rgba(255,255,255,0.08)", borderRadius:10, color: saTicketNote.trim().length >= 5 ? "#ff3366" : G.textMuted, fontSize:12, fontWeight:800, cursor: saTicketNote.trim().length >= 5 ? "pointer" : "not-allowed", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                        ✗ Reject
+                      </button>
+                      <button
+                        disabled={saTicketNote.trim().length < 5}
+                        onClick={() => {
+                          if (saTicketNote.trim().length < 5) return;
+                          superadminApproveTicket(selectedSaTicket.id, true, saTicketNote.trim());
+                          const msg = selectedSaTicket.ticketType === "delete-request"
+                            ? `Delete request approved. Task ${selectedSaTicket.taskTitle} will be permanently deleted.`
+                            : `Ticket ${selectedSaTicket.id} approved.`;
+                          speakText(msg);
+                          showSuccess(selectedSaTicket.ticketType === "delete-request" ? "✓ Approved — task deleted" : "✓ Ticket approved");
+                          setShowSaTicketModal(false); setSelectedSaTicket(null); setSaTicketNote("");
+                        }}
+                        style={{ flex:2, padding:"12px", background: saTicketNote.trim().length >= 5 ? "linear-gradient(135deg,rgba(0,255,136,0.18),rgba(0,200,100,0.12))" : "rgba(255,255,255,0.04)", border: saTicketNote.trim().length >= 5 ? "1px solid rgba(0,255,136,0.4)" : "1px solid rgba(255,255,255,0.08)", borderRadius:10, color: saTicketNote.trim().length >= 5 ? G.success : G.textMuted, fontSize:12, fontWeight:800, cursor: saTicketNote.trim().length >= 5 ? "pointer" : "not-allowed", fontFamily:"inherit", letterSpacing:"0.04em", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                        <CheckCircle size={14} /> {selectedSaTicket.ticketType === "delete-request" ? "Approve & Delete Task" : "Approve"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── ACTIVITY MONITOR TAB ──────────────────────────────────────── */}
+          {activeTab === "activity" && (() => {
+            // Category colours
+            const catColor: Record<string, string> = {
+              task: G.cyan, ticket: G.amber, project: G.magenta,
+              user: "#b06af3", auth: G.textMuted, approval: G.success,
+            };
+            const catIcon: Record<string, string> = {
+              task:"📋", ticket:"🎫", project:"📁", user:"👤", auth:"🔐", approval:"✅",
+            };
+
+            // Filter activityLog
+            const filtered = (activityLog as any[]).filter((e: any) => {
+              const matchCat  = activityCategory === "all" || e.category === activityCategory;
+              const q = activitySearch.toLowerCase();
+              const matchSearch = !q ||
+                e.action?.toLowerCase().includes(q) ||
+                e.actorName?.toLowerCase().includes(q) ||
+                e.actorEmail?.toLowerCase().includes(q) ||
+                e.targetName?.toLowerCase().includes(q);
+              return matchCat && matchSearch;
+            });
+
+            const totalPages = Math.ceil(filtered.length / ACTIVITY_PAGE_SIZE);
+            const pageEntries = filtered.slice(
+              activityPage * ACTIVITY_PAGE_SIZE,
+              (activityPage + 1) * ACTIVITY_PAGE_SIZE
+            );
+
+            // Summary counts per category
+            const counts: Record<string, number> = {};
+            (activityLog as any[]).forEach((e: any) => {
+              counts[e.category] = (counts[e.category] ?? 0) + 1;
+            });
+
+            return (
+              <div className="sa-page sa-fade-in">
+                {/* Header */}
+                <div className="sa-page-header" style={{ marginBottom: 24 }}>
+                  <div>
+                    <h1 className="sa-page-title">Activity <em>Monitor</em></h1>
+                    <p className="sa-page-sub">Complete portal audit trail · {(activityLog as any[]).length} total events</p>
+                  </div>
+                  <button
+                    onClick={() => { if (window.confirm("Clear all activity logs? This cannot be undone.")) { fetch("https://adaptable-patience-production-45da.up.railway.app/api/activity", { method: "DELETE" }).then(() => window.location.reload()); } }}
+                    style={{ padding:"8px 16px", background:"rgba(255,51,102,0.08)", border:"1px solid rgba(255,51,102,0.25)", borderRadius:10, color:"#ff3366", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                    <Trash2 size={12} /> Clear Log
+                  </button>
+                </div>
+
+                {/* Summary cards */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))", gap:10, marginBottom:24 }}>
+                  {(["task","ticket","approval","project","user","auth"] as const).map(cat => (
+                    <div key={cat} onClick={() => { setActivityCategory(cat); setActivityPage(0); }}
+                      style={{ padding:"12px 14px", background: activityCategory === cat ? `${catColor[cat]}12` : "rgba(8,14,32,0.7)", border:`1px solid ${activityCategory === cat ? catColor[cat]+"44" : "rgba(255,255,255,0.07)"}`, borderRadius:12, cursor:"pointer", textAlign:"center" as const, transition:"all 0.2s" }}>
+                      <div style={{ fontSize:18, marginBottom:4 }}>{catIcon[cat]}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:catColor[cat], fontFamily:"'Oswald',sans-serif" }}>{counts[cat] ?? 0}</div>
+                      <div style={{ fontSize:9, color:G.textMuted, textTransform:"capitalize" as const, letterSpacing:"0.7px", marginTop:2 }}>{cat}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Search + filter bar */}
+                <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" as const, alignItems:"center" }}>
+                  <div style={{ flex:1, minWidth:200, position:"relative" as const }}>
+                    <Search size={13} style={{ position:"absolute" as const, left:12, top:"50%", transform:"translateY(-50%)", color:G.textMuted, pointerEvents:"none" as const }} />
+                    <input
+                      value={activitySearch}
+                      onChange={e => { setActivitySearch(e.target.value); setActivityPage(0); }}
+                      placeholder="Search by action, name, task…"
+                      style={{ width:"100%", padding:"9px 14px 9px 34px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:G.textPrimary, fontSize:12, outline:"none", boxSizing:"border-box" as const }}
+                    />
+                  </div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                    {(["all","task","ticket","approval","project","user","auth"] as const).map(cat => (
+                      <button key={cat} onClick={() => { setActivityCategory(cat); setActivityPage(0); }}
+                        style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${activityCategory===cat ? (catColor[cat]??G.amber) : "rgba(255,255,255,0.1)"}`, background: activityCategory===cat ? `${catColor[cat]??G.amber}15` : "transparent", color: activityCategory===cat ? (catColor[cat]??G.amber) : G.textMuted, fontSize:10, fontWeight:700, cursor:"pointer", textTransform:"capitalize" as const }}>
+                        {cat === "all" ? "All" : catIcon[cat] + " " + cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Activity feed */}
+                {pageEntries.length === 0 ? (
+                  <div style={{ textAlign:"center" as const, padding:"60px 24px", background:"rgba(8,14,32,0.6)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16 }}>
+                    <div style={{ fontSize:36, marginBottom:12, opacity:0.2 }}>📋</div>
+                    <div style={{ fontSize:18, fontWeight:700, color:G.textPrimary, fontFamily:"'Oswald',sans-serif" }}>No Activity</div>
+                    <div style={{ fontSize:12, color:G.textMuted, marginTop:6 }}>
+                      {activitySearch || activityCategory !== "all" ? "No events match your filter." : "Activity will appear here as the team uses the portal."}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:6 }}>
+                    {pageEntries.map((entry: any, idx: number) => {
+                      const color = catColor[entry.category] ?? G.textMuted;
+                      const icon  = catIcon[entry.category]  ?? "📋";
+                      const ts    = new Date(entry.timestamp);
+                      const timeStr = ts.toLocaleString("en-IN", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" });
+                      return (
+                        <div key={entry.id ?? idx} style={{ display:"flex", alignItems:"flex-start", gap:14, padding:"12px 16px", background:"rgba(8,14,32,0.65)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:12, transition:"background 0.15s" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "rgba(8,14,32,0.65)")}>
+                          {/* Category dot + icon */}
+                          <div style={{ flexShrink:0, width:32, height:32, borderRadius:"50%", background:`${color}15`, border:`1px solid ${color}30`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, marginTop:1 }}>
+                            {icon}
+                          </div>
+                          {/* Content */}
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const, marginBottom:3 }}>
+                              <span style={{ fontSize:13, fontWeight:700, color:G.textPrimary }}>{entry.action}</span>
+                              <span style={{ fontSize:9, padding:"2px 7px", borderRadius:4, background:`${color}15`, color, fontWeight:700, textTransform:"uppercase" as const, border:`1px solid ${color}30`, fontFamily:"'IBM Plex Mono',monospace" }}>
+                                {entry.category}
+                              </span>
+                            </div>
+                            <div style={{ display:"flex", gap:12, flexWrap:"wrap" as const, fontSize:11, color:G.textMuted }}>
+                              <span>👤 <span style={{ color:G.textSecondary }}>{entry.actorName || entry.actorEmail || "System"}</span></span>
+                              {entry.targetName && <span>🎯 <span style={{ color:G.textSecondary }}>{entry.targetName}</span></span>}
+                              {entry.meta?.assignedTo && <span>→ <span style={{ color:G.textSecondary }}>{entry.meta.assignedTo}</span></span>}
+                            </div>
+                            {entry.meta && Object.keys(entry.meta).filter(k => k !== "assignedTo").length > 0 && (
+                              <div style={{ marginTop:4, display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                                {Object.entries(entry.meta).filter(([k]) => k !== "assignedTo" && entry.meta[k]).map(([k, v]) => (
+                                  <span key={k} style={{ fontSize:9, padding:"1px 6px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:4, color:G.textMuted, fontFamily:"'IBM Plex Mono',monospace" }}>
+                                    {k}: {String(v).slice(0, 40)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Timestamp */}
+                          <div style={{ flexShrink:0, fontSize:10, color:G.textMuted, fontFamily:"'IBM Plex Mono',monospace", marginTop:2, textAlign:"right" as const }}>
+                            {timeStr}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginTop:20 }}>
+                    <button onClick={() => setActivityPage(p => Math.max(0, p-1))} disabled={activityPage === 0}
+                      style={{ padding:"7px 16px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color: activityPage === 0 ? G.textMuted : G.textPrimary, fontSize:12, fontWeight:700, cursor: activityPage === 0 ? "not-allowed" : "pointer" }}>
+                      ← Prev
+                    </button>
+                    <span style={{ fontSize:11, color:G.textMuted, fontFamily:"'IBM Plex Mono',monospace" }}>
+                      Page {activityPage + 1} / {totalPages} · {filtered.length} events
+                    </span>
+                    <button onClick={() => setActivityPage(p => Math.min(totalPages-1, p+1))} disabled={activityPage >= totalPages-1}
+                      style={{ padding:"7px 16px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color: activityPage >= totalPages-1 ? G.textMuted : G.textPrimary, fontSize:12, fontWeight:700, cursor: activityPage >= totalPages-1 ? "not-allowed" : "pointer" }}>
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* ── CLAUDE AI TAB ─────────────────────────────────────────────── */}
           {activeTab === "ai" && (
             <div className="sa-page sa-fade-in">
@@ -2433,6 +2866,3 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
-
-
-
