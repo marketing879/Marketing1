@@ -4,8 +4,38 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
+import { Readable } from "stream";
 
 dotenv.config();
+
+// ── CLOUDINARY CONFIG ─────────────────────────────────────────────────────────
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure:     true,
+});
+console.log("Cloudinary:", process.env.CLOUDINARY_CLOUD_NAME ? "✔ Configured" : "✗ Missing env vars");
+
+// multer — store files in memory so we can stream to Cloudinary
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "image/jpeg","image/png","image/gif","image/webp",
+      "video/mp4","video/quicktime","video/webm",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 const app = express();
 app.set("trust proxy", 1);
@@ -467,6 +497,52 @@ app.delete("/api/tasks/:id", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CLOUDINARY UPLOAD ROUTE
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper: stream a Buffer to Cloudinary and return the result
+function uploadBufferToCloudinary(buffer, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    });
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+// POST /api/upload  — accepts a single file field named "file"
+// Returns: { url, publicId, resourceType, format, bytes }
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
+  try {
+    const isVideo = req.file.mimetype.startsWith("video/");
+    const isImage = req.file.mimetype.startsWith("image/");
+    const folder  = req.body.folder || "roswalt/attachments";
+
+    const result = await uploadBufferToCloudinary(req.file.buffer, {
+      folder,
+      resource_type: isVideo ? "video" : isImage ? "image" : "raw",
+      // For images: auto quality + format
+      ...(isImage ? { quality: "auto", fetch_format: "auto" } : {}),
+    });
+
+    console.log(`[Cloudinary] Uploaded: ${result.public_id} (${result.bytes} bytes)`);
+    res.json({
+      success:      true,
+      url:          result.secure_url,
+      publicId:     result.public_id,
+      resourceType: result.resource_type,
+      format:       result.format,
+      bytes:        result.bytes,
+    });
+  } catch (err) {
+    console.error("[Cloudinary] Upload failed:", err.message);
+    res.status(500).json({ success: false, message: "Upload failed: " + err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ACTIVITY LOG ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -789,6 +865,7 @@ app.listen(PORT, () => {
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
   console.log(`║  Tickets:    GET/POST/PUT/DELETE /api/tickets        ║`);
   console.log(`║  Activity:   GET/POST/DELETE     /api/activity       ║`);
+  console.log(`║  Upload:     POST                /api/upload         ║`);
   console.log(`║  AI:         POST /api/draft-notes                   ║`);
   console.log(`║              POST /api/review-attachments            ║`);
   console.log(`║              POST /api/score-content                 ║`);

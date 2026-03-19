@@ -16,6 +16,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import ProgressTracker from "./Progresstracker";
   import { sendTaskWhatsApp } from "../services/WhatsAppService";
   import { greetUser, setElevenLabsVoice, announceVoice, speakText } from "../services/VoiceModule";
+  import { uploadToCloudinary } from "../services/CloudinaryUpload";
 
 
   void Sparkles; void RotateCw; void Radio;
@@ -915,15 +916,19 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       setShowRaiseTicketModal(true);
     };
 
-    const handleRaiseTicketAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleRaiseTicketAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = ev => {
-          setRaiseTicketAttachments(prev => [...prev, ev.target?.result as string]);
-        };
-        reader.readAsDataURL(file);
-      });
+      if (files.length === 0) return;
+      toast("⏳ Uploading attachment…");
+      try {
+        for (const file of files) {
+          const url = await uploadToCloudinary(file, "roswalt/ticket-attachments");
+          setRaiseTicketAttachments(prev => [...prev, url]);
+        }
+        toast("✓ Attachment uploaded");
+      } catch (err: any) {
+        toast("✕ Upload failed: " + (err?.message || "Unknown error"));
+      }
     };
 
     const handleSubmitRaiseTicket = () => {
@@ -1379,20 +1384,21 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       setSubmitPhotos([]); setAiReviewResults(null); setReviewPanelOpen(false);
     };
 
-    const handlePhotoAdd = (files: FileList | null): void => {
+    const handlePhotoAdd = async (files: FileList | null): Promise<void> => {
       if (!files) return;
-      Array.from(files).forEach((file: File) => {
-        if (!file.type.startsWith("image/")) return;
-        const r = new FileReader();
-        r.onload = (e) => {
-          if (typeof e.target?.result === "string") {
-            setSubmitPhotos((prev) => [...prev, e.target!.result as string]);
-            setAiReviewResults(null);
-          }
-        };
-        r.readAsDataURL(file);
-      });
-      toast("Photo uploaded ✓");
+      const allowed = Array.from(files).filter((f: File) => f.type.startsWith("image/") || f.type.startsWith("video/") || f.type === "application/pdf");
+      if (allowed.length === 0) return;
+      toast("⏳ Uploading to cloud…");
+      try {
+        for (const file of allowed) {
+          const url = await uploadToCloudinary(file, "roswalt/task-attachments");
+          setSubmitPhotos(prev => [...prev, url]);
+          setAiReviewResults(null);
+        }
+        toast(`✓ ${allowed.length} file${allowed.length > 1 ? "s" : ""} uploaded`);
+      } catch (err: any) {
+        toast("✕ Upload failed: " + (err?.message || "Unknown error"));
+      }
     };
 
     const removePhoto = (i: number): void => {
@@ -1472,12 +1478,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           { type: "text", text: `Review each image. Return ONLY JSON:[{"image":1,"status":"CLEAN|MINOR|ERROR","issues":[],"recommendations":"..."}]` },
         ];
         for (const photo of submitPhotos) {
-          let base64 = photo, mime = "image/jpeg";
-          if (photo.startsWith("data:")) {
+          if (photo.startsWith("http")) {
+            // Cloudinary URL — pass directly as URL source
+            contentArray.push({ type: "image", source: { type: "url", url: photo } });
+          } else if (photo.startsWith("data:")) {
             const m = photo.match(/data:([^;]+);base64,(.+)/);
-            if (m) { mime = m[1]; base64 = m[2]; }
+            if (m) contentArray.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
           }
-          contentArray.push({ type: "image", source: { type: "base64", media_type: mime, data: base64 } });
         }
         const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -2007,21 +2014,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </button>
                 )}
                 <button onClick={() => setShowGlobalHistory(true)} className="g-btn-ghost" style={{ padding: "9px 13px" }}><History size={15} /></button>
-
-                {/* ── DELETE ALL TASKS BUTTON ── */}
-                {allTasksCombined.length > 0 && (
-                  <button
-                    className="g-btn-delete"
-                    style={{ padding: "9px 14px", gap: 6 }}
-                    onClick={requestDeleteAll}
-                    title={`Delete all ${allTasksCombined.length} tasks`}
-                  >
-                    <Trash2 size={14} />
-                    <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.06em" }}>
-                      Delete All ({allTasksCombined.length})
-                    </span>
-                  </button>
-                )}
 
                 <div style={{ display: "flex", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: 3 }}>
                   {TABS.map((tab) => (

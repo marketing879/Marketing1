@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser, Task, AssistanceTicket } from "../contexts/UserContext";
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
+import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
@@ -1685,12 +1686,14 @@ const StaffDashboard: React.FC = () => {
         },
       ];
       for (const photo of photos) {
-        let base64Data = photo, mediaType = "image/jpeg";
         if (photo.startsWith("data:")) {
+          // Legacy base64
           const matches = photo.match(/data:([^;]+);base64,(.+)/);
-          if (matches) { mediaType = matches[1]; base64Data = matches[2]; }
+          if (matches) contentArray.push({ type: "image", source: { type: "base64", media_type: matches[1], data: matches[2] } });
+        } else if (photo.startsWith("http")) {
+          // Cloudinary URL — use url_type for Anthropic (pass as URL source)
+          contentArray.push({ type: "image", source: { type: "url", url: photo } });
         }
-        contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
       const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
@@ -1906,26 +1909,27 @@ const StaffDashboard: React.FC = () => {
     catch { return "—"; }
   };
 
-  const handlePhotoUpload = (taskId: string, files: FileList | null) => {
+  const handlePhotoUpload = async (taskId: string, files: FileList | null) => {
     if (!files) return;
-    Array.from(files).forEach((file) => {
-      // Accept images, videos, and documents (PDF, DOCX, PPTX)
-      const isImage    = file.type.startsWith("image/");
-      const isVideo    = file.type.startsWith("video/");
-      const isDocument = file.type === "application/pdf" ||
-                         file.type.includes("word") ||
-                         file.type.includes("presentation") ||
-                         file.type.includes("sheet");
-      if (!isImage && !isVideo && !isDocument) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const url = e.target?.result as string;
-        setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), url] }));
-      };
-      reader.readAsDataURL(file);
+    const allowed = Array.from(files).filter(file => {
+      return file.type.startsWith("image/") ||
+             file.type.startsWith("video/") ||
+             file.type === "application/pdf" ||
+             file.type.includes("word") ||
+             file.type.includes("presentation") ||
+             file.type.includes("sheet");
     });
-    showSuccess("File uploaded ✓");
+    if (allowed.length === 0) return;
+    showSuccess("⏳ Uploading to cloud…");
+    try {
+      for (const file of allowed) {
+        const url = await uploadToCloudinary(file, "roswalt/task-attachments");
+        setUploadedPhotos(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), url] }));
+      }
+      showSuccess(`✓ ${allowed.length} file${allowed.length > 1 ? "s" : ""} uploaded`);
+    } catch (err: any) {
+      showSuccess("✕ Upload failed: " + (err?.message || "Unknown error"));
+    }
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -2104,12 +2108,19 @@ const StaffDashboard: React.FC = () => {
   const [manualTicketAttachments,  setManualTicketAttachments]  = React.useState<string[]>([]);
   const manualTicketFileRef = React.useRef<HTMLInputElement | null>(null);
 
-  const handleManualTicketFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    Array.from(e.target.files ?? []).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => setManualTicketAttachments(prev => [...prev, ev.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
+  const handleManualTicketFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    showSuccess("⏳ Uploading attachment…");
+    try {
+      for (const file of files) {
+        const url = await uploadToCloudinary(file, "roswalt/ticket-attachments");
+        setManualTicketAttachments(prev => [...prev, url]);
+      }
+      showSuccess("✓ Attachment uploaded");
+    } catch (err: any) {
+      showSuccess("✕ Upload failed: " + (err?.message || "Unknown error"));
+    }
   };
 
   const handleSubmitManualTicket = () => {
