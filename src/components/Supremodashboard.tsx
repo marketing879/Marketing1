@@ -312,7 +312,7 @@ const GLOBAL_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 
 :root{
-  --bg:       #080c14;
+  --bg: #04060e;
   --srf:      rgba(16,22,36,0.75);
   --srf2:     rgba(22,30,48,0.8);
   --srf3:     rgba(28,38,58,0.7);
@@ -2761,6 +2761,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
