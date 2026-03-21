@@ -1312,11 +1312,12 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
   // ── Derived stats ─────────────────────────────────────────────────────────
 
-  const breached   = tasks.filter(t => t.tatBreached).length;
-  const inProgress = tasks.filter(t => t.status === "in_progress").length;
-  const completed  = tasks.filter(t => t.status === "completed" || t.status === "approved").length;
-  const pending    = tasks.filter(t => t.status === "pending").length;
-  const efficiency = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  const activeTasks = liveTasks.length > 0 ? liveTasks : tasks;
+  const breached   = activeTasks.filter((t: any) => t.tatBreached).length;
+  const inProgress = activeTasks.filter((t: any) => t.status === "in_progress").length;
+  const completed  = activeTasks.filter((t: any) => t.status === "completed" || t.status === "approved").length;
+  const pending    = activeTasks.filter((t: any) => t.status === "pending").length;
+  const efficiency = activeTasks.length ? Math.round((completed / activeTasks.length) * 100) : 0;
 
   const now     = new Date();
   const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
@@ -1444,7 +1445,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
               {/* Stat cards */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
-                <StatCard icon="📋" label="Total Tasks"     value={tasks.length}  sub="All assigned tasks"           accent="var(--acc)"    trend="up"      />
+                <StatCard icon="📋" label="Total Tasks"     value={activeTasks.length}  sub={liveTasks.length > 0 ? "● Live MongoDB" : "Mock data"}           accent="var(--acc)"    trend="up"      />
                 <StatCard icon="⏳" label="In Progress"     value={inProgress}    sub="Currently active"             accent="var(--sky)"    trend="neutral" />
                 <StatCard icon="✅" label="Completed"       value={completed}     sub={`${efficiency}% efficiency`}  accent="var(--grn)"    trend="up"      />
                 <StatCard icon="⚠️" label="TAT Breaches"   value={breached}      sub="Require attention"            accent="var(--red)"    trend={breached>0?"down":"neutral"} />
@@ -2189,5 +2190,8 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
+
+
 
 
