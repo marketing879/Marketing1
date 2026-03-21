@@ -12,6 +12,8 @@ export interface User {
   role: Role;
   isDoer: boolean;
   phone?: string;
+  avatar?: string;   // Cloudinary URL — updated via ChatRoom profile modal
+  status?: string;   // presence text, e.g. "Available", "In a meeting"
 }
 
 export type TicketType =

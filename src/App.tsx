@@ -11,24 +11,25 @@ import Login from "./components/Login";
 import StaffDashboard from "./components/StaffDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SADashboard from "./components/SADashboard";
-// ── CHANGE 1: Import SupremoDashboard ────────────────────────────────────────
 import SupremoDashboard from "./components/Supremodashboard";
 
-// ── CHANGE 2: role prop now accepts "supremo" ────────────────────────────────
+// ── NEW: ChatRoom import ─────────────────────────────────────────────────────
+import { ChatRoom } from "./components/ChatRoom";
+
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
   role: "staff" | "admin" | "superadmin" | "supremo";
 }> = ({ children, role }) => {
   const { user } = useUser();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== role) return <Navigate to={`/${user.role}`} replace />;
+  return <>{children}</>;
+};
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.role !== role) {
-    return <Navigate to={`/${user.role}`} replace />;
-  }
-
+// ── Chat accessible to all authenticated users ───────────────────────────────
+const AuthedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useUser();
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
@@ -73,7 +74,7 @@ const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* ── CHANGE 3: Supremo route ──────────────────────────────────────── */}
+      {/* SUPREMO */}
       <Route
         path="/supremo"
         element={
@@ -83,7 +84,18 @@ const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* DEFAULT — falls through to /{role} which covers /supremo too */}
+      {/* ── CHAT — all authenticated roles ──────────────────────────────── */}
+      {/* Access via: navigate('/chat') or <Link to="/chat"> from any dashboard */}
+      <Route
+        path="/chat"
+        element={
+          <AuthedRoute>
+            <ChatRoom />
+          </AuthedRoute>
+        }
+      />
+
+      {/* DEFAULT */}
       <Route
         path="*"
         element={

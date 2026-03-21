@@ -4,40 +4,28 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { v2 as cloudinary } from "cloudinary";
-import multer from "multer";
-import { Readable } from "stream";
+import { createServer } from "http";
+import { Server as SocketServer } from "socket.io";
 
 dotenv.config();
 
-// ── CLOUDINARY CONFIG ─────────────────────────────────────────────────────────
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure:     true,
-});
-console.log("Cloudinary:", process.env.CLOUDINARY_CLOUD_NAME ? "✔ Configured" : "✗ Missing env vars");
+const app        = express();
+const httpServer = createServer(app);
 
-// multer — store files in memory so we can stream to Cloudinary
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
-  fileFilter: (_req, file, cb) => {
-    const allowed = [
-      "image/jpeg","image/png","image/gif","image/webp",
-      "video/mp4","video/quicktime","video/webm",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.ms-powerpoint",
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ];
-    cb(null, allowed.includes(file.mimetype));
-  },
+// ── ALLOWED ORIGINS (single source of truth) ─────────────────────────────────
+const ALLOWED_ORIGINS = [
+  "https://marketing1-delta.vercel.app",
+  "https://www.roswaltsmartcue.com",
+  "https://roswaltsmartcue.com",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+// ── SOCKET.IO (chat real-time layer) ─────────────────────────────────────────
+const io = new SocketServer(httpServer, {
+  cors: { origin: ALLOWED_ORIGINS, credentials: true },
+  transports: ["websocket", "polling"],
 });
 
-const app = express();
 app.set("trust proxy", 1);
 
 // General API rate limit — 100 requests per 15 minutes per IP
@@ -64,16 +52,17 @@ app.use("/api/score-content", strictLimiter);
 app.use("/api/draft-notes", strictLimiter);
 
 app.use(cors({
-  origin: ["https://marketing1-delta.vercel.app", "https://www.roswaltsmartcue.com", "https://roswaltsmartcue.com", process.env.FRONTEND_URL].filter(Boolean),
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  origin: ALLOWED_ORIGINS,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 }));
 app.options("/{*path}", cors());
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
-    const allowedOrigins = ["https://marketing1-delta.vercel.app", "https://www.roswaltsmartcue.com", "https://roswaltsmartcue.com"]; const reqOrigin = req.headers.origin; res.header("Access-Control-Allow-Origin", allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0]);
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    const reqOrigin = req.headers.origin;
+    res.header("Access-Control-Allow-Origin", ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : ALLOWED_ORIGINS[0]);
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
     res.header("Access-Control-Allow-Credentials", "true");
     return res.status(204).send();
@@ -163,55 +152,52 @@ taskSchema.index({ approvalStatus: 1 });
 const Project = mongoose.model("Project", projectSchema);
 const Task    = mongoose.model("Task",    taskSchema);
 
-// ── TICKET SCHEMA ─────────────────────────────────────────────────────────────
-const ticketSchema = new mongoose.Schema({
-  id:                   { type: String, index: true },
-  taskId:               { type: String, required: true },
-  taskTitle:            { type: String, default: "" },
-  taskDueDate:          { type: String, default: "" },
-  assignedTo:           { type: String },   // reviewer's email
-  assignedBy:           { type: String },   // raiser's email
-  raisedBy:             { type: String },   // raiser's display name
-  ticketType:           { type: String, enum: ["delete-request","small-activity","general-query","task-delegation"], default: "small-activity" },
-  status:               { type: String, enum: ["open","pending-admin","admin-approved","superadmin-pending","superadmin-approved","rejected","resolved"], default: "open" },
-  reason:               { type: String, default: "" },
-  staffNote:            { type: String, default: "" },
-  adminComment:         { type: String },
-  approvedAt:           { type: String },
-  approvedBy:           { type: String },
-  rejectedAt:           { type: String },
-  rejectedBy:           { type: String },
-  rejectionReason:      { type: String },
-  attachments:          [{ type: String }],   // base64
-  targetTaskId:         { type: String },
-  superadminApprovedAt: { type: String },
-  superadminApprovedBy: { type: String },
-}, { timestamps: true, strict: false });
-ticketSchema.index({ assignedTo: 1 });
-ticketSchema.index({ assignedBy: 1 });
-ticketSchema.index({ status: 1 });
-const Ticket = mongoose.model("Ticket", ticketSchema);
+let inMemoryProjects = [];
 
-// ── ACTIVITY LOG SCHEMA ───────────────────────────────────────────────────────
-const activitySchema = new mongoose.Schema({
-  id:          { type: String, index: true },
-  timestamp:   { type: String, required: true },
-  category:    { type: String, enum: ["task","ticket","project","user","auth","approval"], default: "task" },
-  action:      { type: String, required: true },
-  actorEmail:  { type: String, default: "" },
-  actorName:   { type: String, default: "" },
-  targetId:    { type: String },
-  targetName:  { type: String },
-  meta:        { type: mongoose.Schema.Types.Mixed, default: {} },
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT SCHEMAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Chat message — text, sticker, gif, meeting link, voice note
+const chatMessageSchema = new mongoose.Schema({
+  id:           { type: String, index: true },
+  channelId:    { type: String, required: true, index: true },
+  authorId:     { type: String, required: true },
+  authorName:   { type: String, required: true },
+  authorRole:   { type: String, required: true },
+  authorAvatar: { type: String, default: "" },
+  authorEmail:  { type: String, default: "" },
+  type:         { type: String, enum: ["text","sticker","gif","meeting","voice","emoji"], default: "text" },
+  text:         { type: String, default: "" },
+  gif:          { type: String },
+  meeting: {
+    title:     String,
+    link:      String,
+    createdBy: String,
+  },
+  reactions:  { type: Map, of: [String], default: {} },   // emoji → [userId, ...]
+  readBy:     [String],
+  deletedAt:  Date,
 }, { timestamps: true });
-activitySchema.index({ timestamp: -1 });
-activitySchema.index({ actorEmail: 1 });
-activitySchema.index({ category: 1 });
-const ActivityLog = mongoose.model("ActivityLog", activitySchema);
+chatMessageSchema.index({ channelId: 1, createdAt: -1 });
+const ChatMessage = mongoose.model("ChatMessage", chatMessageSchema);
 
-let inMemoryActivity  = [];
-let inMemoryTickets   = [];
-let inMemoryProjects  = [];
+// Chat presence — tracks online status, avatar (Cloudinary URL), status text
+const chatPresenceSchema = new mongoose.Schema({
+  email:    { type: String, unique: true, required: true, lowercase: true },
+  name:     { type: String, default: "" },
+  role:     { type: String, default: "staff" },
+  avatar:   { type: String, default: "" },
+  status:   { type: String, default: "Available" },
+  isOnline: { type: Boolean, default: false },
+  socketId: { type: String },
+  lastSeen: { type: Date, default: Date.now },
+}, { timestamps: true });
+const ChatPresence = mongoose.model("ChatPresence", chatPresenceSchema);
+
+// In-memory fallbacks for when MongoDB is not connected
+let inMemoryChatMessages = [];
+let inMemoryChatPresence = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TEAM DIRECTORY
@@ -442,9 +428,7 @@ app.get("/api/tasks", async (req, res) => {
       : callerEmail
         ? { $or: [{ assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } }, { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } }] }
         : {};
-    // Include scoreData — it's structured JSON, not large.
-    // Exclude nothing heavy by default; attachments are now Cloudinary URLs (small strings).
-    const tasks = await Task.find(filter).sort({ createdAt: -1 }).lean();
+    const tasks = await Task.find(filter).select("-attachments -scoreData").sort({ createdAt: -1 }).lean();
     const normalized = tasks.map(t => { if (!t.id) t.id = String(t._id); return t; });
     res.json(normalized);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -495,203 +479,6 @@ app.delete("/api/tasks/:id", async (req, res) => {
     if (!t) t = await Task.findByIdAndDelete(req.params.id);
     if (!t) return res.status(404).json({ message: "Task not found." });
     res.json({ success: true, message: `Task "${t.title}" deleted.` });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CLOUDINARY UPLOAD ROUTE
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Helper: stream a Buffer to Cloudinary and return the result
-function uploadBufferToCloudinary(buffer, options = {}) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-      if (error) reject(error);
-      else resolve(result);
-    });
-    Readable.from(buffer).pipe(stream);
-  });
-}
-
-// POST /api/upload  — accepts a single file field named "file"
-// Returns: { url, publicId, resourceType, format, bytes }
-app.post("/api/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
-  try {
-    const isVideo = req.file.mimetype.startsWith("video/");
-    const isImage = req.file.mimetype.startsWith("image/");
-    const folder  = req.body.folder || "roswalt/attachments";
-
-    const result = await uploadBufferToCloudinary(req.file.buffer, {
-      folder,
-      resource_type: isVideo ? "video" : isImage ? "image" : "raw",
-      // For images: auto quality + format
-      ...(isImage ? { quality: "auto", fetch_format: "auto" } : {}),
-    });
-
-    console.log(`[Cloudinary] Uploaded: ${result.public_id} (${result.bytes} bytes)`);
-    res.json({
-      success:      true,
-      url:          result.secure_url,
-      publicId:     result.public_id,
-      resourceType: result.resource_type,
-      format:       result.format,
-      bytes:        result.bytes,
-    });
-  } catch (err) {
-    console.error("[Cloudinary] Upload failed:", err.message);
-    res.status(500).json({ success: false, message: "Upload failed: " + err.message });
-  }
-});
-
-// POST /api/upload-report  — accepts { html, filename } and uploads as raw HTML to Cloudinary
-// Returns: { url, publicId }
-app.post("/api/upload-report", async (req, res) => {
-  const { html, filename } = req.body;
-  if (!html) return res.status(400).json({ success: false, message: "No HTML content provided." });
-  try {
-    const buffer = Buffer.from(html, "utf-8");
-    const result = await uploadBufferToCloudinary(buffer, {
-      folder:        "roswalt/score-reports",
-      resource_type: "raw",
-      public_id:     (filename || "report_" + Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_"),
-      format:        "html",
-    });
-    console.log(`[Cloudinary] Score report uploaded: ${result.public_id}`);
-    res.json({ success: true, url: result.secure_url, publicId: result.public_id });
-  } catch (err) {
-    console.error("[Cloudinary] Report upload failed:", err.message);
-    res.status(500).json({ success: false, message: "Report upload failed: " + err.message });
-  }
-});
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-// GET – fetch activity log (superadmin/supremo see all; others see own actions)
-app.get("/api/activity", async (req, res) => {
-  try {
-    const callerEmail = (req.query.email ?? "").toLowerCase();
-    const callerRole  = (req.query.role  ?? "").toLowerCase();
-    const limit       = Math.min(parseInt(req.query.limit ?? "200"), 500);
-    const filter = (callerRole === "superadmin" || callerRole === "supremo")
-      ? {}
-      : callerEmail ? { actorEmail: { $regex: new RegExp("^" + callerEmail + "$", "i") } } : {};
-    if (mongoose.connection.readyState === 1) {
-      const entries = await ActivityLog.find(filter).sort({ timestamp: -1 }).limit(limit).lean();
-      return res.json(entries.map(e => ({ ...e, id: e.id || String(e._id) })));
-    }
-    const filtered = callerRole === "superadmin" || callerRole === "supremo"
-      ? inMemoryActivity
-      : inMemoryActivity.filter(e => e.actorEmail?.toLowerCase() === callerEmail);
-    res.json(filtered.slice(0, limit));
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-// POST – append a new activity entry
-app.post("/api/activity", async (req, res) => {
-  try {
-    const data = { ...req.body, id: req.body.id || String(Date.now()) };
-    if (mongoose.connection.readyState === 1) {
-      const created = await ActivityLog.create(data);
-      const obj = created.toObject();
-      if (!obj.id) obj.id = String(obj._id);
-      return res.status(201).json(obj);
-    }
-    inMemoryActivity.unshift(data);
-    if (inMemoryActivity.length > 500) inMemoryActivity = inMemoryActivity.slice(0, 500);
-    res.status(201).json(data);
-  } catch (e) { res.status(400).json({ message: e.message }); }
-});
-
-// DELETE – clear all activity (superadmin only, for maintenance)
-app.delete("/api/activity", async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      await ActivityLog.deleteMany({});
-      return res.json({ success: true });
-    }
-    inMemoryActivity = [];
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TICKET ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
-
-// GET – all tickets, scoped by role/email
-app.get("/api/tickets", async (req, res) => {
-  try {
-    const callerEmail = (req.query.email ?? "").toLowerCase();
-    const callerRole  = (req.query.role  ?? "").toLowerCase();
-    let filter = {};
-    if (callerRole === "superadmin" || callerRole === "supremo") {
-      filter = {}; // see all
-    } else if (callerEmail) {
-      filter = { $or: [
-        { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } },
-        { assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } },
-      ]};
-    }
-    if (mongoose.connection.readyState === 1) {
-      const tickets = await Ticket.find(filter).sort({ createdAt: -1 }).lean();
-      const normalized = tickets.map(t => { if (!t.id) t.id = String(t._id); return t; });
-      return res.json(normalized);
-    }
-    res.json(inMemoryTickets.filter(t => {
-      if (callerRole === "superadmin" || callerRole === "supremo") return true;
-      return t.assignedTo?.toLowerCase() === callerEmail || t.assignedBy?.toLowerCase() === callerEmail;
-    }));
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-// POST – create ticket
-app.post("/api/tickets", async (req, res) => {
-  try {
-    const data = { ...req.body, id: req.body.id || String(Date.now()) };
-    if (mongoose.connection.readyState === 1) {
-      const created = await Ticket.create(data);
-      const obj = created.toObject();
-      if (!obj.id) obj.id = String(obj._id);
-      return res.status(201).json(obj);
-    }
-    inMemoryTickets.unshift(data);
-    res.status(201).json(data);
-  } catch (e) { res.status(400).json({ message: e.message }); }
-});
-
-// PUT – update ticket (status changes, approve, reject, notes)
-app.put("/api/tickets/:id", async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      let t = await Ticket.findOneAndUpdate(
-        { id: req.params.id }, { $set: req.body }, { new: true }
-      );
-      if (!t) t = await Ticket.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
-      if (!t) return res.status(404).json({ message: "Ticket not found." });
-      const obj = t.toObject();
-      if (!obj.id) obj.id = String(obj._id);
-      return res.json(obj);
-    }
-    const idx = inMemoryTickets.findIndex(t => t.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ message: "Ticket not found." });
-    inMemoryTickets[idx] = { ...inMemoryTickets[idx], ...req.body };
-    res.json(inMemoryTickets[idx]);
-  } catch (e) { res.status(400).json({ message: e.message }); }
-});
-
-// DELETE – single ticket
-app.delete("/api/tickets/:id", async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      let t = await Ticket.findOneAndDelete({ id: req.params.id });
-      if (!t) t = await Ticket.findByIdAndDelete(req.params.id);
-      if (!t) return res.status(404).json({ message: "Ticket not found." });
-      return res.json({ success: true });
-    }
-    inMemoryTickets = inMemoryTickets.filter(t => t.id !== req.params.id);
-    res.json({ success: true });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -872,37 +659,373 @@ app.get("/health", (req, res) => {
     apiKeyConfigured: !!process.env.ANTHROPIC_API_KEY,
     mongoConnected:   mongoose.connection.readyState === 1,
     whatsapp:         "stubbed – enable Twilio when ready",
+    chat:             "socket.io active",
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// START SERVER
+// CHAT REST ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Helper: normalize a ChatMessage doc ──────────────────────────────────────
+function normMsg(m) {
+  const obj = m.toObject ? m.toObject() : m;
+  if (!obj.id) obj.id = String(obj._id);
+  // Convert Map to plain object for JSON
+  if (obj.reactions instanceof Map) {
+    const plain = {};
+    for (const [k, v] of obj.reactions) plain[k] = v;
+    obj.reactions = plain;
+  }
+  return obj;
+}
+
+// GET /api/chat/messages/:channelId — last 100 messages, oldest first
+app.get("/api/chat/messages/:channelId", async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit ?? "100"), 200);
+
+    if (mongoose.connection.readyState === 1) {
+      const msgs = await ChatMessage
+        .find({ channelId, deletedAt: null })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean();
+      return res.json(msgs.reverse().map(m => {
+        if (!m.id) m.id = String(m._id);
+        // reactions is stored as Map in Mongo — lean() gives a plain object already
+        return m;
+      }));
+    }
+
+    const fallback = inMemoryChatMessages
+      .filter(m => m.channelId === channelId)
+      .slice(-limit);
+    res.json(fallback);
+  } catch (e) {
+    console.error("[Chat] GET messages error:", e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// POST /api/chat/messages — persist a new message (also broadcast via socket on client side)
+app.post("/api/chat/messages", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now() + Math.random()) };
+
+    if (mongoose.connection.readyState === 1) {
+      const created = await ChatMessage.create(data);
+      return res.status(201).json(normMsg(created));
+    }
+
+    inMemoryChatMessages.push(data);
+    if (inMemoryChatMessages.length > 1000) inMemoryChatMessages = inMemoryChatMessages.slice(-800);
+    res.status(201).json(data);
+  } catch (e) {
+    console.error("[Chat] POST message error:", e.message);
+    res.status(400).json({ message: e.message });
+  }
+});
+
+// PUT /api/chat/messages/:id/react — toggle a reaction
+app.put("/api/chat/messages/:id/react", async (req, res) => {
+  try {
+    const { emoji, userId } = req.body;
+    if (!emoji || !userId)
+      return res.status(400).json({ message: "emoji and userId are required." });
+
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOne({ id: req.params.id });
+      if (!msg) return res.status(404).json({ message: "Message not found." });
+
+      const users = msg.reactions.get(emoji) || [];
+      const idx = users.indexOf(userId);
+      if (idx > -1) users.splice(idx, 1); else users.push(userId);
+      msg.reactions.set(emoji, users);
+      await msg.save();
+
+      const updated = normMsg(msg);
+      // Broadcast updated reactions to the channel
+      io.to(`channel:${msg.channelId}`).emit("reaction_update", {
+        messageId: msg.id,
+        emoji,
+        userId,
+        reactions: updated.reactions,
+      });
+      return res.json(updated);
+    }
+
+    // In-memory fallback
+    const msg = inMemoryChatMessages.find(m => m.id === req.params.id);
+    if (!msg) return res.status(404).json({ message: "Message not found." });
+    if (!msg.reactions) msg.reactions = {};
+    const users = msg.reactions[emoji] || [];
+    const idx = users.indexOf(userId);
+    if (idx > -1) users.splice(idx, 1); else users.push(userId);
+    msg.reactions[emoji] = users;
+    res.json(msg);
+  } catch (e) {
+    console.error("[Chat] React error:", e.message);
+    res.status(400).json({ message: e.message });
+  }
+});
+
+// DELETE /api/chat/messages/:id — soft-delete a message
+app.delete("/api/chat/messages/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOneAndUpdate(
+        { id: req.params.id },
+        { $set: { deletedAt: new Date(), text: "[message deleted]" } },
+        { new: true }
+      );
+      if (!msg) return res.status(404).json({ message: "Message not found." });
+      io.to(`channel:${msg.channelId}`).emit("message_deleted", { messageId: msg.id });
+      return res.json({ success: true });
+    }
+    inMemoryChatMessages = inMemoryChatMessages.filter(m => m.id !== req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// GET /api/chat/presence — all online users
+app.get("/api/chat/presence", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const online = await ChatPresence.find({ isOnline: true }).lean();
+      return res.json(online);
+    }
+    res.json(inMemoryChatPresence.filter(p => p.isOnline));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// PATCH /api/chat/presence — upsert presence record (name, role, avatar, status)
+// Called by the frontend after login and after profile updates
+app.patch("/api/chat/presence", async (req, res) => {
+  try {
+    const { email, ...updates } = req.body;
+    if (!email) return res.status(400).json({ message: "email is required." });
+
+    if (mongoose.connection.readyState === 1) {
+      const presence = await ChatPresence.findOneAndUpdate(
+        { email: email.toLowerCase() },
+        { $set: { ...updates, email: email.toLowerCase() } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      return res.json(presence);
+    }
+
+    const idx = inMemoryChatPresence.findIndex(p => p.email === email.toLowerCase());
+    const record = { email: email.toLowerCase(), ...updates, updatedAt: new Date().toISOString() };
+    if (idx > -1) inMemoryChatPresence[idx] = { ...inMemoryChatPresence[idx], ...record };
+    else inMemoryChatPresence.push(record);
+    res.json(record);
+  } catch (e) {
+    console.error("[Chat] PATCH presence error:", e.message);
+    res.status(400).json({ message: e.message });
+  }
+});
+
+// POST /api/chat/meeting — generate a meeting room link
+// Integrates with Daily.co if DAILY_API_KEY is set; falls back to a mock link
+app.post("/api/chat/meeting", async (req, res) => {
+  try {
+    const { title } = req.body;
+    if (process.env.DAILY_API_KEY) {
+      const response = await fetch("https://api.daily.co/v1/rooms", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: { max_participants: 50, enable_chat: false, exp: Math.floor(Date.now() / 1000) + 7200 },
+        }),
+      });
+      if (!response.ok) throw new Error(`Daily.co error: ${response.status}`);
+      const room = await response.json();
+      console.log(`[Chat] Daily.co room created: ${room.url}`);
+      return res.json({ url: room.url, roomName: room.name, provider: "daily" });
+    }
+
+    // Fallback — generate a deterministic mock link
+    const roomId = Math.random().toString(36).substr(2, 8);
+    const url = `https://meet.roswalt.io/room-${roomId}`;
+    console.log(`[Chat] Mock meeting link: ${url}`);
+    res.json({ url, roomName: `room-${roomId}`, provider: "mock", title });
+  } catch (e) {
+    console.error("[Chat] Meeting creation error:", e.message);
+    res.status(500).json({ message: "Could not create meeting room: " + e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCKET.IO — REAL-TIME CHAT ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+io.on("connection", (socket) => {
+  console.log(`[Socket] Connected: ${socket.id}`);
+
+  // ── user_join: called right after login with { email, name, role, avatar } ──
+  socket.on("user_join", async (user) => {
+    if (!user?.email) return;
+    socket.data.user = user;
+    socket.join("presence");
+
+    if (mongoose.connection.readyState === 1) {
+      await ChatPresence.findOneAndUpdate(
+        { email: user.email.toLowerCase() },
+        { $set: { ...user, email: user.email.toLowerCase(), isOnline: true, socketId: socket.id, lastSeen: new Date() } },
+        { upsert: true, setDefaultsOnInsert: true }
+      ).catch(e => console.error("[Socket] Presence upsert error:", e.message));
+    } else {
+      const idx = inMemoryChatPresence.findIndex(p => p.email === user.email.toLowerCase());
+      const record = { ...user, email: user.email.toLowerCase(), isOnline: true, socketId: socket.id };
+      if (idx > -1) inMemoryChatPresence[idx] = record; else inMemoryChatPresence.push(record);
+    }
+
+    // Broadcast updated online list to all clients
+    io.emit("user_online", { ...user, isOnline: true, socketId: socket.id });
+    console.log(`[Socket] ${user.name} (${user.role}) joined`);
+  });
+
+  // ── join_channel: subscribe to a channel room ─────────────────────────────
+  socket.on("join_channel", (channelId) => {
+    if (!channelId) return;
+    socket.join(`channel:${channelId}`);
+    console.log(`[Socket] ${socket.data.user?.name || socket.id} → channel:${channelId}`);
+  });
+
+  // ── leave_channel ─────────────────────────────────────────────────────────
+  socket.on("leave_channel", (channelId) => {
+    if (channelId) socket.leave(`channel:${channelId}`);
+  });
+
+  // ── send_message: persist + broadcast ────────────────────────────────────
+  socket.on("send_message", async (msg) => {
+    if (!msg?.channelId || !msg?.authorId) return;
+
+    const data = { ...msg, id: msg.id || String(Date.now() + Math.random()) };
+
+    // Persist
+    if (mongoose.connection.readyState === 1) {
+      ChatMessage.create(data).catch(e => console.error("[Socket] Message save error:", e.message));
+    } else {
+      inMemoryChatMessages.push(data);
+    }
+
+    // Broadcast to everyone else in the channel (sender already has it locally)
+    socket.to(`channel:${msg.channelId}`).emit("new_message", data);
+    console.log(`[Socket] Message in ${msg.channelId} from ${msg.authorName}: "${String(msg.text || msg.type).slice(0, 40)}"`);
+  });
+
+  // ── typing: forward typing indicator to channel ───────────────────────────
+  socket.on("typing", ({ channelId, isTyping }) => {
+    if (!channelId) return;
+    socket.to(`channel:${channelId}`).emit("user_typing", {
+      name: socket.data.user?.name || "Someone",
+      channelId,
+      isTyping,
+    });
+  });
+
+  // ── react: toggle reaction and broadcast ─────────────────────────────────
+  socket.on("react", async ({ messageId, emoji, userId, channelId }) => {
+    if (!messageId || !emoji || !userId || !channelId) return;
+
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOne({ id: messageId }).catch(() => null);
+      if (msg) {
+        const users = msg.reactions.get(emoji) || [];
+        const idx = users.indexOf(userId);
+        if (idx > -1) users.splice(idx, 1); else users.push(userId);
+        msg.reactions.set(emoji, users);
+        await msg.save().catch(e => console.error("[Socket] Reaction save error:", e.message));
+      }
+    } else {
+      const msg = inMemoryChatMessages.find(m => m.id === messageId);
+      if (msg) {
+        if (!msg.reactions) msg.reactions = {};
+        const users = msg.reactions[emoji] || [];
+        const idx = users.indexOf(userId);
+        if (idx > -1) users.splice(idx, 1); else users.push(userId);
+        msg.reactions[emoji] = users;
+      }
+    }
+
+    io.to(`channel:${channelId}`).emit("reaction_update", { messageId, emoji, userId });
+  });
+
+  // ── call_request: notify a user of an incoming video call ────────────────
+  socket.on("call_request", ({ channelId, fromUser }) => {
+    socket.to(`channel:${channelId}`).emit("call_incoming", {
+      from: fromUser || socket.data.user,
+      channelId,
+    });
+  });
+
+  // ── call_end: notify channel that call has ended ──────────────────────────
+  socket.on("call_end", ({ channelId }) => {
+    socket.to(`channel:${channelId}`).emit("call_ended", { channelId });
+  });
+
+  // ── disconnect ────────────────────────────────────────────────────────────
+  socket.on("disconnect", async () => {
+    const user = socket.data.user;
+    if (user?.email) {
+      if (mongoose.connection.readyState === 1) {
+        await ChatPresence.findOneAndUpdate(
+          { email: user.email.toLowerCase() },
+          { $set: { isOnline: false, socketId: null, lastSeen: new Date() } }
+        ).catch(e => console.error("[Socket] Disconnect presence error:", e.message));
+      } else {
+        const p = inMemoryChatPresence.find(p => p.email === user.email.toLowerCase());
+        if (p) { p.isOnline = false; p.socketId = null; }
+      }
+      io.emit("user_offline", { email: user.email, id: user.id || user.email });
+      console.log(`[Socket] Disconnected: ${user.name} (${user.role})`);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// START SERVER  (httpServer replaces app.listen so Socket.io shares the port)
 // ─────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n╔══════════════════════════════════════════════════════╗`);
-  console.log(`║  ✔ Server running on port ${PORT}                      ║`);
-  console.log(`╠══════════════════════════════════════════════════════╣`);
-  console.log(`║  Projects:   GET/POST/PUT  /api/projects             ║`);
-  console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks          ║`);
-  console.log(`║  Tickets:    GET/POST/PUT/DELETE /api/tickets        ║`);
-  console.log(`║  Activity:   GET/POST/DELETE     /api/activity       ║`);
-  console.log(`║  Upload:     POST                /api/upload         ║`);
-  console.log(`║  AI:         POST /api/draft-notes                   ║`);
-  console.log(`║              POST /api/review-attachments            ║`);
-  console.log(`║              POST /api/score-content                 ║`);
-  console.log(`║              POST /api/chat  (SmartCue AI)           ║`);
-  console.log(`║  TTS:        POST /api/tts                           ║`);
-  console.log(`║  Health:     GET  /health                            ║`);
-  console.log(`╚══════════════════════════════════════════════════════╝\n`);
+httpServer.listen(PORT, () => {
+  console.log(`\n╔══════════════════════════════════════════════════════════╗`);
+  console.log(`║  ✔ Server + Socket.io running on port ${PORT}              ║`);
+  console.log(`╠══════════════════════════════════════════════════════════╣`);
+  console.log(`║  Projects:   GET/POST/PUT  /api/projects                ║`);
+  console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks             ║`);
+  console.log(`║  Chat:       GET  /api/chat/messages/:channelId         ║`);
+  console.log(`║              POST /api/chat/messages                    ║`);
+  console.log(`║              PUT  /api/chat/messages/:id/react          ║`);
+  console.log(`║              DEL  /api/chat/messages/:id                ║`);
+  console.log(`║              GET  /api/chat/presence                    ║`);
+  console.log(`║              PATCH/api/chat/presence                    ║`);
+  console.log(`║              POST /api/chat/meeting                     ║`);
+  console.log(`║  Socket.io:  ws://  (chat real-time)                    ║`);
+  console.log(`║  AI:         POST /api/draft-notes                      ║`);
+  console.log(`║              POST /api/review-attachments               ║`);
+  console.log(`║              POST /api/score-content                    ║`);
+  console.log(`║              POST /api/chat  (SmartCue AI)              ║`);
+  console.log(`║  TTS:        POST /api/tts                              ║`);
+  console.log(`║  Health:     GET  /health                               ║`);
+  console.log(`╚══════════════════════════════════════════════════════════╝\n`);
   console.log("ElevenLabs Key:", process.env.ELEVEN_LABS_API_KEY ? "✔ Loaded" : "✗ Missing");
+  console.log("Daily.co Key:  ", process.env.DAILY_API_KEY        ? "✔ Loaded" : "✗ Missing (using mock links)");
 
   setInterval(() => {
     fetch("https://adaptable-patience-production-45da.up.railway.app/health").catch(() => {});
-  }, 300000); // ping every 14 minutes to prevent sleep
+  }, 300000); // ping every 5 minutes to prevent sleep
 
   setTimeout(() => {
-    console.log("⏱  TAT monitor started – checking every 60 seconds");
+    console.log("⏱  TAT monitor started – checking every 4 hours");
     runTATMonitor();
     setInterval(runTATMonitor, 14400000);
   }, 5_000);
