@@ -79,7 +79,7 @@ async function _speakWithBackend(text: string, onStart?: () => void, onEnd?: () 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: cleanForTTS(text), voiceId: _selectedVoice || "ThT5KcBeYPX3keUQqHPh" }),
     });
-    if (!response.ok) { onEnd?.(); return; }
+    if (!response.ok) throw new Error("TTS backend unavailable");
     const blob  = await response.blob();
     const url   = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -89,7 +89,31 @@ async function _speakWithBackend(text: string, onStart?: () => void, onEnd?: () 
       audio.onerror = () => { URL.revokeObjectURL(url); _currentAudio = null; onEnd?.(); resolve(); };
       audio.play().catch(() => { _currentAudio = null; onEnd?.(); resolve(); });
     });
-  } catch { _currentAudio = null; onEnd?.(); }
+  } catch {
+    // ── Fallback: Web Speech API (browser built-in) ──
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) {
+        synth.cancel();
+        const utt   = new SpeechSynthesisUtterance(cleanForTTS(text));
+        utt.lang    = "en-IN";
+        utt.rate    = 0.92;
+        utt.pitch   = 1.0;
+        utt.volume  = 1.0;
+        // Try to pick a good voice
+        const voices = synth.getVoices();
+        const pick   = voices.find(v => v.lang.startsWith("en") && v.name.includes("Google"))
+                    || voices.find(v => v.lang.startsWith("en"))
+                    || null;
+        if (pick) utt.voice = pick;
+        utt.onend  = () => onEnd?.();
+        utt.onerror = () => onEnd?.();
+        synth.speak(utt);
+        return;
+      }
+    } catch { /* swallow */ }
+    _currentAudio = null; onEnd?.();
+  }
 }
 
 async function _speak(text: string, onStart?: () => void, onEnd?: () => void): Promise<void> {
@@ -220,9 +244,9 @@ interface ChartTipProps {
 // API BASE
 // ─────────────────────────────────────────────────────────────────────────────
 
-const API_BASE = 
-process.env.REACT_APP_API_URL || 
-"https://adaptable-patience-production-45da.up.railway.app";
+const API_BASE =
+  process.env.REACT_APP_API_URL ||
+  "https://adaptable-patience-production-45da.up.railway.app";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCK DATA
@@ -314,6 +338,10 @@ const GLOBAL_CSS = `
   --purple:   #a78bfa;
   --font:     'DM Sans', sans-serif;
   --mono:     'JetBrains Mono', monospace;
+  --gold:     #d4a847;
+  --gold2:    #f0c060;
+  --gold3:    #b8860b;
+  --gold-glow:rgba(212,168,71,.35);
 }
 
 html,body{height:100%;overflow:hidden;}
@@ -325,14 +353,25 @@ body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px
 ::-webkit-scrollbar-thumb:hover{background:var(--t3);}
 
 /* ── Cards ── */
-.card{background:var(--srf);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;}
-.card-sm{background:var(--srf);border:1px solid var(--bdr);border-radius:8px;padding:16px;}
-.card-head{padding:16px 20px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;}
+.card{background:linear-gradient(145deg,#1a2035 0%,#161b22 60%,#1a2035 100%);border:1px solid rgba(212,168,71,.18);border-radius:12px;overflow:hidden;}
+.card-sm{background:linear-gradient(145deg,#1a2035,#161b22);border:1px solid rgba(212,168,71,.15);border-radius:8px;padding:16px;}
+.card-head{padding:16px 20px;border-bottom:1px solid rgba(212,168,71,.12);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,rgba(212,168,71,.04),transparent);}
 .card-body{padding:20px;}
 
 /* ── Stat card ── */
-.stat-card{background:var(--srf);border:1px solid var(--bdr);border-radius:12px;padding:20px;transition:border-color .2s;}
-.stat-card:hover{border-color:var(--bdr2);}
+.stat-card{
+  background:linear-gradient(145deg,#1c2340 0%,#161b22 50%,#1a1f30 100%);
+  border:1px solid rgba(212,168,71,.2);
+  border-radius:12px;padding:20px;
+  transition:border-color .2s,transform .2s,box-shadow .2s;
+  position:relative;overflow:hidden;
+}
+.stat-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  opacity:.6;
+}
+.stat-card:hover{border-color:rgba(212,168,71,.45);transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(212,168,71,.08);}
 
 /* ── Badges ── */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;letter-spacing:.3px;}
@@ -347,8 +386,8 @@ body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--font);}
-.btn-primary{background:var(--acc);color:#fff;}
-.btn-primary:hover{background:#5254cc;}
+.btn-primary{background:linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2));color:#1a1200;font-weight:600;}
+.btn-primary:hover{background:linear-gradient(135deg,var(--gold),var(--gold2),var(--gold));}
 .btn-ghost{background:transparent;color:var(--t2);border:1px solid var(--bdr);}
 .btn-ghost:hover{background:var(--srf2);color:var(--t1);border-color:var(--bdr2);}
 .btn-danger{background:rgba(244,63,94,.1);color:var(--red);border:1px solid rgba(244,63,94,.2);}
@@ -373,8 +412,8 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 /* ── Nav item ── */
 .nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--t2);font-size:13px;font-weight:500;}
-.nav-item:hover{background:var(--srf2);color:var(--t1);}
-.nav-item.active{background:rgba(99,102,241,.12);color:var(--acc2);}
+.nav-item:hover{background:linear-gradient(90deg,rgba(212,168,71,.08),transparent);color:var(--gold2);}
+.nav-item.active{background:linear-gradient(90deg,rgba(212,168,71,.15),rgba(99,102,241,.08));color:var(--gold);border-left:2px solid var(--gold);}
 .nav-item .nav-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
 
 /* ── Table ── */
@@ -407,8 +446,8 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .chart-tooltip{background:var(--srf2) !important;border:1px solid var(--bdr) !important;border-radius:8px !important;padding:10px 14px !important;font-family:var(--font) !important;font-size:12px !important;color:var(--t1) !important;box-shadow:0 8px 24px rgba(0,0,0,.4) !important;}
 
 /* ── Modal ── */
-.modal-overlay{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease;}
-.modal{background:var(--srf);border:1px solid var(--bdr);border-radius:14px;padding:28px;width:420px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+.modal-overlay{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease;}
+.modal{background:linear-gradient(145deg,#1c2340,#161b22);border:1px solid rgba(212,168,71,.3);border-radius:14px;padding:28px;width:420px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 40px rgba(212,168,71,.06);}
 
 /* ── Animations ── */
 @keyframes fadeIn  {from{opacity:0;} to{opacity:1;}}
@@ -417,13 +456,15 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 @keyframes spin    {to{transform:rotate(360deg);}}
 @keyframes pulse   {0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
 @keyframes ringExp {0%{transform:scale(1);opacity:.8;}100%{transform:scale(2.2);opacity:0;}}
+@keyframes shimmer {0%{background-position:-200% center;}100%{background-position:200% center;}}
+@keyframes goldPulse{0%,100%{box-shadow:0 4px 24px rgba(212,168,71,.35);}50%{box-shadow:0 4px 32px rgba(212,168,71,.35),0 0 40px rgba(212,168,71,.25);}}
 
 .anim-in {animation:slideUp .25s ease both;}
 
 /* ── Page layout ── */
 .layout{display:grid;grid-template-columns:240px 1fr;grid-template-rows:56px 1fr;height:100vh;}
-.topbar{grid-column:1/-1;background:var(--srf);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100;}
-.sidebar{background:var(--srf);border-right:1px solid var(--bdr);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
+.topbar{grid-column:1/-1;background:linear-gradient(90deg,#111827,#0d1117 40%,#111827);border-bottom:1px solid rgba(212,168,71,.2);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.5);}
+.sidebar{background:linear-gradient(180deg,#111827 0%,#0d1117 100%);border-right:1px solid rgba(212,168,71,.15);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
 .main{overflow-y:auto;padding:24px;}
 
 /* ── Sidebar collapsed ── */
@@ -431,7 +472,7 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .layout.sidebar-collapsed .sidebar{display:none;}
 
 /* ── Section header ── */
-.section-title{font-size:18px;font-weight:600;color:var(--t1);}
+.section-title{font-size:18px;font-weight:700;background:linear-gradient(90deg,var(--gold2),var(--t1));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .section-sub  {font-size:13px;color:var(--t2);margin-top:2px;}
 
 /* ── Status chip row ── */
@@ -443,67 +484,69 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 .jarvis-fab{
   position:fixed;bottom:28px;right:28px;z-index:800;
-  width:52px;height:52px;border-radius:50%;
-  background:var(--acc);
-  border:none;cursor:pointer;
+  width:58px;height:58px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2));
+  border:2px solid rgba(240,192,96,.5);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 20px rgba(99,102,241,.5);
+  box-shadow:0 4px 24px var(--gold-glow),0 0 0 0 rgba(212,168,71,.4);
   transition:all .2s;
+  animation:goldPulse 3s ease-in-out infinite;
 }
-.jarvis-fab:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(99,102,241,.7);}
-.jarvis-fab svg{width:22px;height:22px;color:#fff;}
+.jarvis-fab:hover{transform:scale(1.1);box-shadow:0 8px 36px var(--gold-glow),0 0 28px rgba(212,168,71,.3);}
+.jarvis-fab svg{width:24px;height:24px;color:#1a1200;}
 .jarvis-wake-dot{
   position:absolute;top:4px;right:4px;
-  width:10px;height:10px;border-radius:50%;
+  width:12px;height:12px;border-radius:50%;
   background:var(--grn);border:2px solid var(--bg);
   animation:blink 1.5s infinite;
 }
 
 .jarvis-panel{
-  position:fixed;bottom:90px;right:28px;z-index:800;
-  width:380px;max-height:600px;
-  background:var(--srf);border:1px solid var(--bdr);
+  position:fixed;bottom:100px;right:28px;z-index:800;
+  width:400px;max-height:620px;
+  background:linear-gradient(160deg,#1a2035 0%,#161b22 100%);
+  border:1px solid rgba(212,168,71,.3);
   border-radius:16px;
   display:flex;flex-direction:column;overflow:hidden;
-  box-shadow:0 24px 60px rgba(0,0,0,.5);
+  box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 40px rgba(212,168,71,.08);
   animation:slideUp .2s ease;
 }
 .jarvis-header{
-  padding:14px 16px;border-bottom:1px solid var(--bdr);
+  padding:14px 16px;border-bottom:1px solid rgba(212,168,71,.2);
   display:flex;align-items:center;justify-content:space-between;
-  background:var(--srf2);
+  background:linear-gradient(90deg,rgba(212,168,71,.12),rgba(99,102,241,.08));
 }
-.jarvis-title{font-size:13px;font-weight:600;color:var(--t1);}
+.jarvis-title{font-size:13px;font-weight:700;background:linear-gradient(90deg,var(--gold2),var(--t1));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .jarvis-sub{font-size:11px;color:var(--t2);margin-top:1px;}
 
 /* Orb */
-.jarvis-orb-wrap{padding:24px 0 16px;display:flex;flex-direction:column;align-items:center;gap:14px;background:linear-gradient(to bottom,var(--srf2),var(--srf));}
-.jarvis-orb-outer{position:relative;width:80px;height:80px;display:flex;align-items:center;justify-content:center;}
+.jarvis-orb-wrap{padding:24px 0 16px;display:flex;flex-direction:column;align-items:center;gap:14px;background:linear-gradient(to bottom,rgba(212,168,71,.06),transparent);}
+.jarvis-orb-outer{position:relative;width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
 .jarvis-ring{
   position:absolute;inset:0;border-radius:50%;
-  border:1.5px solid rgba(99,102,241,.4);
+  border:1.5px solid rgba(212,168,71,.4);
   animation:pulse 2.5s ease-in-out infinite;
 }
 .jarvis-ring-2{
-  position:absolute;inset:-10px;border-radius:50%;
-  border:1px solid rgba(99,102,241,.2);
+  position:absolute;inset:-12px;border-radius:50%;
+  border:1px solid rgba(212,168,71,.15);
   animation:pulse 2.5s ease-in-out infinite;animation-delay:.4s;
 }
 .jarvis-ring-speaking{animation:ringExp 1s ease-out infinite;}
 .jarvis-ring-2-speaking{animation:ringExp 1s ease-out infinite;animation-delay:.3s;}
 .jarvis-ring-listen{border-color:rgba(34,197,94,.5);animation:pulse .8s ease-in-out infinite;}
 .jarvis-orb{
-  width:64px;height:64px;border-radius:50%;
-  background:linear-gradient(135deg,var(--srf2),var(--bg));
-  border:1.5px solid var(--bdr2);
+  width:70px;height:70px;border-radius:50%;
+  background:linear-gradient(135deg,#1c2340,#0d1117);
+  border:2px solid rgba(212,168,71,.35);
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;
-  box-shadow:0 0 0 0 rgba(99,102,241,.4);
+  box-shadow:0 0 0 0 rgba(212,168,71,.3);
   transition:all .2s;position:relative;z-index:2;
 }
-.jarvis-orb:hover{border-color:var(--acc);box-shadow:0 0 0 6px rgba(99,102,241,.15);}
-.jarvis-orb.listening{border-color:var(--grn);box-shadow:0 0 0 6px rgba(34,197,94,.15);}
-.jarvis-orb.speaking {border-color:var(--acc);box-shadow:0 0 20px rgba(99,102,241,.4),0 0 0 8px rgba(99,102,241,.1);}
+.jarvis-orb:hover{border-color:var(--gold);box-shadow:0 0 0 8px rgba(212,168,71,.1),0 0 20px rgba(212,168,71,.2);}
+.jarvis-orb.listening{border-color:var(--grn);box-shadow:0 0 0 6px rgba(34,197,94,.15),0 0 20px rgba(34,197,94,.2);}
+.jarvis-orb.speaking {border-color:var(--gold2);box-shadow:0 0 24px rgba(212,168,71,.4),0 0 0 10px rgba(212,168,71,.1);}
 .jarvis-orb.thinking {border-color:var(--amber);}
 .jarvis-status{font-size:11px;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;font-family:var(--mono);}
 .jarvis-transcript{font-size:12px;color:var(--t2);font-style:italic;padding:0 20px;text-align:center;}
@@ -528,17 +571,17 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 /* Intelligence panel */
 .intel-body{display:grid;grid-template-columns:200px 1fr 320px;gap:14px;height:calc(100vh - 260px);min-height:0;}
-.intel-col{display:flex;flex-direction:column;gap:0;overflow:hidden;border-radius:10px;border:1px solid var(--bdr);background:var(--srf);}
-.intel-col-head{padding:10px 14px;border-bottom:1px solid var(--bdr);font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;background:var(--srf2);flex-shrink:0;}
+.intel-col{display:flex;flex-direction:column;gap:0;overflow:hidden;border-radius:10px;border:1px solid rgba(212,168,71,.2);background:linear-gradient(145deg,#1a2035,#161b22);}
+.intel-col-head{padding:10px 14px;border-bottom:1px solid rgba(212,168,71,.15);font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;background:linear-gradient(90deg,rgba(212,168,71,.08),transparent);flex-shrink:0;}
 .intel-col-scroll{flex:1;overflow-y:auto;padding:10px;}
 .intel-col-scroll::-webkit-scrollbar{width:3px;}
 .intel-log-line{font-size:10px;color:var(--t3);padding:3px 0;border-bottom:1px solid rgba(48,54,61,.4);line-height:1.5;font-family:var(--mono);}
 .intel-log-line::before{content:'> ';color:var(--acc);}
 .intel-history-item{font-size:11px;color:var(--t2);padding:5px 6px;border-radius:5px;cursor:pointer;transition:.15s;line-height:1.4;word-break:break-word;font-family:var(--mono);}
 .intel-history-item:hover{background:var(--srf2);color:var(--t1);}
-.intel-card{border:1px solid var(--bdr);border-radius:10px;background:var(--srf);overflow:hidden;margin-bottom:12px;animation:slideUp .3s ease;}
+.intel-card{border:1px solid rgba(212,168,71,.2);border-radius:10px;background:linear-gradient(145deg,#1a2035,#161b22);overflow:hidden;margin-bottom:12px;animation:slideUp .3s ease;}
 .intel-card:last-child{margin-bottom:0;}
-.intel-card-head{padding:10px 14px;border-bottom:1px solid var(--bdr);font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;background:var(--srf2);display:flex;align-items:center;gap:6px;}
+.intel-card-head{padding:10px 14px;border-bottom:1px solid rgba(212,168,71,.15);font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;background:linear-gradient(90deg,rgba(212,168,71,.08),transparent);display:flex;align-items:center;gap:6px;}
 .intel-card-body{padding:16px;}
 .intel-analysis{font-size:13px;line-height:1.8;color:var(--t1);white-space:pre-wrap;word-break:break-word;}
 .intel-analysis strong,.intel-analysis b{color:var(--acc2);font-weight:600;}
@@ -568,7 +611,10 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .chat-input-row{padding:14px;border-top:1px solid var(--bdr);display:flex;gap:8px;background:var(--srf);}
 
 /* Sidebar section label */
-.sidebar-label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;padding:12px 12px 4px;}
+.sidebar-label{font-size:10px;font-weight:700;color:var(--gold3);text-transform:uppercase;letter-spacing:1px;padding:12px 12px 4px;}
+
+/* ── Topbar gold divider ── */
+.topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.4;}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -673,15 +719,15 @@ function StatCard({ icon, label, value, sub, accent = "var(--acc)", trend }: Sta
   return (
     <div className="stat-card">
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16 }}>
-        <div style={{ width:40, height:40, borderRadius:10, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
+        <div style={{ width:42, height:42, borderRadius:10, background:`linear-gradient(135deg,${accent}28,${accent}10)`, border:`1px solid ${accent}30`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
         {trend && (
           <span style={{ fontSize:11, color: trend==="up"?"var(--grn)":trend==="down"?"var(--red)":"var(--t3)", fontWeight:500 }}>
             {trend==="up"?"↑":trend==="down"?"↓":"—"}
           </span>
         )}
       </div>
-      <div style={{ fontSize:26, fontWeight:700, color:"var(--t1)", lineHeight:1, marginBottom:6 }}>{value}</div>
-      <div style={{ fontSize:13, fontWeight:500, color:"var(--t2)" }}>{label}</div>
+      <div style={{ fontSize:28, fontWeight:700, color:"var(--gold2)", lineHeight:1, marginBottom:6, fontFamily:"var(--mono)" }}>{value}</div>
+      <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{label}</div>
       {sub && <div style={{ fontSize:11, color:"var(--t3)", marginTop:3 }}>{sub}</div>}
     </div>
   );
@@ -988,6 +1034,8 @@ export default function SupremoDashboard() {
   const [continuousMode,  setContinuousMode]  = useState(false);
   const [stopRequested,   setStopRequested]   = useState(false);
   const [autoReport,      setAutoReport]      = useState(false);
+  const [bgVideo,         setBgVideo]         = useState<string | null>(null);
+  const bgVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Intelligence
   const [intelQuery,      setIntelQuery]      = useState("");
@@ -1335,6 +1383,23 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     <>
       <style>{GLOBAL_CSS}</style>
 
+      {/* ── Video Background ── */}
+      {bgVideo && (
+        <video
+          key={bgVideo}
+          autoPlay loop muted playsInline
+          style={{ position:"fixed", inset:0, width:"100%", height:"100%", objectFit:"cover", zIndex:-1, opacity:0.18, filter:"brightness(0.5) saturate(0.8)" }}
+        >
+          <source src={bgVideo} />
+        </video>
+      )}
+      <input ref={bgVideoInputRef} type="file" accept="video/*" style={{ display:"none" }}
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) setBgVideo(URL.createObjectURL(f));
+        }}
+      />
+
       {/* ────────────────── LAYOUT ────────────────── */}
       <div className={`layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
 
@@ -1349,11 +1414,11 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
           {/* Logo */}
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:8, background:"var(--acc)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <span style={{ fontFamily:"var(--mono)", fontWeight:700, fontSize:12, color:"#fff" }}>SC</span>
+            <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2))", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 0 12px var(--gold-glow)" }}>
+              <span style={{ fontFamily:"var(--mono)", fontWeight:700, fontSize:12, color:"#1a1200" }}>SC</span>
             </div>
             <div>
-              <div style={{ fontWeight:700, fontSize:14, color:"var(--t1)", lineHeight:1 }}>SmartCue</div>
+              <div style={{ fontWeight:700, fontSize:14, color:"var(--gold2)", lineHeight:1 }}>SmartCue</div>
               <div style={{ fontSize:10, color:"var(--t2)" }}>Supremo Dashboard</div>
             </div>
           </div>
@@ -1383,11 +1448,24 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <button
               onClick={() => setVoiceEnabled(v => !v)}
               className={`btn btn-sm ${voiceEnabled ? "btn-ghost" : "btn-ghost"}`}
-              style={{ borderColor: voiceEnabled ? "var(--acc)" : "var(--bdr)", color: voiceEnabled ? "var(--acc2)" : "var(--t3)" }}
+              style={{ borderColor: voiceEnabled ? "var(--gold)" : "var(--bdr)", color: voiceEnabled ? "var(--gold2)" : "var(--t3)" }}
               title={voiceEnabled ? "Voice enabled" : "Voice disabled"}
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
+
+            {/* Background video upload */}
+            <button
+              onClick={() => bgVideoInputRef.current?.click()}
+              className="btn btn-sm btn-ghost"
+              style={{ borderColor:"rgba(212,168,71,.3)", color:"var(--gold)", fontSize:12 }}
+              title="Upload background video"
+            >
+              🎬 {bgVideo ? "BG ✓" : "BG"}
+            </button>
+            {bgVideo && (
+              <button onClick={() => setBgVideo(null)} className="btn btn-sm btn-ghost" style={{ color:"var(--t3)", fontSize:11 }} title="Remove background">✕</button>
+            )}
 
             {/* User */}
             <div style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }} onClick={() => setShowLogout(true)}>
@@ -1419,14 +1497,36 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
           <div style={{ flex:1 }} />
 
-          <div style={{ borderTop:"1px solid var(--bdr)", paddingTop:12, marginTop:12 }}>
+          {/* Jarvis mode in sidebar */}
+          <div style={{ padding:"8px 6px", borderTop:"1px solid rgba(212,168,71,.15)", marginTop:8 }}>
+            <button
+              onClick={() => setContinuousMode(m => !m)}
+              style={{
+                width:"100%", display:"flex", alignItems:"center", gap:8,
+                padding:"10px 12px", borderRadius:8, cursor:"pointer",
+                background: continuousMode
+                  ? "linear-gradient(90deg,rgba(212,168,71,.2),rgba(212,168,71,.08))"
+                  : "rgba(212,168,71,.05)",
+                border: continuousMode ? "1px solid rgba(212,168,71,.5)" : "1px solid rgba(212,168,71,.15)",
+                color: continuousMode ? "var(--gold2)" : "var(--gold3)",
+                fontFamily:"var(--font)", fontSize:12, fontWeight:600,
+                transition:"all .2s",
+              }}
+            >
+              <span style={{ fontSize:16 }}>{continuousMode ? "🟢" : "🎙"}</span>
+              <span>{continuousMode ? "JARVIS ON" : "JARVIS MODE"}</span>
+              {continuousMode && <span style={{ marginLeft:"auto", width:6, height:6, borderRadius:"50%", background:"var(--grn)", animation:"blink 1.5s infinite", display:"inline-block" }} />}
+            </button>
+          </div>
+
+          <div style={{ borderTop:"1px solid rgba(212,168,71,.12)", paddingTop:12, marginTop:8 }}>
             <div className="sidebar-label" style={{ paddingTop:0 }}>System Alerts</div>
             {tasks.filter(t => t.tatBreached).map(t => (
-              <div key={t.id} style={{ fontSize:11, color:"var(--red)", padding:"4px 6px", background:"rgba(244,63,94,.06)", borderRadius:5, marginBottom:4 }}>
+              <div key={t.id} style={{ fontSize:11, color:"var(--red)", padding:"4px 6px", background:"rgba(244,63,94,.06)", borderRadius:5, marginBottom:4, border:"1px solid rgba(244,63,94,.12)" }}>
                 ▲ {t.title}
               </div>
             ))}
-            {breached === 0 && <div style={{ fontSize:11, color:"var(--grn)", padding:"4px 6px" }}>✓ No alerts</div>}
+            {breached === 0 && <div style={{ fontSize:11, color:"var(--gold)", padding:"4px 6px", opacity:.7 }}>✓ No alerts</div>}
           </div>
         </aside>
 
@@ -1438,8 +1538,10 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               {/* Page header */}
               <div style={{ marginBottom:24 }}>
-                <div className="section-title">Dashboard Overview</div>
-                <div className="section-sub">{getGreeting()}, {MOCK_USERS[0].name.split(" ")[0]}. Here's today's summary.</div>
+                <div style={{ fontSize:22, fontWeight:700, background:"linear-gradient(90deg,var(--gold2),var(--t1) 60%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" }}>
+                  {getGreeting()}, {MOCK_USERS[0].name.split(" ")[0]}
+                </div>
+                <div className="section-sub">Here's your Supremo command overview for today.</div>
               </div>
 
               {/* Stat cards */}
@@ -1662,7 +1764,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               <div style={{ marginBottom:24 }}>
                 <div className="section-title">Team Members</div>
-                <div className="section-sub">{MOCK_USERS.length} members across {Array.from(new Set(MOCK_USERS.map(u=>u.role))).length} roles</div>
+                <div className="section-sub">{MOCK_USERS.length} members across {[...new Set(MOCK_USERS.map(u=>u.role))].length} roles</div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:20 }}>
@@ -2189,7 +2291,3 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
-
-
-
-
