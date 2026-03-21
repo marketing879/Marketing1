@@ -1409,7 +1409,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
       }))
     : MOCK_USERS;
 
-  const currentUserName = appUser?.name || appUser?.email?.split("@")[0] || "Pushkaraj";
+  const currentUserName = appUser?.name || appUser?.email?.split("@")[0] || "Pankaj Bhelsekar";
   const currentUserInitials = initials(currentUserName);
 
   const activeTasks = liveTasks.length > 0
@@ -2729,6 +2729,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
