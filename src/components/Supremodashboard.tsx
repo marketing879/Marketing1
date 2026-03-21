@@ -988,6 +988,7 @@ export default function SupremoDashboard() {
   const [continuousMode,  setContinuousMode]  = useState(false);
   const [stopRequested,   setStopRequested]   = useState(false);
   const [autoReport,      setAutoReport]      = useState(false);
+  const [liveTasks, setLiveTasks] = useState<any[]>([]);
 
   // Intelligence
   const [intelQuery,      setIntelQuery]      = useState("");
@@ -1005,6 +1006,29 @@ export default function SupremoDashboard() {
   const contStopRef      = useRef<(() => void) | null>(null);
 
   useEffect(() => { setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh"); }, []);
+
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        const arr: any[] = Array.isArray(data) ? data : (data as any).tasks || [];
+        setLiveTasks(arr.map((t: any) => ({
+          ...t,
+          id: t._id || t.id,
+          tatBreached: t.tatBreached ?? (t.status !== "completed" && t.status !== "approved" && t.exactDeadline && new Date(t.exactDeadline) < new Date()),
+          progress: t.progress ?? (t.status === "approved" || t.status === "completed" ? 100 : t.status === "in_progress" ? 60 : t.status === "rework" ? 30 : 10),
+        })));
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchLiveData();
+    const p = setInterval(fetchLiveData, 30000);
+    return () => clearInterval(p);
+  }, [fetchLiveData]);
 
   // Greeting on mount
   useEffect(() => {
@@ -2190,6 +2214,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
