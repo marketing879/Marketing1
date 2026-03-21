@@ -312,7 +312,7 @@ const GLOBAL_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 
 :root{
-  --bg: #04060e;
+  --bg: #02040a;
   --srf:      rgba(16,22,36,0.75);
   --srf2:     rgba(22,30,48,0.8);
   --srf3:     rgba(28,38,58,0.7);
@@ -354,15 +354,7 @@ body{
 ::-webkit-scrollbar-thumb:hover{background:rgba(99,102,241,.5);}
 
 /* ── Glass Cards ── */
-.card{
-  background:rgba(14,20,36,0.6);
-  backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px);
-  border:1px solid rgba(255,255,255,0.07);
-  border-radius:16px;overflow:hidden;
-  box-shadow:0 4px 24px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.05);
-  transition:border-color .2s,box-shadow .2s;
-}
+.card{background:rgba(255,255,255,0.03);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.04);transition:border-color .2s,box-shadow .2s;}
 .card:hover{border-color:rgba(212,168,71,.25);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(212,168,71,.06),inset 0 1px 0 rgba(255,255,255,.06);}
 .card-sm{
   background:rgba(14,20,36,0.6);
@@ -380,16 +372,7 @@ body{
 .card-body{padding:20px;}
 
 /* ── Stat cards ── */
-.stat-card{
-  background:rgba(10,16,28,0.65);
-  backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px);
-  border:1px solid rgba(255,255,255,0.08);
-  border-radius:16px;padding:22px;
-  transition:all .25s;
-  position:relative;overflow:hidden;
-  box-shadow:0 4px 24px rgba(0,0,0,.3);
-}
+.stat-card{background:rgba(255,255,255,0.03);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:22px;transition:all .25s;position:relative;overflow:hidden;}
 .stat-card::before{
   content:'';position:absolute;top:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,var(--gold),transparent);
@@ -489,29 +472,14 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 /* ── Page layout ── */
 .layout{display:grid;grid-template-columns:240px 1fr;grid-template-rows:56px 1fr;height:100vh;}
-.topbar{
-  grid-column:1/-1;
-  background:rgba(8,12,20,0.8);
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  border-bottom:1px solid rgba(212,168,71,.12);
-  display:flex;align-items:center;padding:0 20px;gap:16px;
-  position:sticky;top:0;z-index:100;
-  box-shadow:0 2px 32px rgba(0,0,0,.4);
-}
+.topbar{grid-column:1/-1;background:rgba(2,4,10,0.4);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100;}
 .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.35;}
-.sidebar{
-  background:rgba(8,12,22,0.7);
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  border-right:1px solid rgba(212,168,71,.1);
-  padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;
-}
+.sidebar{background:rgba(2,4,10,0.35);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border-right:1px solid rgba(255,255,255,0.05);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
 .main{overflow-y:auto;padding:24px;background:transparent;}
 
 /* ── Sidebar collapsed ── */
 .layout.sidebar-collapsed{grid-template-columns:0 1fr;}
-.layout.sidebar-collapsed .sidebar{display:none;}
+.layout.sidebar-collapsed .sidebar{background:rgba(2,4,10,0.35);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border-right:1px solid rgba(255,255,255,0.05);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
 
 /* ── Section header ── */
 .section-title{font-size:20px;font-weight:700;background:linear-gradient(90deg,var(--gold2) 0%,#fff 60%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
@@ -606,7 +574,7 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 /* ── Sidebar labels ── */
 .sidebar-label{font-size:10px;font-weight:700;color:var(--gold3);text-transform:uppercase;letter-spacing:1px;padding:12px 12px 4px;}
-.topbar{position:relative;}
+.topbar{grid-column:1/-1;background:rgba(2,4,10,0.4);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100;}
 
 /* ── Thinking dots ── */
 @keyframes thinkDot{0%,80%,100%{transform:scale(.6);opacity:.4;}40%{transform:scale(1);opacity:1;}}
@@ -2761,6 +2729,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
