@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useUser } from "../contexts/UserContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
@@ -972,6 +973,7 @@ function JarvisAssistant({ tasks, users, userName, userRole }: JarvisProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SupremoDashboard() {
+  const { logout } = useUser();
   const [activeTab,       setActiveTab]       = useState("overview");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
   const [tasks,           setTasks]           = useState<MockTask[]>(INIT_TASKS);
@@ -2176,7 +2178,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowLogout(false)}>Cancel</button>
-              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); window.location.href = "/login"; }}>Sign Out</button>
+              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); logout(); }}>Sign Out</button>
             </div>
           </div>
         </div>
@@ -2189,6 +2191,9 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
+
+
 
 
 
