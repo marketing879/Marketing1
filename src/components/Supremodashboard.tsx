@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useUser } from "../contexts/UserContext";
+import { useUser } from "../contexts/UserContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
@@ -79,7 +81,7 @@ async function _speakWithBackend(text: string, onStart?: () => void, onEnd?: () 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: cleanForTTS(text), voiceId: _selectedVoice || "ThT5KcBeYPX3keUQqHPh" }),
     });
-    if (!response.ok) { onEnd?.(); return; }
+    if (!response.ok) throw new Error("TTS backend unavailable");
     const blob  = await response.blob();
     const url   = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -89,7 +91,10 @@ async function _speakWithBackend(text: string, onStart?: () => void, onEnd?: () 
       audio.onerror = () => { URL.revokeObjectURL(url); _currentAudio = null; onEnd?.(); resolve(); };
       audio.play().catch(() => { _currentAudio = null; onEnd?.(); resolve(); });
     });
-  } catch { _currentAudio = null; onEnd?.(); }
+  } catch {
+    // ElevenLabs only — no browser speech fallback
+    _currentAudio = null; onEnd?.();
+  }
 }
 
 async function _speak(text: string, onStart?: () => void, onEnd?: () => void): Promise<void> {
@@ -216,6 +221,20 @@ interface ChartTipProps {
   label?: string;
 }
 
+// ── Live backend types ────────────────────────────────────────────────────────
+interface LiveTask {
+  _id: string; title: string; status: string; priority: string;
+  progress: number; assignedTo: string; assignedToName?: string;
+  dueDate: string; tatBreached: boolean; project: string;
+  description?: string; createdAt?: string; updatedAt?: string;
+  attachments?: { url: string; publicId: string; name?: string; type?: string }[];
+}
+interface Activity {
+  _id: string; action: string; taskTitle: string; userName: string;
+  userRole: string; timestamp: string; details?: string;
+}
+interface PulseTick { time: string; completed: number; inProgress: number; pending: number; breached: number; }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API BASE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,15 +313,15 @@ const GLOBAL_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 
 :root{
-  --bg:       #0d1117;
-  --srf:      #161b22;
-  --srf2:     #1c2230;
-  --srf3:     #21262d;
-  --bdr:      #30363d;
-  --bdr2:     #3d444d;
-  --t1:       #e6edf3;
-  --t2:       #8b949e;
-  --t3:       #484f58;
+  --bg:       #080c14;
+  --srf:      rgba(16,22,36,0.75);
+  --srf2:     rgba(22,30,48,0.8);
+  --srf3:     rgba(28,38,58,0.7);
+  --bdr:      rgba(255,255,255,0.07);
+  --bdr2:     rgba(255,255,255,0.12);
+  --t1:       #eef2ff;
+  --t2:       #8b9ab8;
+  --t3:       #4a5568;
   --acc:      #6366f1;
   --acc2:     #818cf8;
   --grn:      #22c55e;
@@ -314,261 +333,285 @@ const GLOBAL_CSS = `
   --purple:   #a78bfa;
   --font:     'DM Sans', sans-serif;
   --mono:     'JetBrains Mono', monospace;
+  --gold:     #d4a847;
+  --gold2:    #f0c060;
+  --gold3:    #b8860b;
+  --gold-glow:rgba(212,168,71,.35);
 }
 
 html,body{height:100%;overflow:hidden;}
-body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px;line-height:1.5;}
+body{
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(99,102,241,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(212,168,71,0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 60% at 50% 50%, rgba(14,165,233,0.05) 0%, transparent 60%);
+  color:var(--t1);font-family:var(--font);font-size:14px;line-height:1.5;
+}
 
-::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px;}
-::-webkit-scrollbar-thumb:hover{background:var(--t3);}
+::-webkit-scrollbar-thumb{background:rgba(99,102,241,.3);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(99,102,241,.5);}
 
-/* ── Cards ── */
-.card{background:var(--srf);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;}
-.card-sm{background:var(--srf);border:1px solid var(--bdr);border-radius:8px;padding:16px;}
-.card-head{padding:16px 20px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;}
+/* ── Glass Cards ── */
+.card{
+  background:rgba(14,20,36,0.6);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:16px;overflow:hidden;
+  box-shadow:0 4px 24px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.05);
+  transition:border-color .2s,box-shadow .2s;
+}
+.card:hover{border-color:rgba(212,168,71,.25);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 20px rgba(212,168,71,.06),inset 0 1px 0 rgba(255,255,255,.06);}
+.card-sm{
+  background:rgba(14,20,36,0.6);
+  backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:12px;padding:16px;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);
+}
+.card-head{
+  padding:16px 20px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(90deg,rgba(212,168,71,.04),transparent);
+}
 .card-body{padding:20px;}
 
-/* ── Stat card ── */
-.stat-card{background:var(--srf);border:1px solid var(--bdr);border-radius:12px;padding:20px;transition:border-color .2s;}
-.stat-card:hover{border-color:var(--bdr2);}
+/* ── Stat cards ── */
+.stat-card{
+  background:rgba(10,16,28,0.65);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:16px;padding:22px;
+  transition:all .25s;
+  position:relative;overflow:hidden;
+  box-shadow:0 4px 24px rgba(0,0,0,.3);
+}
+.stat-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  opacity:.5;
+}
+.stat-card::after{
+  content:'';position:absolute;top:-60px;right:-40px;
+  width:140px;height:140px;border-radius:50%;
+  background:radial-gradient(circle,rgba(99,102,241,.08) 0%,transparent 70%);
+  pointer-events:none;
+}
+.stat-card:hover{
+  border-color:rgba(212,168,71,.3);
+  transform:translateY(-3px);
+  box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 24px rgba(212,168,71,.1);
+}
 
 /* ── Badges ── */
-.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;letter-spacing:.3px;}
-.badge-green {background:rgba(34,197,94,.12);  color:#4ade80; border:1px solid rgba(34,197,94,.2);}
-.badge-red   {background:rgba(244,63,94,.12);  color:#fb7185; border:1px solid rgba(244,63,94,.2);}
-.badge-amber {background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.2);}
-.badge-sky   {background:rgba(14,165,233,.12); color:#38bdf8; border:1px solid rgba(14,165,233,.2);}
-.badge-acc   {background:rgba(99,102,241,.12); color:#a5b4fc; border:1px solid rgba(99,102,241,.2);}
-.badge-orange{background:rgba(249,115,22,.12); color:#fb923c; border:1px solid rgba(249,115,22,.2);}
-.badge-purple{background:rgba(167,139,250,.12);color:#c4b5fd; border:1px solid rgba(167,139,250,.2);}
-.badge-gray  {background:rgba(139,148,158,.1); color:var(--t2);border:1px solid var(--bdr);}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;}
+.badge-green {background:rgba(34,197,94,.12);  color:#4ade80; border:1px solid rgba(34,197,94,.25);}
+.badge-red   {background:rgba(244,63,94,.12);  color:#fb7185; border:1px solid rgba(244,63,94,.25);}
+.badge-amber {background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.25);}
+.badge-sky   {background:rgba(14,165,233,.12); color:#38bdf8; border:1px solid rgba(14,165,233,.25);}
+.badge-acc   {background:rgba(99,102,241,.12); color:#a5b4fc; border:1px solid rgba(99,102,241,.25);}
+.badge-orange{background:rgba(249,115,22,.12); color:#fb923c; border:1px solid rgba(249,115,22,.25);}
+.badge-purple{background:rgba(167,139,250,.12);color:#c4b5fd; border:1px solid rgba(167,139,250,.25);}
+.badge-gray  {background:rgba(139,148,158,.08);color:var(--t2);border:1px solid rgba(255,255,255,.08);}
 
 /* ── Buttons ── */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--font);}
-.btn-primary{background:var(--acc);color:#fff;}
-.btn-primary:hover{background:#5254cc;}
-.btn-ghost{background:transparent;color:var(--t2);border:1px solid var(--bdr);}
-.btn-ghost:hover{background:var(--srf2);color:var(--t1);border-color:var(--bdr2);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:var(--font);}
+.btn-primary{background:linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2));color:#1a1200;font-weight:700;box-shadow:0 4px 16px rgba(212,168,71,.3);}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(212,168,71,.45);}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--t2);border:1px solid rgba(255,255,255,.08);}
+.btn-ghost:hover{background:rgba(255,255,255,.08);color:var(--t1);border-color:rgba(255,255,255,.14);}
 .btn-danger{background:rgba(244,63,94,.1);color:var(--red);border:1px solid rgba(244,63,94,.2);}
 .btn-danger:hover{background:rgba(244,63,94,.18);}
 .btn-success{background:rgba(34,197,94,.1);color:var(--grn);border:1px solid rgba(34,197,94,.2);}
 .btn-success:hover{background:rgba(34,197,94,.18);}
-.btn-sm{padding:5px 10px;font-size:12px;}
-.btn-xs{padding:3px 8px;font-size:11px;border-radius:5px;}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.btn-xs{padding:3px 8px;font-size:11px;border-radius:6px;}
 
 /* ── Inputs ── */
-.input{background:var(--srf2);border:1px solid var(--bdr);border-radius:8px;color:var(--t1);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none;width:100%;transition:border-color .15s;}
-.input:focus{border-color:var(--acc);}
-.input option{background:var(--srf2);}
+.input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:10px;color:var(--t1);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none;width:100%;transition:border-color .15s,background .15s;}
+.input:focus{border-color:rgba(212,168,71,.5);background:rgba(255,255,255,.06);}
+.input option{background:#0d1117;}
 textarea.input{resize:vertical;}
-
-/* ── Select ── */
 select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;}
 
 /* ── Progress bar ── */
-.progress{height:4px;background:var(--srf2);border-radius:2px;overflow:hidden;}
+.progress{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;}
 .progress-fill{height:100%;border-radius:2px;transition:width .8s ease;}
 
 /* ── Nav item ── */
-.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--t2);font-size:13px;font-weight:500;}
-.nav-item:hover{background:var(--srf2);color:var(--t1);}
-.nav-item.active{background:rgba(99,102,241,.12);color:var(--acc2);}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all .15s;color:var(--t2);font-size:13px;font-weight:500;}
+.nav-item:hover{background:rgba(212,168,71,.08);color:var(--gold2);}
+.nav-item.active{background:linear-gradient(90deg,rgba(212,168,71,.15),rgba(99,102,241,.06));color:var(--gold);border-left:2px solid var(--gold);padding-left:10px;}
 .nav-item .nav-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
 
 /* ── Table ── */
 .table{width:100%;border-collapse:collapse;}
-.table th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bdr);}
-.table td{padding:12px 14px;border-bottom:1px solid rgba(48,54,61,.5);font-size:13px;}
+.table th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--gold3);text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid rgba(255,255,255,.06);}
+.table td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;}
 .table tr:last-child td{border-bottom:none;}
 .table tr:hover td{background:rgba(255,255,255,.02);}
 
-/* ── Divider ── */
-.divider{height:1px;background:var(--bdr);border:none;}
-
 /* ── Avatar ── */
-.avatar{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;}
+.avatar{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;}
 .av-sm {width:28px;height:28px;font-size:11px;}
 .av-md {width:36px;height:36px;font-size:13px;}
 .av-lg {width:44px;height:44px;font-size:16px;}
-.av-acc{background:rgba(99,102,241,.2);color:var(--acc2);}
-.av-grn{background:rgba(34,197,94,.2);color:var(--grn);}
-.av-red{background:rgba(244,63,94,.2);color:var(--red);}
+.av-acc{background:rgba(99,102,241,.25);color:var(--acc2);border:1px solid rgba(99,102,241,.3);}
+.av-grn{background:rgba(34,197,94,.2);color:var(--grn);border:1px solid rgba(34,197,94,.25);}
+.av-red{background:rgba(244,63,94,.2);color:var(--red);border:1px solid rgba(244,63,94,.25);}
 
 /* ── Dot ── */
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
-.dot-green{background:var(--grn);}
-.dot-red{background:var(--red);animation:blink 1.5s infinite;}
+.dot-green{background:var(--grn);box-shadow:0 0 6px var(--grn);}
+.dot-red{background:var(--red);animation:blink 1.5s infinite;box-shadow:0 0 6px var(--red);}
 .dot-amber{background:var(--amber);}
 .dot-acc{background:var(--acc);}
 
-/* ── Tooltip ── */
-.chart-tooltip{background:var(--srf2) !important;border:1px solid var(--bdr) !important;border-radius:8px !important;padding:10px 14px !important;font-family:var(--font) !important;font-size:12px !important;color:var(--t1) !important;box-shadow:0 8px 24px rgba(0,0,0,.4) !important;}
-
 /* ── Modal ── */
-.modal-overlay{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease;}
-.modal{background:var(--srf);border:1px solid var(--bdr);border-radius:14px;padding:28px;width:420px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+.modal-overlay{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease;}
+.modal{background:rgba(10,16,28,0.9);backdrop-filter:blur(24px);border:1px solid rgba(212,168,71,.25);border-radius:16px;padding:28px;width:420px;max-width:92vw;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 40px rgba(212,168,71,.06);}
 
 /* ── Animations ── */
 @keyframes fadeIn  {from{opacity:0;} to{opacity:1;}}
-@keyframes slideUp {from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes slideUp {from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
 @keyframes blink   {0%,100%{opacity:1;}50%{opacity:.3;}}
 @keyframes spin    {to{transform:rotate(360deg);}}
 @keyframes pulse   {0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
 @keyframes ringExp {0%{transform:scale(1);opacity:.8;}100%{transform:scale(2.2);opacity:0;}}
-
-.anim-in {animation:slideUp .25s ease both;}
+@keyframes shimmer {0%{background-position:-200% center;}100%{background-position:200% center;}}
+@keyframes goldPulse{0%,100%{box-shadow:0 4px 24px rgba(212,168,71,.35);}50%{box-shadow:0 4px 32px rgba(212,168,71,.35),0 0 40px rgba(212,168,71,.25);}}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.anim-in {animation:slideUp .3s ease both;}
 
 /* ── Page layout ── */
 .layout{display:grid;grid-template-columns:240px 1fr;grid-template-rows:56px 1fr;height:100vh;}
-.topbar{grid-column:1/-1;background:var(--srf);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100;}
-.sidebar{background:var(--srf);border-right:1px solid var(--bdr);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;}
-.main{overflow-y:auto;padding:24px;}
+.topbar{
+  grid-column:1/-1;
+  background:rgba(8,12,20,0.8);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-bottom:1px solid rgba(212,168,71,.12);
+  display:flex;align-items:center;padding:0 20px;gap:16px;
+  position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 32px rgba(0,0,0,.4);
+}
+.topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.35;}
+.sidebar{
+  background:rgba(8,12,22,0.7);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-right:1px solid rgba(212,168,71,.1);
+  padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;
+}
+.main{overflow-y:auto;padding:24px;background:transparent;}
 
 /* ── Sidebar collapsed ── */
 .layout.sidebar-collapsed{grid-template-columns:0 1fr;}
 .layout.sidebar-collapsed .sidebar{display:none;}
 
 /* ── Section header ── */
-.section-title{font-size:18px;font-weight:600;color:var(--t1);}
-.section-sub  {font-size:13px;color:var(--t2);margin-top:2px;}
+.section-title{font-size:20px;font-weight:700;background:linear-gradient(90deg,var(--gold2) 0%,#fff 60%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.section-sub{font-size:13px;color:var(--t2);margin-top:3px;}
 
 /* ── Status chip row ── */
-.status-row{display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.12);border-radius:20px;}
+.status-row{display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:20px;backdrop-filter:blur(8px);}
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* JARVIS PANEL                                                                 */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
+/* ─────── JARVIS ─────── */
 .jarvis-fab{
   position:fixed;bottom:28px;right:28px;z-index:800;
-  width:52px;height:52px;border-radius:50%;
-  background:var(--acc);
-  border:none;cursor:pointer;
+  width:58px;height:58px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2));
+  border:2px solid rgba(240,192,96,.5);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 20px rgba(99,102,241,.5);
+  box-shadow:0 4px 24px var(--gold-glow);
   transition:all .2s;
+  animation:goldPulse 3s ease-in-out infinite;
 }
-.jarvis-fab:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(99,102,241,.7);}
-.jarvis-fab svg{width:22px;height:22px;color:#fff;}
-.jarvis-wake-dot{
-  position:absolute;top:4px;right:4px;
-  width:10px;height:10px;border-radius:50%;
-  background:var(--grn);border:2px solid var(--bg);
-  animation:blink 1.5s infinite;
-}
-
+.jarvis-fab:hover{transform:scale(1.1);box-shadow:0 8px 36px var(--gold-glow),0 0 28px rgba(212,168,71,.3);}
+.jarvis-fab svg{width:24px;height:24px;color:#1a1200;}
+.jarvis-wake-dot{position:absolute;top:4px;right:4px;width:12px;height:12px;border-radius:50%;background:var(--grn);border:2px solid var(--bg);animation:blink 1.5s infinite;}
 .jarvis-panel{
-  position:fixed;bottom:90px;right:28px;z-index:800;
-  width:380px;max-height:600px;
-  background:var(--srf);border:1px solid var(--bdr);
-  border-radius:16px;
+  position:fixed;bottom:100px;right:28px;z-index:800;
+  width:400px;max-height:620px;
+  background:rgba(8,14,26,0.9);
+  backdrop-filter:blur(28px);
+  border:1px solid rgba(212,168,71,.3);
+  border-radius:18px;
   display:flex;flex-direction:column;overflow:hidden;
-  box-shadow:0 24px 60px rgba(0,0,0,.5);
+  box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 40px rgba(212,168,71,.08);
   animation:slideUp .2s ease;
 }
-.jarvis-header{
-  padding:14px 16px;border-bottom:1px solid var(--bdr);
-  display:flex;align-items:center;justify-content:space-between;
-  background:var(--srf2);
-}
-.jarvis-title{font-size:13px;font-weight:600;color:var(--t1);}
+.jarvis-header{padding:14px 16px;border-bottom:1px solid rgba(212,168,71,.15);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,rgba(212,168,71,.1),rgba(99,102,241,.05));}
+.jarvis-title{font-size:13px;font-weight:700;background:linear-gradient(90deg,var(--gold2),var(--t1));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .jarvis-sub{font-size:11px;color:var(--t2);margin-top:1px;}
-
-/* Orb */
-.jarvis-orb-wrap{padding:24px 0 16px;display:flex;flex-direction:column;align-items:center;gap:14px;background:linear-gradient(to bottom,var(--srf2),var(--srf));}
-.jarvis-orb-outer{position:relative;width:80px;height:80px;display:flex;align-items:center;justify-content:center;}
-.jarvis-ring{
-  position:absolute;inset:0;border-radius:50%;
-  border:1.5px solid rgba(99,102,241,.4);
-  animation:pulse 2.5s ease-in-out infinite;
-}
-.jarvis-ring-2{
-  position:absolute;inset:-10px;border-radius:50%;
-  border:1px solid rgba(99,102,241,.2);
-  animation:pulse 2.5s ease-in-out infinite;animation-delay:.4s;
-}
+.jarvis-orb-wrap{padding:24px 0 16px;display:flex;flex-direction:column;align-items:center;gap:14px;background:linear-gradient(to bottom,rgba(212,168,71,.05),transparent);}
+.jarvis-orb-outer{position:relative;width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
+.jarvis-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(212,168,71,.4);animation:pulse 2.5s ease-in-out infinite;}
+.jarvis-ring-2{position:absolute;inset:-12px;border-radius:50%;border:1px solid rgba(212,168,71,.15);animation:pulse 2.5s ease-in-out infinite;animation-delay:.4s;}
 .jarvis-ring-speaking{animation:ringExp 1s ease-out infinite;}
 .jarvis-ring-2-speaking{animation:ringExp 1s ease-out infinite;animation-delay:.3s;}
 .jarvis-ring-listen{border-color:rgba(34,197,94,.5);animation:pulse .8s ease-in-out infinite;}
-.jarvis-orb{
-  width:64px;height:64px;border-radius:50%;
-  background:linear-gradient(135deg,var(--srf2),var(--bg));
-  border:1.5px solid var(--bdr2);
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;
-  box-shadow:0 0 0 0 rgba(99,102,241,.4);
-  transition:all .2s;position:relative;z-index:2;
-}
-.jarvis-orb:hover{border-color:var(--acc);box-shadow:0 0 0 6px rgba(99,102,241,.15);}
+.jarvis-orb{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,rgba(28,38,60,.9),rgba(8,14,26,.9));border:2px solid rgba(212,168,71,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;position:relative;z-index:2;}
+.jarvis-orb:hover{border-color:var(--gold);box-shadow:0 0 0 8px rgba(212,168,71,.1),0 0 20px rgba(212,168,71,.2);}
 .jarvis-orb.listening{border-color:var(--grn);box-shadow:0 0 0 6px rgba(34,197,94,.15);}
-.jarvis-orb.speaking {border-color:var(--acc);box-shadow:0 0 20px rgba(99,102,241,.4),0 0 0 8px rgba(99,102,241,.1);}
-.jarvis-orb.thinking {border-color:var(--amber);}
+.jarvis-orb.speaking{border-color:var(--gold2);box-shadow:0 0 24px rgba(212,168,71,.4),0 0 0 10px rgba(212,168,71,.1);}
+.jarvis-orb.thinking{border-color:var(--amber);}
 .jarvis-status{font-size:11px;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;font-family:var(--mono);}
 .jarvis-transcript{font-size:12px;color:var(--t2);font-style:italic;padding:0 20px;text-align:center;}
-
-/* Log */
 .jarvis-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:120px;max-height:220px;}
-.jarvis-log::-webkit-scrollbar{width:4px;}
-.jarvis-log::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px;}
-
-.jarvis-bubble{padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;max-width:88%;}
-.jarvis-bubble-user  {align-self:flex-end;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);color:var(--t1);}
-.jarvis-bubble-jarvis{align-self:flex-start;background:var(--srf2);border:1px solid var(--bdr);color:var(--t1);}
+.jarvis-bubble{padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.5;max-width:88%;}
+.jarvis-bubble-user{align-self:flex-end;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);color:var(--t1);}
+.jarvis-bubble-jarvis{align-self:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--t1);}
 .jarvis-bubble-meta{font-size:10px;color:var(--t3);margin-top:3px;font-family:var(--mono);}
-
-.jarvis-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;opacity:.35;}
-
-/* Footer */
-.jarvis-footer{padding:12px 14px;border-top:1px solid var(--bdr);display:flex;gap:8px;}
-.jarvis-footer .input{font-size:12px;padding:7px 10px;}
+.jarvis-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;opacity:.3;}
+.jarvis-footer{padding:12px 14px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;}
 .jarvis-clear{font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:4px 8px;font-family:var(--font);}
 .jarvis-clear:hover{color:var(--t2);}
 
-/* Intelligence panel */
+/* ── Intel ── */
 .intel-body{display:grid;grid-template-columns:200px 1fr 320px;gap:14px;height:calc(100vh - 260px);min-height:0;}
-.intel-col{display:flex;flex-direction:column;gap:0;overflow:hidden;border-radius:10px;border:1px solid var(--bdr);background:var(--srf);}
-.intel-col-head{padding:10px 14px;border-bottom:1px solid var(--bdr);font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;background:var(--srf2);flex-shrink:0;}
+.intel-col{display:flex;flex-direction:column;overflow:hidden;border-radius:12px;border:1px solid rgba(212,168,71,.15);background:rgba(8,14,26,.7);backdrop-filter:blur(16px);}
+.intel-col-head{padding:10px 14px;border-bottom:1px solid rgba(212,168,71,.12);font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.6px;background:linear-gradient(90deg,rgba(212,168,71,.07),transparent);flex-shrink:0;}
 .intel-col-scroll{flex:1;overflow-y:auto;padding:10px;}
-.intel-col-scroll::-webkit-scrollbar{width:3px;}
-.intel-log-line{font-size:10px;color:var(--t3);padding:3px 0;border-bottom:1px solid rgba(48,54,61,.4);line-height:1.5;font-family:var(--mono);}
-.intel-log-line::before{content:'> ';color:var(--acc);}
+.intel-log-line{font-size:10px;color:var(--t3);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.5;font-family:var(--mono);}
+.intel-log-line::before{content:'> ';color:var(--gold);}
 .intel-history-item{font-size:11px;color:var(--t2);padding:5px 6px;border-radius:5px;cursor:pointer;transition:.15s;line-height:1.4;word-break:break-word;font-family:var(--mono);}
-.intel-history-item:hover{background:var(--srf2);color:var(--t1);}
-.intel-card{border:1px solid var(--bdr);border-radius:10px;background:var(--srf);overflow:hidden;margin-bottom:12px;animation:slideUp .3s ease;}
-.intel-card:last-child{margin-bottom:0;}
-.intel-card-head{padding:10px 14px;border-bottom:1px solid var(--bdr);font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;background:var(--srf2);display:flex;align-items:center;gap:6px;}
+.intel-history-item:hover{background:rgba(255,255,255,.05);color:var(--t1);}
+.intel-card{border:1px solid rgba(212,168,71,.15);border-radius:12px;background:rgba(8,14,26,.7);backdrop-filter:blur(16px);overflow:hidden;margin-bottom:12px;animation:slideUp .3s ease;}
+.intel-card-head{padding:10px 14px;border-bottom:1px solid rgba(212,168,71,.1);font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;background:linear-gradient(90deg,rgba(212,168,71,.07),transparent);display:flex;align-items:center;gap:6px;}
 .intel-card-body{padding:16px;}
-.intel-analysis{font-size:13px;line-height:1.8;color:var(--t1);white-space:pre-wrap;word-break:break-word;}
-.intel-analysis strong,.intel-analysis b{color:var(--acc2);font-weight:600;}
-.intel-sources{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr);}
-.intel-source-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--bdr);border-radius:4px;font-size:10px;color:var(--t2);text-decoration:none;transition:.15s;font-family:var(--mono);}
-.intel-source-chip:hover{border-color:var(--acc);color:var(--acc2);}
+.intel-analysis{font-size:13px;line-height:1.8;color:var(--t1);}
+.intel-sources{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);}
+.intel-source-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-size:10px;color:var(--t2);text-decoration:none;transition:.15s;font-family:var(--mono);}
+.intel-source-chip:hover{border-color:var(--gold);color:var(--gold2);}
 .intel-img-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
-.intel-img-tile{border-radius:6px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer;transition:.2s;aspect-ratio:4/3;}
-.intel-img-tile:hover{border-color:var(--acc);transform:scale(1.02);}
+.intel-img-tile{border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:.2s;aspect-ratio:4/3;}
+.intel-img-tile:hover{border-color:var(--gold);transform:scale(1.02);}
 .intel-img-tile img{width:100%;height:100%;object-fit:cover;display:block;}
-.intel-yt-tile{border-radius:8px;overflow:hidden;border:1px solid var(--bdr);margin-bottom:8px;}
 .intel-quickbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
-.intel-quickbtn{padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-family:var(--mono);background:var(--srf2);border:1px solid var(--bdr);color:var(--t2);transition:.15s;white-space:nowrap;}
-.intel-quickbtn:hover{border-color:var(--acc);color:var(--acc2);}
+.intel-quickbtn{padding:5px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-family:var(--mono);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--t2);transition:.15s;white-space:nowrap;}
+.intel-quickbtn:hover{border-color:var(--gold);color:var(--gold2);}
 
-/* Thinking dots */
+/* ── Chat ── */
+.chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;}
+.chat-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;max-width:72%;}
+.chat-bubble-user{align-self:flex-end;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);color:var(--t1);}
+.chat-bubble-ai{align-self:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:var(--t1);}
+.chat-meta{font-size:10px;color:var(--t3);margin-top:4px;font-family:var(--mono);}
+.chat-input-row{padding:14px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;background:rgba(8,14,26,.6);backdrop-filter:blur(12px);}
+
+/* ── Sidebar labels ── */
+.sidebar-label{font-size:10px;font-weight:700;color:var(--gold3);text-transform:uppercase;letter-spacing:1px;padding:12px 12px 4px;}
+.topbar{position:relative;}
+
+/* ── Thinking dots ── */
 @keyframes thinkDot{0%,80%,100%{transform:scale(.6);opacity:.4;}40%{transform:scale(1);opacity:1;}}
 .think-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:inline-block;}
-
-/* ── Chat interface ── */
-.chat-wrap{display:flex;height:calc(100vh - 200px);gap:0;}
-.chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;}
-.chat-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.6;max-width:72%;}
-.chat-bubble-user  {align-self:flex-end;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.2);color:var(--t1);}
-.chat-bubble-ai    {align-self:flex-start;background:var(--srf2);border:1px solid var(--bdr);color:var(--t1);}
-.chat-meta{font-size:10px;color:var(--t3);margin-top:4px;font-family:var(--mono);}
-.chat-input-row{padding:14px;border-top:1px solid var(--bdr);display:flex;gap:8px;background:var(--srf);}
-
-/* Sidebar section label */
-.sidebar-label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;padding:12px 12px 4px;}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -666,23 +709,24 @@ function CircularGauge({ value, label, color = "var(--acc)", size = 80 }: GaugeP
 
 interface StatCardProps {
   icon: string; label: string; value: string | number;
-  sub?: string; accent?: string; trend?: "up"|"down"|"neutral";
+  sub?: string; accent?: string; trend?: "up"|"down"|"neutral"; onClick?: () => void;
 }
 
-function StatCard({ icon, label, value, sub, accent = "var(--acc)", trend }: StatCardProps) {
+function StatCard({ icon, label, value, sub, accent = "var(--acc)", trend, onClick }: StatCardProps) {
   return (
-    <div className="stat-card">
+    <div className="stat-card" onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16 }}>
-        <div style={{ width:40, height:40, borderRadius:10, background:`${accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
+        <div style={{ width:42, height:42, borderRadius:10, background:`linear-gradient(135deg,${accent}28,${accent}10)`, border:`1px solid ${accent}30`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
         {trend && (
           <span style={{ fontSize:11, color: trend==="up"?"var(--grn)":trend==="down"?"var(--red)":"var(--t3)", fontWeight:500 }}>
             {trend==="up"?"↑":trend==="down"?"↓":"—"}
           </span>
         )}
       </div>
-      <div style={{ fontSize:26, fontWeight:700, color:"var(--t1)", lineHeight:1, marginBottom:6 }}>{value}</div>
-      <div style={{ fontSize:13, fontWeight:500, color:"var(--t2)" }}>{label}</div>
+      <div style={{ fontSize:28, fontWeight:700, color:"var(--gold2)", lineHeight:1, marginBottom:6, fontFamily:"var(--mono)" }}>{value}</div>
+      <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{label}</div>
       {sub && <div style={{ fontSize:11, color:"var(--t3)", marginTop:3 }}>{sub}</div>}
+      {onClick && <div style={{ fontSize:10, color:"var(--gold3)", marginTop:6, letterSpacing:.5 }}>CLICK TO VIEW →</div>}
     </div>
   );
 }
@@ -691,11 +735,11 @@ function StatCard({ icon, label, value, sub, accent = "var(--acc)", trend }: Sta
 // TASK FORM
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface TaskFormProps { users: MockUser[]; onAssign: (t: any) => void; onCancel: () => void; }
+interface TaskFormProps { users: any[]; onAssign: (t: any) => void; onCancel: () => void; }
 
 function TaskForm({ users, onAssign, onCancel }: TaskFormProps) {
   const [form, setForm] = useState({ title:"", description:"", priority:"medium", dueDate:"", assignedTo:"", project:"General" });
-  const staff = users.filter(u => u.isDoer || u.role === "staff");
+  const staff = users.filter((u:any) => u.isDoer || u.role === "staff");
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
   function submit() {
@@ -972,10 +1016,12 @@ function JarvisAssistant({ tasks, users, userName, userRole }: JarvisProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SupremoDashboard() {
+  const { user: appUser, logout } = useUser();
+  const { user: appUser, logout } = useUser();
   const [activeTab,       setActiveTab]       = useState("overview");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
   const [tasks,           setTasks]           = useState<MockTask[]>(INIT_TASKS);
-  const [selectedUser,    setSelectedUser]    = useState<MockUser>(MOCK_USERS[0]);
+  const [selectedUser,    setSelectedUser]    = useState<any>(null);
   const [showTaskForm,    setShowTaskForm]    = useState(false);
   const [showLogout,      setShowLogout]      = useState(false);
   const [voiceEnabled,    setVoiceEnabled]    = useState(true);
@@ -988,6 +1034,20 @@ export default function SupremoDashboard() {
   const [continuousMode,  setContinuousMode]  = useState(false);
   const [stopRequested,   setStopRequested]   = useState(false);
   const [autoReport,      setAutoReport]      = useState(false);
+  const [bgVideo,         setBgVideo]         = useState<string | null>(null);
+  const bgVideoInputRef = useRef<HTMLInputElement>(null);
+  const [taskFilter,      setTaskFilter]       = useState<string | null>(null);
+
+  // Live MongoDB data
+  const [liveTasks,       setLiveTasks]       = useState<LiveTask[]>([]);
+  const [liveUsers,       setLiveUsers]       = useState<any[]>([]);
+  const [liveLoading,     setLiveLoading]     = useState(true);
+  const [activities,      setActivities]      = useState<Activity[]>([]);
+  const [pulseTicks,      setPulseTicks]      = useState<PulseTick[]>([]);
+  const [lastRefresh,     setLastRefresh]     = useState<Date>(new Date());
+  const [selectedTask,    setSelectedTask]    = useState<LiveTask | null>(null);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Intelligence
   const [intelQuery,      setIntelQuery]      = useState("");
@@ -1006,10 +1066,63 @@ export default function SupremoDashboard() {
 
   useEffect(() => { setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh"); }, []);
 
+  // ── Live data fetch ───────────────────────────────────────────────────────
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const [tasksRes, usersRes] = await Promise.all([
+        fetch(`${API_BASE}/api/tasks`),
+        fetch(`${API_BASE}/api/users`).catch(() => null),
+      ]);
+      if (tasksRes.ok) {
+        const data = await tasksRes.json();
+        const arr: any[] = Array.isArray(data) ? data : (data as any).tasks || [];
+        const now = new Date();
+        const mapped = arr.map((t: any) => ({
+          ...t,
+          _id: t._id || t.id,
+          tatBreached: t.tatBreached ?? (
+            t.status !== "completed" && t.status !== "approved" &&
+            t.exactDeadline && new Date(t.exactDeadline) < now
+          ),
+          progress: t.progress ?? (
+            t.status === "approved" ? 100 :
+            t.status === "completed" ? 100 :
+            t.status === "in_progress" ? 60 :
+            t.status === "rework" ? 30 : 10
+          ),
+          assignedToName: t.assignedToName ||
+            (t.assignedTo ? t.assignedTo.split("@")[0].replace(/\./g," ").replace(/\b\w/g,(c:string)=>c.toUpperCase()) : ""),
+        }));
+        setLiveTasks(mapped);
+        const tick: PulseTick = {
+          time: new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+          completed: mapped.filter((t:any) => t.status==="completed"||t.status==="approved").length,
+          inProgress: mapped.filter((t:any) => t.status==="in_progress").length,
+          pending: mapped.filter((t:any) => t.status==="pending").length,
+          breached: mapped.filter((t:any) => t.tatBreached).length,
+        };
+        setPulseTicks(prev => [...prev.slice(-19), tick]);
+      }
+      if (usersRes?.ok) {
+        const ud = await usersRes.json();
+        const ua: any[] = Array.isArray(ud) ? ud : ud.users || [];
+        if (ua.length > 0) setLiveUsers(ua);
+      }
+    } catch(e) { console.warn("[SupremoDashboard] fetchLiveData error", e); }
+    finally { setLiveLoading(false); setLastRefresh(new Date()); }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveData();
+    pollRef.current = setInterval(fetchLiveData, 30_000); // poll every 30s
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Greeting on mount
   useEffect(() => {
-    const name = MOCK_USERS[0].name.split(" ")[0];
-    const msg  = `${getGreeting()}, ${name}. SmartCue is online. You have ${INIT_TASKS.length} tasks — ${INIT_TASKS.filter(t=>t.tatBreached).length} TAT breaches need your attention.`;
+    const name = currentUserName.split(" ")[0];
+    const msg  = `${getGreeting()}, ${name}. SmartCue is online and ready.`;
     setAiMessages([{ id: Date.now(), role:"assistant", text:msg, timestamp:new Date() }]);
     setTimeout(() => { try { greetUser(name); } catch(_){} }, 600);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1051,12 +1164,12 @@ export default function SupremoDashboard() {
   useEffect(() => {
     if (!autoReport || !voiceEnabled) { if (autoReportRef.current) { clearInterval(autoReportRef.current); autoReportRef.current = null; } return; }
     autoReportRef.current = setInterval(async () => {
-      const b    = tasks.filter(t => t.tatBreached).length;
-      const ip   = tasks.filter(t => t.status === "in_progress").length;
-      const brief = `Auto-briefing: ${tasks.length} total tasks. ${ip} in progress. ${b} TAT ${b === 1 ? "breach" : "breaches"}.`;
+      const b    = activeTasks.filter(t => t.tatBreached).length;
+      const ip   = activeTasks.filter(t => t.status === "in_progress").length;
+      const brief = `Auto-briefing: ${activeTasks.length} total tasks. ${ip} in progress. ${b} TAT ${b === 1 ? "breach" : "breaches"}.`;
       setAiMessages(prev => [...prev, { id:Date.now(), role:"assistant", text:`⏱ ${brief}`, timestamp:new Date() }]);
       if (!isSpeakRef.current) { isSpeakRef.current = true; await speakText(brief); isSpeakRef.current = false; }
-    }, 2 * 60 * 1000);
+    }, 4 * 60 * 60 * 1000); // every 4 hours
     return () => { if (autoReportRef.current) clearInterval(autoReportRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoReport, voiceEnabled, tasks]);
@@ -1116,7 +1229,7 @@ export default function SupremoDashboard() {
     setAiTyping(true);
 
     const sys = `You are SmartCue, an elite AI assistant for Roswalt Realty's Supremo dashboard.
-Current status: ${tasks.length} tasks | ${tasks.filter(t=>t.tatBreached).length} TAT breaches | ${tasks.filter(t=>t.status==="in_progress").length} in progress | Team: ${MOCK_USERS.length}
+Current status: ${activeTasks.length} tasks | ${activeTasks.filter(t=>t.tatBreached).length} TAT breaches | ${activeTasks.filter(t=>t.status==="in_progress").length} in progress | Team: ${allUsers.length}
 Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
     try {
@@ -1302,38 +1415,88 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
   function updateTaskStatus(taskId: string, newStatus: string, event: VoiceEvent) {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status:newStatus } : t));
+    setLiveTasks(prev => prev.map(t => t._id === taskId ? { ...t, status:newStatus } : t));
+    // Also push to backend
+    fetch(`${API_BASE}/api/tasks/${taskId}`, {
+      method:"PATCH", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ status: newStatus }),
+    }).catch(() => {});
     fireVoiceEvent(event, voiceEnabled);
   }
 
   function deleteTask(taskId: string) {
     setTasks(prev => prev.filter(t => t.id !== taskId));
+    setLiveTasks(prev => prev.filter(t => t._id !== taskId));
+    fetch(`${API_BASE}/api/tasks/${taskId}`, { method:"DELETE" }).catch(() => {});
     fireVoiceEvent("task_deleted", voiceEnabled);
   }
 
-  // ── Derived stats ─────────────────────────────────────────────────────────
+  // ── Use live tasks when available, fall back to mock ─────────────────────
+  // ── Use live data when available ─────────────────────────────────────────
+  const allUsers = liveUsers.length > 0
+    ? liveUsers.map((u: any) => ({
+        id: u._id || u.id || u.email,
+        name: u.name || u.email?.split("@")[0] || "Unknown",
+        email: u.email || "",
+        role: u.role || "staff",
+        isDoer: u.isDoer ?? (u.role === "staff"),
+      }))
+    : MOCK_USERS;
 
-  const breached   = tasks.filter(t => t.tatBreached).length;
-  const inProgress = tasks.filter(t => t.status === "in_progress").length;
-  const completed  = tasks.filter(t => t.status === "completed" || t.status === "approved").length;
-  const pending    = tasks.filter(t => t.status === "pending").length;
-  const efficiency = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  const currentUserName = appUser?.name || appUser?.email?.split("@")[0] || "Pushkaraj";
+  const currentUserInitials = initials(currentUserName);
+
+  const activeTasks = liveTasks.length > 0
+    ? liveTasks.map(t => ({
+        id: t._id, title: t.title, status: t.status, priority: t.priority,
+        progress: t.progress || 0, assignedTo: t.assignedTo,
+        dueDate: t.dueDate, tatBreached: t.tatBreached,
+        project: t.project, description: t.description,
+      }))
+    : tasks;
+
+  // ── Derived stats ─────────────────────────────────────────────────────────
+  const breached   = activeTasks.filter(t => t.tatBreached).length;
+  const inProgress = activeTasks.filter(t => t.status === "in_progress").length;
+  const completed  = activeTasks.filter(t => t.status === "completed" || t.status === "approved").length;
+  const pending    = activeTasks.filter(t => t.status === "pending").length;
+  const efficiency = activeTasks.length ? Math.round((completed / activeTasks.length) * 100) : 0;
 
   const now     = new Date();
   const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
   const dateStr = now.toLocaleDateString("en-GB", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
 
   const NAV_ITEMS = [
-    { id:"overview",  label:"Overview",          icon:"⊟" },
-    { id:"tasks",     label:"Task Management",   icon:"☑" },
-    { id:"team",      label:"Team Members",      icon:"◎" },
-    { id:"reports",   label:"Reports",           icon:"◉" },
-    { id:"ai",        label:"SmartCue AI",       icon:"⊗" },
-    { id:"intel",     label:"Intelligence",      icon:"◭" },
+    { id:"overview",   label:"Overview",          icon:"⊟" },
+    { id:"tasks",      label:"Task Management",   icon:"☑" },
+    { id:"analytics",  label:"Live Analytics",    icon:"📈" },
+    { id:"activity",   label:"Activity Feed",     icon:"⚡" },
+    { id:"team",       label:"Team Members",      icon:"◎" },
+    { id:"reports",    label:"Reports",           icon:"◉" },
+    { id:"ai",         label:"SmartCue AI",       icon:"⊗" },
+    { id:"intel",      label:"Intelligence",      icon:"◭" },
   ];
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
+
+      {/* ── Video Background ── */}
+      {bgVideo && (
+        <video
+          key={bgVideo}
+          autoPlay loop muted playsInline
+          style={{ position:"fixed", inset:0, width:"100%", height:"100%", objectFit:"cover", zIndex:-1, opacity:0.18, filter:"brightness(0.5) saturate(0.8)" }}
+        >
+          <source src={bgVideo} />
+        </video>
+      )}
+      <input ref={bgVideoInputRef} type="file" accept="video/*" style={{ display:"none" }}
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) setBgVideo(URL.createObjectURL(f));
+        }}
+      />
 
       {/* ────────────────── LAYOUT ────────────────── */}
       <div className={`layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
@@ -1349,11 +1512,11 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
           {/* Logo */}
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:8, background:"var(--acc)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <span style={{ fontFamily:"var(--mono)", fontWeight:700, fontSize:12, color:"#fff" }}>SC</span>
+            <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,var(--gold3),var(--gold),var(--gold2))", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 0 12px var(--gold-glow)" }}>
+              <span style={{ fontFamily:"var(--mono)", fontWeight:700, fontSize:12, color:"#1a1200" }}>SC</span>
             </div>
             <div>
-              <div style={{ fontWeight:700, fontSize:14, color:"var(--t1)", lineHeight:1 }}>SmartCue</div>
+              <div style={{ fontWeight:700, fontSize:14, color:"var(--gold2)", lineHeight:1 }}>SmartCue</div>
               <div style={{ fontSize:10, color:"var(--t2)" }}>Supremo Dashboard</div>
             </div>
           </div>
@@ -1383,19 +1546,32 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <button
               onClick={() => setVoiceEnabled(v => !v)}
               className={`btn btn-sm ${voiceEnabled ? "btn-ghost" : "btn-ghost"}`}
-              style={{ borderColor: voiceEnabled ? "var(--acc)" : "var(--bdr)", color: voiceEnabled ? "var(--acc2)" : "var(--t3)" }}
+              style={{ borderColor: voiceEnabled ? "var(--gold)" : "var(--bdr)", color: voiceEnabled ? "var(--gold2)" : "var(--t3)" }}
               title={voiceEnabled ? "Voice enabled" : "Voice disabled"}
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
 
+            {/* Background video upload */}
+            <button
+              onClick={() => bgVideoInputRef.current?.click()}
+              className="btn btn-sm btn-ghost"
+              style={{ borderColor:"rgba(212,168,71,.3)", color:"var(--gold)", fontSize:12 }}
+              title="Upload background video"
+            >
+              🎬 {bgVideo ? "BG ✓" : "BG"}
+            </button>
+            {bgVideo && (
+              <button onClick={() => setBgVideo(null)} className="btn btn-sm btn-ghost" style={{ color:"var(--t3)", fontSize:11 }} title="Remove background">✕</button>
+            )}
+
             {/* User */}
             <div style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }} onClick={() => setShowLogout(true)}>
               <div className="avatar av-md av-acc" style={{ background:"rgba(99,102,241,.2)" }}>
-                {initials(MOCK_USERS[0].name)}
+                {initials(currentUserName)}
               </div>
               <div>
-                <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", lineHeight:1 }}>{MOCK_USERS[0].name.split(" ")[0]}</div>
+                <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", lineHeight:1 }}>{currentUserName.split(" ")[0]}</div>
                 <div style={{ fontSize:10, color:"var(--t2)" }}>Supremo</div>
               </div>
               <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style={{ color:"var(--t3)" }}><path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/></svg>
@@ -1419,14 +1595,36 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
           <div style={{ flex:1 }} />
 
-          <div style={{ borderTop:"1px solid var(--bdr)", paddingTop:12, marginTop:12 }}>
+          {/* Jarvis mode in sidebar */}
+          <div style={{ padding:"8px 6px", borderTop:"1px solid rgba(212,168,71,.15)", marginTop:8 }}>
+            <button
+              onClick={() => setContinuousMode(m => !m)}
+              style={{
+                width:"100%", display:"flex", alignItems:"center", gap:8,
+                padding:"10px 12px", borderRadius:8, cursor:"pointer",
+                background: continuousMode
+                  ? "linear-gradient(90deg,rgba(212,168,71,.2),rgba(212,168,71,.08))"
+                  : "rgba(212,168,71,.05)",
+                border: continuousMode ? "1px solid rgba(212,168,71,.5)" : "1px solid rgba(212,168,71,.15)",
+                color: continuousMode ? "var(--gold2)" : "var(--gold3)",
+                fontFamily:"var(--font)", fontSize:12, fontWeight:600,
+                transition:"all .2s",
+              }}
+            >
+              <span style={{ fontSize:16 }}>{continuousMode ? "🟢" : "🎙"}</span>
+              <span>{continuousMode ? "JARVIS ON" : "JARVIS MODE"}</span>
+              {continuousMode && <span style={{ marginLeft:"auto", width:6, height:6, borderRadius:"50%", background:"var(--grn)", animation:"blink 1.5s infinite", display:"inline-block" }} />}
+            </button>
+          </div>
+
+          <div style={{ borderTop:"1px solid rgba(212,168,71,.12)", paddingTop:12, marginTop:8 }}>
             <div className="sidebar-label" style={{ paddingTop:0 }}>System Alerts</div>
             {tasks.filter(t => t.tatBreached).map(t => (
-              <div key={t.id} style={{ fontSize:11, color:"var(--red)", padding:"4px 6px", background:"rgba(244,63,94,.06)", borderRadius:5, marginBottom:4 }}>
+              <div key={t.id} style={{ fontSize:11, color:"var(--red)", padding:"4px 6px", background:"rgba(244,63,94,.06)", borderRadius:5, marginBottom:4, border:"1px solid rgba(244,63,94,.12)" }}>
                 ▲ {t.title}
               </div>
             ))}
-            {breached === 0 && <div style={{ fontSize:11, color:"var(--grn)", padding:"4px 6px" }}>✓ No alerts</div>}
+            {breached === 0 && <div style={{ fontSize:11, color:"var(--gold)", padding:"4px 6px", opacity:.7 }}>✓ No alerts</div>}
           </div>
         </aside>
 
@@ -1438,23 +1636,32 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               {/* Page header */}
               <div style={{ marginBottom:24 }}>
-                <div className="section-title">Dashboard Overview</div>
-                <div className="section-sub">{getGreeting()}, {MOCK_USERS[0].name.split(" ")[0]}. Here's today's summary.</div>
+                <div style={{ fontSize:22, fontWeight:700, background:"linear-gradient(90deg,var(--gold2),var(--t1) 60%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" }}>
+                  {getGreeting()}, {currentUserName.split(" ")[0]}
+                </div>
+                <div className="section-sub" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  Here's your Supremo command overview.
+                  <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 8px", background:"rgba(34,197,94,.1)", border:"1px solid rgba(34,197,94,.2)", borderRadius:20, fontSize:10, color:"var(--grn)" }}>
+                    <span style={{ width:6, height:6, background:"var(--grn)", borderRadius:"50%", animation:"blink 1.5s infinite", display:"inline-block" }} />
+                    LIVE · {liveTasks.length > 0 ? "MongoDB" : "Local"} · Refreshed {lastRefresh.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                    <button onClick={fetchLiveData} style={{ background:"none", border:"none", color:"var(--grn)", cursor:"pointer", fontSize:11, padding:0, marginLeft:4 }}>↺</button>
+                  </span>
+                </div>
               </div>
 
               {/* Stat cards */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
-                <StatCard icon="📋" label="Total Tasks"     value={tasks.length}  sub="All assigned tasks"           accent="var(--acc)"    trend="up"      />
-                <StatCard icon="⏳" label="In Progress"     value={inProgress}    sub="Currently active"             accent="var(--sky)"    trend="neutral" />
-                <StatCard icon="✅" label="Completed"       value={completed}     sub={`${efficiency}% efficiency`}  accent="var(--grn)"    trend="up"      />
-                <StatCard icon="⚠️" label="TAT Breaches"   value={breached}      sub="Require attention"            accent="var(--red)"    trend={breached>0?"down":"neutral"} />
+                <StatCard icon="📋" label="Total Tasks"   value={activeTasks.length} sub={liveTasks.length > 0 ? "● Live MongoDB" : "Mock data"} accent="var(--acc)"  trend="up"     onClick={() => { setTaskFilter(null); setActiveTab("tasks"); }} />
+                <StatCard icon="⏳" label="In Progress"   value={inProgress}          sub="Currently active"          accent="var(--sky)"    trend="neutral" onClick={() => { setTaskFilter("in_progress"); setActiveTab("tasks"); }} />
+                <StatCard icon="✅" label="Completed"     value={completed}           sub={`${efficiency}% efficiency`} accent="var(--grn)"  trend="up"     onClick={() => { setTaskFilter("completed"); setActiveTab("tasks"); }} />
+                <StatCard icon="⚠️" label="TAT Breaches" value={breached}            sub="Require attention"         accent="var(--red)"    trend={breached>0?"down":"neutral"} onClick={() => { setTaskFilter("breached"); setActiveTab("tasks"); }} />
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
-                <StatCard icon="🕐" label="Pending"         value={pending}       sub="Not yet started"              accent="var(--amber)"  />
-                <StatCard icon="🔄" label="Rework"          value={tasks.filter(t=>t.status==="rework").length}     sub="Needs revision"  accent="var(--orange)" />
-                <StatCard icon="👥" label="Team Members"    value={MOCK_USERS.length} sub="Across all roles"         accent="var(--purple)" />
-                <StatCard icon="📁" label="Projects"        value={4}             sub="Active projects"              accent="var(--acc)"    />
+                <StatCard icon="🕐" label="Pending"     value={pending}       sub="Not yet started"   accent="var(--amber)"  onClick={() => { setTaskFilter("pending"); setActiveTab("tasks"); }} />
+                <StatCard icon="🔄" label="Rework"      value={activeTasks.filter(t=>t.status==="rework").length} sub="Needs revision" accent="var(--orange)" onClick={() => { setTaskFilter("rework"); setActiveTab("tasks"); }} />
+                <StatCard icon="✔️" label="Approved"    value={activeTasks.filter(t=>t.status==="approved").length} sub="Fully signed off" accent="var(--sky)" onClick={() => { setTaskFilter("approved"); setActiveTab("tasks"); }} />
+                <StatCard icon="👥" label="Team Members" value={allUsers.length} sub="Across all roles" accent="var(--purple)" />
               </div>
 
               {/* Charts row */}
@@ -1466,15 +1673,31 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                   </div>
                   <div className="card-body">
                     <ResponsiveContainer width="100%" height={210}>
-                      <BarChart data={PERF_DATA} margin={{ top:0, right:0, left:-24, bottom:0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--bdr)" />
+                      <BarChart data={(() => {
+                        const doers = allUsers.filter((u:any) => u.isDoer);
+                        return doers.map(u => {
+                          const ut = activeTasks.filter(t => t.assignedTo === u.email);
+                          return {
+                            name: u.name.split(" ")[0],
+                            completed: ut.filter(t => t.status==="completed"||t.status==="approved").length,
+                            pending:   ut.filter(t => t.status==="pending").length,
+                            breached:  ut.filter(t => t.tatBreached).length,
+                          };
+                        });
+                      })()} margin={{ top:0, right:0, left:-24, bottom:0 }}>
+                        <defs>
+                          <linearGradient id="gradGrn" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4ade80"/><stop offset="100%" stopColor="#16a34a"/></linearGradient>
+                          <linearGradient id="gradAmb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fbbf24"/><stop offset="100%" stopColor="#d97706"/></linearGradient>
+                          <linearGradient id="gradRed" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb7185"/><stop offset="100%" stopColor="#be123c"/></linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="name" tick={{ fill:"var(--t2)" as any, fontSize:11 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill:"var(--t2)" as any, fontSize:11 }} axisLine={false} tickLine={false} />
                         <Tooltip content={(p:any) => <ChartTip {...p}/>} />
                         <Legend wrapperStyle={{ fontSize:12 }} />
-                        <Bar dataKey="completed" fill="#22c55e" radius={[3,3,0,0]} name="Completed" />
-                        <Bar dataKey="pending"   fill="#f59e0b" radius={[3,3,0,0]} name="Pending"   />
-                        <Bar dataKey="breached"  fill="#f43f5e" radius={[3,3,0,0]} name="Breached"  />
+                        <Bar dataKey="completed" fill="url(#gradGrn)" radius={[4,4,0,0]} name="Completed" />
+                        <Bar dataKey="pending"   fill="url(#gradAmb)" radius={[4,4,0,0]} name="Pending"   />
+                        <Bar dataKey="breached"  fill="url(#gradRed)" radius={[4,4,0,0]} name="Breached"  />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1483,21 +1706,36 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                 <div className="card">
                   <div className="card-head">
                     <span style={{ fontWeight:600, fontSize:14 }}>Task Distribution</span>
+                    {liveTasks.length > 0 && <span style={{ fontSize:10, color:"var(--grn)" }}>● Live</span>}
                   </div>
                   <div className="card-body" style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
                     <ResponsiveContainer width="100%" height={160}>
                       <PieChart>
-                        <Pie data={STATUS_PIE} cx="50%" cy="50%" innerRadius={44} outerRadius={68} dataKey="value" paddingAngle={3} strokeWidth={0}>
-                          {STATUS_PIE.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        <defs>
+                          {[["pieGrn","#4ade80","#16a34a"],["pieAcc","#818cf8","#4338ca"],["pieAmb","#fbbf24","#d97706"],["pieOrg","#fb923c","#c2410c"],["pieSky","#38bdf8","#0284c7"]].map(([id,c1,c2]) => (
+                            <linearGradient key={id} id={id} x1="0" y1="0" x2="1" y2="1">
+                              <stop offset="0%" stopColor={c1}/><stop offset="100%" stopColor={c2}/>
+                            </linearGradient>
+                          ))}
+                        </defs>
+                        <Pie data={[
+                          { name:"Completed",   value: activeTasks.filter(t=>t.status==="completed"||t.status==="approved").length, color:"url(#pieGrn)" },
+                          { name:"In Progress", value: activeTasks.filter(t=>t.status==="in_progress").length, color:"url(#pieAcc)" },
+                          { name:"Pending",     value: activeTasks.filter(t=>t.status==="pending").length, color:"url(#pieAmb)" },
+                          { name:"Rework",      value: activeTasks.filter(t=>t.status==="rework").length, color:"url(#pieOrg)" },
+                          { name:"Approved",    value: activeTasks.filter(t=>t.status==="approved").length, color:"url(#pieSky)" },
+                        ].filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={44} outerRadius={68} dataKey="value" paddingAngle={3} strokeWidth={0}>
+                          {["url(#pieGrn)","url(#pieAcc)","url(#pieAmb)","url(#pieOrg)","url(#pieSky)"].map((c,i) => <Cell key={i} fill={c} />)}
                         </Pie>
                         <Tooltip content={(p:any) => <ChartTip {...p}/>} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:"6px 16px", marginTop:8 }}>
-                      {STATUS_PIE.map((e, i) => (
-                        <div key={i} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--t2)" }}>
-                          <span style={{ width:8, height:8, borderRadius:"50%", background:e.color, display:"inline-block", flexShrink:0 }} />
-                          {e.name} ({e.value}%)
+                      {[["#4ade80","Completed"],["#818cf8","In Progress"],["#fbbf24","Pending"],["#fb923c","Rework"],["#38bdf8","Approved"]].map(([c,l],i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"var(--t2)", cursor:"pointer" }}
+                          onClick={() => { setTaskFilter(l==="In Progress"?"in_progress":l.toLowerCase()); setActiveTab("tasks"); }}>
+                          <span style={{ width:8, height:8, borderRadius:"50%", background:c, display:"inline-block", flexShrink:0 }} />
+                          {l}
                         </div>
                       ))}
                     </div>
@@ -1559,12 +1797,26 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
                 <div>
                   <div className="section-title">Task Management</div>
-                  <div className="section-sub">{tasks.length} tasks · {inProgress} in progress · {completed} completed</div>
+                  <div className="section-sub" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    {taskFilter ? (
+                      <>
+                        Showing: <span className={`badge ${taskFilter==="breached"?"badge-red":taskFilter==="completed"||taskFilter==="approved"?"badge-green":taskFilter==="in_progress"?"badge-sky":taskFilter==="rework"?"badge-orange":"badge-amber"}`}>
+                          {taskFilter==="breached" ? "⚠ TAT Breached" : taskFilter.replace(/_/g," ")}
+                        </span>
+                        <button className="btn btn-xs btn-ghost" onClick={() => setTaskFilter(null)}>✕ Clear filter</button>
+                      </>
+                    ) : (
+                      <>{activeTasks.length} tasks · {inProgress} in progress · {completed} completed {liveTasks.length > 0 && <span style={{ color:"var(--grn)", fontSize:11 }}>● Live</span>}</>
+                    )}
+                  </div>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowTaskForm(true)}>
-                  <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
-                  Assign Task
-                </button>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={fetchLiveData} title="Refresh from MongoDB">↺ Sync</button>
+                  <button className="btn btn-primary" onClick={() => setShowTaskForm(true)}>
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
+                    Assign Task
+                  </button>
+                </div>
               </div>
 
               {/* Task form modal */}
@@ -1576,7 +1828,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                       <button className="btn btn-ghost btn-sm" onClick={() => setShowTaskForm(false)}>✕</button>
                     </div>
                     <TaskForm
-                      users={MOCK_USERS}
+                      users={allUsers}
                       onAssign={task => {
                         setTasks(prev => [...prev, { ...task, id:"t"+Date.now(), progress:0, tatBreached:false }]);
                         setShowTaskForm(false);
@@ -1588,8 +1840,44 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                 </div>
               )}
 
-              {/* Task table */}
+              {/* Attachment viewer modal */}
+              {showAttachments && selectedTask && (
+                <div className="modal-overlay" onClick={() => setShowAttachments(false)}>
+                  <div className="modal" style={{ width:560 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                      <div style={{ fontWeight:600, fontSize:15 }}>📎 Attachments — {selectedTask.title}</div>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setShowAttachments(false)}>✕</button>
+                    </div>
+                    {(liveTasks.find(t => t._id === selectedTask._id)?.attachments || []).length === 0 ? (
+                      <div style={{ color:"var(--t3)", fontSize:13, textAlign:"center", padding:24 }}>No attachments for this task.</div>
+                    ) : (
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                        {(liveTasks.find(t => t._id === selectedTask._id)?.attachments || []).map((att, i) => (
+                          <a key={i} href={att.url} target="_blank" rel="noreferrer"
+                            style={{ display:"flex", flexDirection:"column", borderRadius:8, overflow:"hidden", border:"1px solid var(--bdr)", textDecoration:"none", transition:".15s" }}>
+                            {att.type?.startsWith("image") || att.url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
+                              <img src={att.url} alt={att.name||"attachment"} style={{ width:"100%", height:120, objectFit:"cover" }} />
+                            ) : (
+                              <div style={{ width:"100%", height:80, background:"var(--srf2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:32 }}>
+                                {att.type?.includes("pdf") ? "📄" : att.type?.includes("video") ? "🎬" : "📎"}
+                              </div>
+                            )}
+                            <div style={{ padding:"6px 10px", fontSize:11, color:"var(--t2)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{att.name || att.publicId || "File"}</div>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Task table — shows live MongoDB tasks */}
               <div className="card">
+                {liveLoading && liveTasks.length === 0 && (
+                  <div style={{ padding:20, textAlign:"center", color:"var(--t3)", fontSize:13 }}>
+                    <span style={{ animation:"spin 1s linear infinite", display:"inline-block", marginRight:8 }}>⟳</span>Loading live tasks from MongoDB…
+                  </div>
+                )}
                 <div style={{ overflowX:"auto" }}>
                   <table className="table">
                     <thead>
@@ -1601,24 +1889,33 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                         <th>Status</th>
                         <th>Progress</th>
                         <th>Due Date</th>
+                        <th>Files</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {tasks.map(task => {
-                        const doer = MOCK_USERS.find(u => u.email === task.assignedTo);
+                      {activeTasks.filter(task => {
+                        if (!taskFilter) return true;
+                        if (taskFilter === "breached") return task.tatBreached;
+                        if (taskFilter === "completed") return task.status === "completed" || task.status === "approved";
+                        return task.status === taskFilter;
+                      }).map(task => {
+                        const doer = allUsers.find((u:any) => u.email === task.assignedTo);
+                        const liveTask = liveTasks.find(t => t._id === task.id);
+                        const attCount = liveTask?.attachments?.length || 0;
                         return (
                           <tr key={task.id}>
                             <td>
                               <div style={{ fontWeight:500, color:"var(--t1)" }}>{task.title}</div>
                               {task.tatBreached && <div style={{ fontSize:10, color:"var(--red)", marginTop:2 }}>⚠ TAT Breached</div>}
+                              {liveTask?.updatedAt && <div style={{ fontSize:9, color:"var(--t3)", marginTop:1 }}>Updated {new Date(liveTask.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>}
                             </td>
                             <td>
                               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                 <div className={`avatar av-sm ${AV_COLORS[parseInt(doer?.id||"0") % AV_COLORS.length]}`}>
                                   {doer ? initials(doer.name) : "?"}
                                 </div>
-                                <span style={{ color:"var(--t2)", fontSize:12 }}>{doer?.name.split(" ")[0] ?? "—"}</span>
+                                <span style={{ color:"var(--t2)", fontSize:12 }}>{liveTask?.assignedToName || doer?.name.split(" ")[0] || "—"}</span>
                               </div>
                             </td>
                             <td><span style={{ fontSize:12, color:"var(--t2)" }}>{task.project}</span></td>
@@ -1633,6 +1930,14 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                               </div>
                             </td>
                             <td><span style={{ fontSize:12, color:"var(--t2)", fontFamily:"var(--mono)" }}>{task.dueDate}</span></td>
+                            <td>
+                              {attCount > 0 ? (
+                                <button className="btn btn-xs btn-ghost" style={{ color:"var(--gold)", borderColor:"rgba(212,168,71,.3)" }}
+                                  onClick={() => { setSelectedTask(liveTask || null); setShowAttachments(true); }}>
+                                  📎 {attCount}
+                                </button>
+                              ) : <span style={{ fontSize:11, color:"var(--t3)" }}>—</span>}
+                            </td>
                             <td>
                               <div style={{ display:"flex", gap:4 }}>
                                 {task.status !== "approved" && (
@@ -1657,12 +1962,266 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             </div>
           )}
 
+          {/* ════ LIVE ANALYTICS ════ */}
+          {activeTab === "analytics" && (
+            <div className="anim-in">
+              <div style={{ marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div className="section-title">Live Analytics</div>
+                  <div className="section-sub">Real-time task pulse · auto-refreshes every 30s</div>
+                </div>
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  <span style={{ fontSize:11, color:"var(--grn)", display:"flex", alignItems:"center", gap:4 }}>
+                    <span style={{ width:7, height:7, background:"var(--grn)", borderRadius:"50%", animation:"blink 1.5s infinite", display:"inline-block" }} />
+                    LIVE
+                  </span>
+                  <button className="btn btn-ghost btn-sm" onClick={fetchLiveData}>↺ Refresh</button>
+                </div>
+              </div>
+
+              {/* KPI row */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
+                {[
+                  { label:"Total Tasks",  value:activeTasks.length, color:"var(--acc)",    icon:"📋" },
+                  { label:"In Progress",  value:inProgress,          color:"var(--sky)",    icon:"⚙" },
+                  { label:"Completed",    value:completed,           color:"var(--grn)",    icon:"✅" },
+                  { label:"Pending",      value:pending,             color:"var(--amber)",  icon:"⏳" },
+                  { label:"TAT Breaches", value:breached,            color:"var(--red)",    icon:"⚠" },
+                ].map((kpi, i) => (
+                  <div key={i} style={{ background:`linear-gradient(145deg,#1c2340,#161b22)`, border:`1px solid ${kpi.color}30`, borderRadius:10, padding:16, position:"relative", overflow:"hidden" }}>
+                    <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:`linear-gradient(90deg,transparent,${kpi.color},transparent)` }} />
+                    <div style={{ fontSize:22 }}>{kpi.icon}</div>
+                    <div style={{ fontSize:28, fontWeight:700, color:kpi.color, fontFamily:"var(--mono)", margin:"8px 0 4px" }}>{kpi.value}</div>
+                    <div style={{ fontSize:11, color:"var(--t2)" }}>{kpi.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pulse chart — live task flow */}
+              <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr", gap:16, marginBottom:16 }}>
+                <div className="card">
+                  <div className="card-head">
+                    <span style={{ fontWeight:600, fontSize:14 }}>Task Flow Pulse</span>
+                    <span style={{ fontSize:11, color:"var(--grn)", display:"flex", alignItems:"center", gap:4 }}>
+                      <span style={{ width:6, height:6, background:"var(--grn)", borderRadius:"50%", animation:"blink 1.5s infinite", display:"inline-block" }} />
+                      Live ({pulseTicks.length} readings)
+                    </span>
+                  </div>
+                  <div className="card-body">
+                    {pulseTicks.length < 2 ? (
+                      <div style={{ height:180, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)", fontSize:12, flexDirection:"column", gap:8 }}>
+                        <span style={{ fontSize:28 }}>📡</span>
+                        Collecting live data… {pulseTicks.length}/2 readings
+                        <div style={{ fontSize:11 }}>Auto-updates every 30 seconds</div>
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <LineChart data={pulseTicks} margin={{ top:0, right:16, left:-24, bottom:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--bdr)" />
+                          <XAxis dataKey="time" tick={{ fill:"var(--t2)" as any, fontSize:10 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill:"var(--t2)" as any, fontSize:10 }} axisLine={false} tickLine={false} />
+                          <Tooltip content={(p:any) => <ChartTip {...p}/>} />
+                          <Line type="monotone" dataKey="completed"  stroke="var(--grn)"   strokeWidth={2} dot={{ fill:"var(--grn)", r:3 }}   name="Completed"   isAnimationActive={true} />
+                          <Line type="monotone" dataKey="inProgress" stroke="var(--sky)"   strokeWidth={2} dot={{ fill:"var(--sky)", r:3 }}   name="In Progress" isAnimationActive={true} />
+                          <Line type="monotone" dataKey="pending"    stroke="var(--amber)" strokeWidth={2} dot={{ fill:"var(--amber)", r:3 }} name="Pending"     isAnimationActive={true} />
+                          <Line type="monotone" dataKey="breached"   stroke="var(--red)"   strokeWidth={2} dot={{ fill:"var(--red)", r:3 }}   name="Breached"    isAnimationActive={true} />
+                          <Legend wrapperStyle={{ fontSize:11 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head"><span style={{ fontWeight:600, fontSize:14 }}>Status Distribution</span></div>
+                  <div className="card-body" style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
+                    <ResponsiveContainer width="100%" height={150}>
+                      <PieChart>
+                        <Pie data={[
+                          { name:"Completed",   value:completed,            color:"#22c55e" },
+                          { name:"In Progress", value:inProgress,           color:"#0ea5e9" },
+                          { name:"Pending",     value:pending,              color:"#f59e0b" },
+                          { name:"Rework",      value:activeTasks.filter(t=>t.status==="rework").length,  color:"#f97316" },
+                          { name:"Breached",    value:breached,             color:"#f43f5e" },
+                        ].filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={40} outerRadius={62} dataKey="value" paddingAngle={3} strokeWidth={0}>
+                          {[{color:"#22c55e"},{color:"#0ea5e9"},{color:"#f59e0b"},{color:"#f97316"},{color:"#f43f5e"}].map((e,i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip content={(p:any) => <ChartTip {...p}/>} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 12px", marginTop:6, justifyContent:"center" }}>
+                      {[["#22c55e","Completed"],["#0ea5e9","In Progress"],["#f59e0b","Pending"],["#f97316","Rework"],["#f43f5e","Breached"]].map(([c,l],i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"var(--t2)" }}>
+                          <span style={{ width:7, height:7, borderRadius:"50%", background:c, display:"inline-block", flexShrink:0 }} />{l}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-doer live progress */}
+              <div className="card">
+                <div className="card-head">
+                  <span style={{ fontWeight:600, fontSize:14 }}>Doer Activity — Live Progress</span>
+                  <span className="badge badge-acc">Live</span>
+                </div>
+                <div className="card-body">
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:12 }}>
+                    {allUsers.filter((u:any) => u.isDoer).map(u => {
+                      const ut = activeTasks.filter(t => t.assignedTo === u.email);
+                      const uc = ut.filter(t => t.status==="completed"||t.status==="approved").length;
+                      const uip = ut.filter(t => t.status==="in_progress").length;
+                      const ub = ut.filter(t => t.tatBreached).length;
+                      const pct = ut.length ? Math.round((uc/ut.length)*100) : 0;
+                      return (
+                        <div key={u.id} style={{ background:"var(--srf2)", border:"1px solid var(--bdr)", borderRadius:10, padding:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                            <div className={`avatar av-sm ${AV_COLORS[parseInt(u.id)%AV_COLORS.length]}`}>{initials(u.name)}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{u.name}</div>
+                              <div style={{ fontSize:10, color:"var(--t2)" }}>{ut.length} tasks · {uip} active</div>
+                            </div>
+                            {ub > 0 && <span className="badge badge-red" style={{ fontSize:9 }}>⚠ {ub}</span>}
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                            <span style={{ fontSize:11, color:"var(--t2)" }}>Completion</span>
+                            <span style={{ fontSize:11, fontWeight:600, color: pct>=80?"var(--grn)":pct>=50?"var(--amber)":"var(--red)", fontFamily:"var(--mono)" }}>{pct}%</span>
+                          </div>
+                          <div className="progress" style={{ height:6 }}>
+                            <div className="progress-fill" style={{ width:`${pct}%`, background: pct>=80?"var(--grn)":pct>=50?"var(--amber)":"var(--red)" }} />
+                          </div>
+                          <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                            {[{v:uc,l:"Done",c:"var(--grn)"},{v:uip,l:"Active",c:"var(--sky)"},{v:ut.filter(t=>t.status==="pending").length,l:"Pending",c:"var(--amber)"}].map((s,i) => (
+                              <div key={i} style={{ flex:1, textAlign:"center", padding:"4px 0", background:`${s.c}10`, borderRadius:5 }}>
+                                <div style={{ fontSize:14, fontWeight:700, color:s.c, fontFamily:"var(--mono)" }}>{s.v}</div>
+                                <div style={{ fontSize:9, color:"var(--t3)" }}>{s.l}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════ ACTIVITY FEED ════ */}
+          {activeTab === "activity" && (
+            <div className="anim-in">
+              <div style={{ marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div className="section-title">Activity Feed</div>
+                  <div className="section-sub">Every action by every team member — live from MongoDB</div>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={fetchLiveData}>↺ Refresh</button>
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 380px", gap:16 }}>
+                {/* Feed */}
+                <div className="card" style={{ maxHeight:"calc(100vh - 220px)", overflowY:"auto" }}>
+                  <div className="card-head" style={{ position:"sticky", top:0, background:"linear-gradient(145deg,#1a2035,#161b22)", zIndex:10 }}>
+                    <span style={{ fontWeight:600, fontSize:14 }}>Live Activity Stream</span>
+                    <span style={{ fontSize:11, color:"var(--grn)", display:"flex", alignItems:"center", gap:4 }}>
+                      <span style={{ width:6, height:6, background:"var(--grn)", borderRadius:"50%", animation:"blink 1.5s infinite", display:"inline-block" }} />
+                      {activities.length} events
+                    </span>
+                  </div>
+                  <div style={{ padding:16, display:"flex", flexDirection:"column", gap:10 }}>
+                    {activities.length === 0 ? (
+                      activeTasks.map((task, i) => (
+                        <div key={i} style={{ display:"flex", gap:12, padding:"10px 12px", background:"var(--srf2)", borderRadius:8, borderLeft:`3px solid ${STATUS_COLOR[task.status]?.includes("green")?"var(--grn)":STATUS_COLOR[task.status]?.includes("sky")?"var(--sky)":STATUS_COLOR[task.status]?.includes("amber")?"var(--amber)":"var(--acc)"}` }}>
+                          <div className={`avatar av-sm ${AV_COLORS[i % AV_COLORS.length]}`} style={{ flexShrink:0 }}>
+                            {allUsers.find((u:any) => u.email===task.assignedTo) ? initials(allUsers.find((u:any) => u.email===task.assignedTo)!.name) : "?"}
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13, color:"var(--t1)", fontWeight:500 }}>{task.title}</div>
+                            <div style={{ fontSize:11, color:"var(--t2)", marginTop:2 }}>
+                              {allUsers.find((u:any) => u.email===task.assignedTo)?.name || task.assignedTo}
+                              <span style={{ margin:"0 6px", color:"var(--t3)" }}>·</span>
+                              <span className={`badge ${STATUS_COLOR[task.status]||"badge-gray"}`} style={{ fontSize:9 }}>{task.status.replace(/_/g," ")}</span>
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:6 }}>
+                              <div className="progress" style={{ flex:1, height:3 }}>
+                                <div className="progress-fill" style={{ width:`${task.progress}%`, background:task.progress>=80?"var(--grn)":task.progress>=40?"var(--acc)":"var(--amber)" }} />
+                              </div>
+                              <span style={{ fontSize:10, color:"var(--t3)", fontFamily:"var(--mono)" }}>{task.progress}%</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize:10, color:"var(--t3)", flexShrink:0 }}>{task.dueDate}</div>
+                        </div>
+                      ))
+                    ) : (
+                      activities.map((act, i) => (
+                        <div key={i} style={{ display:"flex", gap:12, padding:"10px 12px", background:"var(--srf2)", borderRadius:8, borderLeft:"3px solid var(--acc)" }}>
+                          <div className={`avatar av-sm ${AV_COLORS[i%AV_COLORS.length]}`} style={{ flexShrink:0 }}>{act.userName?initials(act.userName):"?"}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13, color:"var(--t1)", fontWeight:500 }}>{act.action}</div>
+                            <div style={{ fontSize:11, color:"var(--t2)", marginTop:2 }}>{act.taskTitle}</div>
+                            {act.details && <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>{act.details}</div>}
+                          </div>
+                          <div style={{ textAlign:"right", flexShrink:0 }}>
+                            <div style={{ fontSize:10, color:"var(--t3)" }}>{new Date(act.timestamp).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+                            <div style={{ fontSize:10, color:"var(--t3)" }}>{act.userName}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* TAT breach & status summary */}
+                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                  <div className="card">
+                    <div className="card-head"><span style={{ fontWeight:600, fontSize:13 }}>⚠ TAT Breach Watchlist</span></div>
+                    <div style={{ padding:12, display:"flex", flexDirection:"column", gap:8 }}>
+                      {activeTasks.filter(t => t.tatBreached).length === 0 ? (
+                        <div style={{ fontSize:12, color:"var(--grn)", padding:8, textAlign:"center" }}>✓ No TAT breaches</div>
+                      ) : activeTasks.filter(t => t.tatBreached).map((t,i) => (
+                        <div key={i} style={{ padding:"8px 10px", background:"rgba(244,63,94,.06)", border:"1px solid rgba(244,63,94,.15)", borderRadius:6 }}>
+                          <div style={{ fontSize:12, color:"var(--red)", fontWeight:500 }}>{t.title}</div>
+                          <div style={{ fontSize:10, color:"var(--t3)", marginTop:2 }}>
+                            {allUsers.find((u:any) => u.email===t.assignedTo)?.name || t.assignedTo} · Due {t.dueDate}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="card-head"><span style={{ fontWeight:600, fontSize:13 }}>Status Snapshot</span></div>
+                    <div style={{ padding:12, display:"flex", flexDirection:"column", gap:6 }}>
+                      {[
+                        { label:"Completed / Approved", value:completed,  color:"var(--grn)" },
+                        { label:"In Progress",           value:inProgress, color:"var(--sky)" },
+                        { label:"Pending",               value:pending,    color:"var(--amber)" },
+                        { label:"Rework",                value:activeTasks.filter(t=>t.status==="rework").length, color:"var(--orange)" },
+                        { label:"TAT Breached",          value:breached,   color:"var(--red)" },
+                      ].map((s, i) => (
+                        <div key={i}>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                            <span style={{ fontSize:12, color:"var(--t2)" }}>{s.label}</span>
+                            <span style={{ fontSize:12, fontWeight:600, color:s.color, fontFamily:"var(--mono)" }}>{s.value}</span>
+                          </div>
+                          <div className="progress" style={{ height:4 }}>
+                            <div className="progress-fill" style={{ width:`${activeTasks.length ? Math.round(s.value/activeTasks.length*100) : 0}%`, background:s.color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ════ TEAM ════ */}
           {activeTab === "team" && (
             <div className="anim-in">
               <div style={{ marginBottom:24 }}>
                 <div className="section-title">Team Members</div>
-                <div className="section-sub">{MOCK_USERS.length} members across {[...new Set(MOCK_USERS.map(u=>u.role))].length} roles</div>
+                <div className="section-sub">{allUsers.length} members across {Array.from(new Set(allUsers.map((u:any) => u.role))).length} roles</div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:20 }}>
@@ -1670,10 +2229,10 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                 <div className="card" style={{ overflow:"hidden" }}>
                   <div className="card-head">
                     <span style={{ fontWeight:600, fontSize:13 }}>All Members</span>
-                    <span className="badge badge-gray">{MOCK_USERS.length}</span>
+                    <span className="badge badge-gray">{allUsers.length}</span>
                   </div>
                   <div style={{ overflowY:"auto", maxHeight:"calc(100vh - 320px)" }}>
-                    {MOCK_USERS.map(u => (
+                    {allUsers.map((u:any) => (
                       <div
                         key={u.id}
                         onClick={() => setSelectedUser(u)}
@@ -1811,15 +2370,30 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                   <div className="card-head"><span style={{ fontWeight:600, fontSize:13 }}>Performance by Staff</span></div>
                   <div className="card-body">
                     <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={PERF_DATA} margin={{ top:0, right:0, left:-24, bottom:0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--bdr)" />
+                      <BarChart data={(() => {
+                        return allUsers.filter((u:any) => u.isDoer).map(u => {
+                          const ut = activeTasks.filter(t => t.assignedTo === u.email);
+                          return {
+                            name: u.name.split(" ")[0],
+                            completed: ut.filter(t => t.status==="completed"||t.status==="approved").length,
+                            pending: ut.filter(t => t.status==="pending").length,
+                            breached: ut.filter(t => t.tatBreached).length,
+                          };
+                        });
+                      })()} margin={{ top:0, right:0, left:-24, bottom:0 }}>
+                        <defs>
+                          <linearGradient id="gradGrn2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4ade80"/><stop offset="100%" stopColor="#16a34a"/></linearGradient>
+                          <linearGradient id="gradAmb2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fbbf24"/><stop offset="100%" stopColor="#d97706"/></linearGradient>
+                          <linearGradient id="gradRed2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb7185"/><stop offset="100%" stopColor="#be123c"/></linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="name" tick={{ fill:"var(--t2)" as any, fontSize:10 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill:"var(--t2)" as any, fontSize:10 }} axisLine={false} tickLine={false} />
                         <Tooltip content={(p:any) => <ChartTip {...p}/>} />
                         <Legend wrapperStyle={{ fontSize:11 }} />
-                        <Bar dataKey="completed" fill="#22c55e" radius={[3,3,0,0]} name="Completed" />
-                        <Bar dataKey="pending"   fill="#f59e0b" radius={[3,3,0,0]} name="Pending"   />
-                        <Bar dataKey="breached"  fill="#f43f5e" radius={[3,3,0,0]} name="Breached"  />
+                        <Bar dataKey="completed" fill="url(#gradGrn2)" radius={[4,4,0,0]} name="Completed" />
+                        <Bar dataKey="pending"   fill="url(#gradAmb2)" radius={[4,4,0,0]} name="Pending"   />
+                        <Bar dataKey="breached"  fill="url(#gradRed2)" radius={[4,4,0,0]} name="Breached"  />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1831,14 +2405,14 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                     {/* Circular gauges row */}
                     <div style={{ display:"flex", justifyContent:"space-around", marginBottom:20 }}>
                       <CircularGauge value={efficiency} label="Overall Efficiency" color="var(--acc)" size={88} />
-                      <CircularGauge value={Math.round((completed/tasks.length)*100)} label="Completion Rate" color="var(--grn)" size={88} />
-                      <CircularGauge value={Math.round(((tasks.length-breached)/tasks.length)*100)} label="On-Time Delivery" color="var(--sky)" size={88} />
+                      <CircularGauge value={Math.round((completed/activeTasks.length)*100)} label="Completion Rate" color="var(--grn)" size={88} />
+                      <CircularGauge value={Math.round(((activeTasks.length-breached)/activeTasks.length)*100)} label="On-Time Delivery" color="var(--sky)" size={88} />
                     </div>
                     {/* Progress bars below */}
                     {[
                       { label:"Overall Efficiency",   value:efficiency,   color:"var(--acc)" },
-                      { label:"Completion Rate",       value:Math.round((completed/tasks.length)*100), color:"var(--grn)" },
-                      { label:"On-Time Delivery",      value:Math.round(((tasks.length-breached)/tasks.length)*100), color:"var(--sky)" },
+                      { label:"Completion Rate",       value:Math.round((completed/activeTasks.length)*100), color:"var(--grn)" },
+                      { label:"On-Time Delivery",      value:Math.round(((activeTasks.length-breached)/activeTasks.length)*100), color:"var(--sky)" },
                     ].map((m, i) => (
                       <div key={i} style={{ marginBottom:12 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
@@ -1914,7 +2488,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                         <div className="chat-meta">{msg.timestamp.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
                       </div>
                       {msg.role === "user" && (
-                        <div className={`avatar av-sm ${AV_COLORS[0]}`} style={{ flexShrink:0 }}>{initials(MOCK_USERS[0].name)}</div>
+                        <div className={`avatar av-sm ${AV_COLORS[0]}`} style={{ flexShrink:0 }}>{initials(currentUserName)}</div>
                       )}
                     </div>
                   ))}
@@ -2161,8 +2735,8 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
       {/* ══ JARVIS ══ */}
       <JarvisAssistant
         tasks={tasks}
-        users={MOCK_USERS}
-        userName={MOCK_USERS[0].name}
+        users={allUsers}
+        userName={currentUserName}
         userRole="Supremo"
       />
 
@@ -2176,7 +2750,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowLogout(false)}>Cancel</button>
-              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); alert("Signed out."); }}>Sign Out</button>
+              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); announceVoice("logout_confirmed"); setTimeout(() => logout(), 1200); }}>Sign Out</button>
             </div>
           </div>
         </div>
@@ -2189,3 +2763,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
+
+
+
