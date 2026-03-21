@@ -1662,7 +1662,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               <div style={{ marginBottom:24 }}>
                 <div className="section-title">Team Members</div>
-                <div className="section-sub">{MOCK_USERS.length} members across {[...new Set(MOCK_USERS.map(u=>u.role))].length} roles</div>
+                <div className="section-sub">{MOCK_USERS.length} members across {Array.from(new Set(MOCK_USERS.map(u=>u.role))).length} roles</div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:20 }}>
@@ -2176,7 +2176,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowLogout(false)}>Cancel</button>
-              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); alert("Signed out."); }}>Sign Out</button>
+              <button className="btn btn-danger" style={{ flex:1 }} onClick={() => { setShowLogout(false); window.location.href = "/login"; }}>Sign Out</button>
             </div>
           </div>
         </div>
@@ -2189,3 +2189,6 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
+
+
