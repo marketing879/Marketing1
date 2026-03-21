@@ -9,3 +9,9 @@ build/
 public/videos/
 .vercel/
 .vercel/
+
+.env
+.env.local
+.env.production
+build/
+.vercel/
