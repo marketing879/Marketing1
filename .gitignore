@@ -5,3 +5,7 @@ build/
 .env.production
 .DS_Store
 *.log
+
+public/videos/
+.vercel/
+.vercel/
