@@ -1662,7 +1662,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               <div style={{ marginBottom:24 }}>
                 <div className="section-title">Team Members</div>
-                <div className="section-sub">{MOCK_USERS.length} members across {[...new Set(MOCK_USERS.map(u=>u.role))].length} roles</div>
+                <div className="section-sub">{MOCK_USERS.length} members across {Array.from(new Set(MOCK_USERS.map(u=>u.role))).length} roles</div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:20 }}>
@@ -2189,3 +2189,4 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
