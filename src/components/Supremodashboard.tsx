@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "../contexts/UserContext";
-import { useUser } from "../contexts/UserContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
@@ -2763,6 +2762,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
