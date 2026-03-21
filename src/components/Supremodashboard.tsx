@@ -1016,7 +1016,6 @@ function JarvisAssistant({ tasks, users, userName, userRole }: JarvisProps) {
 
 export default function SupremoDashboard() {
   const { user: appUser, logout } = useUser();
-  const { user: appUser, logout } = useUser();
   const [activeTab,       setActiveTab]       = useState("overview");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
   const [tasks,           setTasks]           = useState<MockTask[]>(INIT_TASKS);
@@ -2762,6 +2761,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
+
 
 
 
