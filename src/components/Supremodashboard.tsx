@@ -988,7 +988,6 @@ export default function SupremoDashboard() {
   const [continuousMode,  setContinuousMode]  = useState(false);
   const [stopRequested,   setStopRequested]   = useState(false);
   const [autoReport,      setAutoReport]      = useState(false);
-  const [liveTasks, setLiveTasks] = useState<any[]>([]);
 
   // Intelligence
   const [intelQuery,      setIntelQuery]      = useState("");
@@ -1006,29 +1005,6 @@ export default function SupremoDashboard() {
   const contStopRef      = useRef<(() => void) | null>(null);
 
   useEffect(() => { setElevenLabsVoice("ThT5KcBeYPX3keUQqHPh"); }, []);
-
-  const fetchLiveData = useCallback(async () => {
-    try {
-      const res = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/tasks");
-      if (res.ok) {
-        const data = await res.json();
-        const arr: any[] = Array.isArray(data) ? data : (data as any).tasks || [];
-        setLiveTasks(arr.map((t: any) => ({
-          ...t,
-          id: t._id || t.id,
-          tatBreached: t.tatBreached ?? (t.status !== "completed" && t.status !== "approved" && t.exactDeadline && new Date(t.exactDeadline) < new Date()),
-          progress: t.progress ?? (t.status === "approved" || t.status === "completed" ? 100 : t.status === "in_progress" ? 60 : t.status === "rework" ? 30 : 10),
-        })));
-      }
-    } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    fetchLiveData();
-    const p = setInterval(fetchLiveData, 30000);
-    return () => clearInterval(p);
-  }, [fetchLiveData]);
 
   // Greeting on mount
   useEffect(() => {
@@ -1336,12 +1312,11 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
   // ── Derived stats ─────────────────────────────────────────────────────────
 
-  const activeTasks = liveTasks.length > 0 ? liveTasks : tasks;
-  const breached   = activeTasks.filter((t: any) => t.tatBreached).length;
-  const inProgress = activeTasks.filter((t: any) => t.status === "in_progress").length;
-  const completed  = activeTasks.filter((t: any) => t.status === "completed" || t.status === "approved").length;
-  const pending    = activeTasks.filter((t: any) => t.status === "pending").length;
-  const efficiency = activeTasks.length ? Math.round((completed / activeTasks.length) * 100) : 0;
+  const breached   = tasks.filter(t => t.tatBreached).length;
+  const inProgress = tasks.filter(t => t.status === "in_progress").length;
+  const completed  = tasks.filter(t => t.status === "completed" || t.status === "approved").length;
+  const pending    = tasks.filter(t => t.status === "pending").length;
+  const efficiency = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
 
   const now     = new Date();
   const timeStr = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
@@ -1469,7 +1444,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
               {/* Stat cards */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
-                <StatCard icon="📋" label="Total Tasks"     value={activeTasks.length}  sub={liveTasks.length > 0 ? "● Live MongoDB" : "Mock data"}           accent="var(--acc)"    trend="up"      />
+                <StatCard icon="📋" label="Total Tasks"     value={tasks.length}  sub="All assigned tasks"           accent="var(--acc)"    trend="up"      />
                 <StatCard icon="⏳" label="In Progress"     value={inProgress}    sub="Currently active"             accent="var(--sky)"    trend="neutral" />
                 <StatCard icon="✅" label="Completed"       value={completed}     sub={`${efficiency}% efficiency`}  accent="var(--grn)"    trend="up"      />
                 <StatCard icon="⚠️" label="TAT Breaches"   value={breached}      sub="Require attention"            accent="var(--red)"    trend={breached>0?"down":"neutral"} />
@@ -1687,7 +1662,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div className="anim-in">
               <div style={{ marginBottom:24 }}>
                 <div className="section-title">Team Members</div>
-                <div className="section-sub">{MOCK_USERS.length} members across {Array.from(new Set(MOCK_USERS.map(u=>u.role))).length} roles</div>
+                <div className="section-sub">{MOCK_USERS.length} members across {[...new Set(MOCK_USERS.map(u=>u.role))].length} roles</div>
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"300px 1fr", gap:20 }}>
@@ -2214,9 +2189,3 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
-
-
-
-
-
-
