@@ -3,11 +3,38 @@ import rateLimit from "express-rate-limit";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
 import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 
 dotenv.config();
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+console.log("Cloudinary: ✔ Configured");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+console.log("Cloudinary: ✔ Configured");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+console.log("Cloudinary: ✔ Configured");
 
 const app        = express();
 const httpServer = createServer(app);
@@ -360,7 +387,23 @@ const validateProject = (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // PROJECT ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
-app.get("/api/projects", async (req, res) => {
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
+    const b64 = req.file.buffer.toString("base64");
+    const dataUri = \data:\;base64,\\;
+    const result = await cloudinary.uploader.upload(dataUri, { folder: "smartcue", resource_type: "auto" });
+    res.json({ success: true, url: result.secure_url, public_id: result.public_id });
+  } catch (err) {
+    console.error("[Cloudinary] Upload failed:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/projects",, async (req, res) => {
   try {
     if (mongoose.connection.readyState === 1)
       return res.json(await Project.find().sort({ createdAt: -1 }));
@@ -1030,3 +1073,6 @@ httpServer.listen(PORT, () => {
     setInterval(runTATMonitor, 14400000);
   }, 5_000);
 });
+
+
+
