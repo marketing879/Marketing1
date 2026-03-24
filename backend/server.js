@@ -395,7 +395,8 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
     const b64 = req.file.buffer.toString("base64");
     const dataUri = \data:\;base64,\\;
-    const result = await cloudinary.uploader.upload(dataUri, { folder: "smartcue", resource_type: "auto" });
+    const folder = req.body?.folder || "smartcue";
+    const result = await cloudinary.uploader.upload(dataUri, { folder, resource_type: "auto" });
     res.json({ success: true, url: result.secure_url, public_id: result.public_id });
   } catch (err) {
     console.error("[Cloudinary] Upload failed:", err.message);
@@ -1073,6 +1074,7 @@ httpServer.listen(PORT, () => {
     setInterval(runTATMonitor, 14400000);
   }, 5_000);
 });
+
 
 
 
