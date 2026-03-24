@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "../contexts/UserContext";
 import { ChatProvider, useChatContext, SEED_USERS } from "../contexts/ChatContext";
 import { ChatMessage, ChatUser, UserRole } from "../types/chat";
@@ -94,7 +94,7 @@ const ChatRoomInner: React.FC = () => {
   const inputRef        = useRef<HTMLDivElement>(null);
 
   const isAdmin = ["admin", "superadmin", "supremo"].includes(currentUser.role);
-  const activeMessages  = messages[dmTarget ? `dm_${dmTarget.id}` : activeChannel] || [];
+  const activeMessages = useMemo(() => messages[dmTarget ? `dm_${dmTarget.id}` : activeChannel] || [], [messages, dmTarget, activeChannel]);
   const activeChName    = dmTarget ? dmTarget.name : `#${activeChannel}`;
   const activeCh        = channels.find(c => c.id === activeChannel);
 
@@ -610,6 +610,7 @@ export const ChatRoom: React.FC = () => (
 );
 
 export default ChatRoom;
+
 
 
 
