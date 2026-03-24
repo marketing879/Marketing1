@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser, Task, AssistanceTicket } from "../contexts/UserContext";
+import { useUser, Task, AssistanceTicket, TicketType } from "../contexts/UserContext";
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
@@ -976,22 +976,11 @@ interface AssistanceTicketsTabProps {
   tickets: AssistanceTicket[];
   onUpdateTicket: (id: string, updates: Partial<AssistanceTicket>) => void;
   onSubmitToAdmin: (id: string) => void;
-  onRaiseTicket?: () => void;
 }
 
-const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin, onRaiseTicket }) => {
+const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin }) => {
   const [expanded,   setExpanded]   = useState<string | null>(null);
   const [staffNotes, setStaffNotes] = useState<{ [id: string]: string }>({});
-
-  const statusMeta: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    "open":                { label: "Open",                color: "#ff9500", bg: "rgba(255,149,0,0.1)",   border: "rgba(255,149,0,0.3)"   },
-    "pending-admin":       { label: "Awaiting Admin",      color: "#b06af3", bg: "rgba(176,106,243,0.1)", border: "rgba(176,106,243,0.3)" },
-    "admin-approved":      { label: "Admin Approved",      color: "#00ff88", bg: "rgba(0,255,136,0.1)",   border: "rgba(0,255,136,0.3)"   },
-    "superadmin-pending":  { label: "Awaiting Superadmin", color: "#00d4ff", bg: "rgba(0,212,255,0.1)",   border: "rgba(0,212,255,0.3)"   },
-    "superadmin-approved": { label: "SA Approved",         color: "#00ff88", bg: "rgba(0,255,136,0.1)",   border: "rgba(0,255,136,0.3)"   },
-    "rejected":            { label: "Rejected",            color: "#ff3366", bg: "rgba(255,51,102,0.1)",  border: "rgba(255,51,102,0.3)"  },
-    "resolved":            { label: "Resolved",            color: "#00d4ff", bg: "rgba(0,212,255,0.1)",   border: "rgba(0,212,255,0.3)"   },
-  };
 
   if (tickets.length === 0) {
     return (
@@ -1003,42 +992,36 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
       }}>
         <div style={{ fontSize: 36, marginBottom: 14, opacity: 0.25 }}>🎫</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#7e84a3", marginBottom: 5, fontFamily: "'Space Grotesk', sans-serif" }}>No Assistance Tickets</div>
-        <div style={{ fontSize: 12, color: "#434763", marginBottom: 16 }}>Tickets are auto-raised when tasks are overdue. You can also raise one manually.</div>
-        {onRaiseTicket && (
-          <button onClick={onRaiseTicket}
-            style={{ padding: "9px 18px", background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 10, color: "#ff9500", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
-            + New Ticket
-          </button>
-        )}
+        <div style={{ fontSize: 12, color: "#434763" }}>Tickets are auto-raised when tasks are overdue.</div>
       </div>
     );
   }
 
+  const statusMeta: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    "open":           { label: "Open",           color: "#ff9500", bg: "rgba(255,149,0,0.1)",   border: "rgba(255,149,0,0.3)"   },
+    "pending-admin":  { label: "Awaiting Admin",  color: "#b06af3", bg: "rgba(176,106,243,0.1)", border: "rgba(176,106,243,0.3)" },
+    "admin-approved": { label: "Admin Approved",  color: "#00ff88", bg: "rgba(0,255,136,0.1)",   border: "rgba(0,255,136,0.3)"   },
+    "resolved":       { label: "Resolved",        color: "#00d4ff", bg: "rgba(0,212,255,0.1)",   border: "rgba(0,212,255,0.3)"   },
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Header info + New Ticket button */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div style={{
-          padding: "14px 18px", flex: 1,
-          background: "rgba(255,149,0,0.04)",
-          border: "1px solid rgba(255,149,0,0.15)",
-          borderRadius: 12,
-          display: "flex", alignItems: "flex-start", gap: 12,
-        }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>🎫</span>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#ff9500", marginBottom: 3 }}>Assistance Tickets</div>
-            <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.6 }}>
-              Tickets auto-raised for overdue tasks. You can also raise one manually for queries or small activities.
-            </div>
+      {/* Header info */}
+      <div style={{
+        padding: "14px 18px",
+        background: "rgba(255,149,0,0.04)",
+        border: "1px solid rgba(255,149,0,0.15)",
+        borderRadius: 12,
+        display: "flex", alignItems: "flex-start", gap: 12,
+      }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>🎫</span>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#ff9500", marginBottom: 3 }}>Auto-Raised Assistance Tickets</div>
+          <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.6 }}>
+            The system automatically raises an assistance ticket for every delayed task and assigns it to you.
+            Add your notes, then submit to your admin for review and approval.
           </div>
         </div>
-        {onRaiseTicket && (
-          <button onClick={onRaiseTicket}
-            style={{ padding: "10px 16px", background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.35)", borderRadius: 10, color: "#ff9500", fontSize: 11, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 }}>
-            + New Ticket
-          </button>
-        )}
       </div>
 
       {tickets.map(ticket => {
@@ -1540,6 +1523,9 @@ const StaffDashboard: React.FC = () => {
 
   // ── Voice: flash panel opens — speak ticket guidance (ticketVoiceRef removed, one effect only) ──
   const flashVoiceRef = useRef(false);
+
+  // ── Desktop notification: track task IDs seen so far ─────────────────────
+  const seenTaskIdsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (!showFlashPanel) return;
     if (flashVoiceRef.current) return;
@@ -1686,14 +1672,12 @@ const StaffDashboard: React.FC = () => {
         },
       ];
       for (const photo of photos) {
+        let base64Data = photo, mediaType = "image/jpeg";
         if (photo.startsWith("data:")) {
-          // Legacy base64
           const matches = photo.match(/data:([^;]+);base64,(.+)/);
-          if (matches) contentArray.push({ type: "image", source: { type: "base64", media_type: matches[1], data: matches[2] } });
-        } else if (photo.startsWith("http")) {
-          // Cloudinary URL — use url_type for Anthropic (pass as URL source)
-          contentArray.push({ type: "image", source: { type: "url", url: photo } });
+          if (matches) { mediaType = matches[1]; base64Data = matches[2]; }
         }
+        contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
       const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
@@ -1843,22 +1827,10 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleConfirmSubmit = () => {
     if (!selectedTask || !pendingSubmitTask) return;
-    const doerName = (user as any)?.name || (user as any)?.email || "Doer";
-
-    // 1. If score exists, upload report to Cloudinary first (non-blocking on failure)
-    let scoreReportUrl: string | undefined;
-    if (aiScoreResult) {
-      showSuccess("⏳ Uploading score report…");
-      const url = await uploadAndAttachScoreReport(selectedTask, aiScoreResult, doerName);
-      if (url) {
-        scoreReportUrl = url;
-        showSuccess("✓ Score report attached");
-      }
-    }
-
-    // 2. Single atomic update — approvalStatus + scoreData + attachments + scoreReportUrl
+    // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
+    // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
     updateTask?.(selectedTask.id, {
       title:           selectedTask.title,
       description:     selectedTask.description,
@@ -1871,7 +1843,6 @@ const StaffDashboard: React.FC = () => {
       attachments:     uploadedPhotos[selectedTask.id] || [],
       approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
-      ...(scoreReportUrl ? { scoreReportUrl } : {}),
       scoreData:       aiScoreResult ? {
         percentScore:  aiScoreResult.percentScore,
         grade:         aiScoreResult.grade,
@@ -1884,7 +1855,7 @@ const StaffDashboard: React.FC = () => {
         submittedAt:   new Date().toISOString(),
       } : undefined,
     } as any);
-
+    // submitTaskCompletion removed — merged into updateTask above to avoid overwrite
     speakText("Successfully submitted for admin approval. Well done!");
     showSuccess("Task submitted for review ✓");
     setAiScoreResult(null);
@@ -1898,7 +1869,7 @@ const StaffDashboard: React.FC = () => {
     setReadingDeductions(false);
   };
 
-  const buildScoreReportHtml = (task: any, score: any, doerName: string): string => {
+  const downloadScoreReport = (task: any, score: any, doerName: string) => {
     const now = new Date();
     const ds = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
     const ts = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -1908,37 +1879,9 @@ const StaffDashboard: React.FC = () => {
         "<div><span style='color:" + (s.score===s.max?"green":"red") + "'>" + s.score + "/" + s.max + "</span> <b>" + s.label + "</b><div style='color:#666;font-size:11px'>" + (s.note||"") + "</div></div>"
       ).join("")
     ).join("");
-    return "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SmartCue Score Report</title></head><body style='font-family:Arial,sans-serif;padding:32px'><h1>SmartCue AI Score Report</h1><p>Generated: " + ds + " at " + ts + " | ID: " + (task?.id||"") + "-" + Date.now() + "</p><p style='color:red;font-size:12px'>Auto-generated. Read-only. Cannot be altered.</p><hr/><h2>Task: " + (task?.title||"") + "</h2><p><b>Doer:</b> " + doerName + " | <b>By:</b> " + (task?.assignedBy||"-") + " | <b>Purpose:</b> " + (task?.purpose||"-") + "</p><hr/><h2>Score: " + score.percentScore + "/100 - Grade " + score.grade + "</h2><p>" + (score.verdict||"") + "</p><h3>Categories</h3>" + cats + ((score.strengths||[]).length?"<h3 style='color:green'>Strengths</h3>"+(score.strengths||[]).map((s:any)=>"<p>+ "+s+"</p>").join(""):"") + ((score.improvements||[]).length?"<h3 style='color:orange'>Improvements</h3>"+(score.improvements||[]).map((s:any)=>"<p>- "+s+"</p>").join(""):"") + "<hr/><p style='color:#999;font-size:11px'>SmartCue AI - Roswalt Realty | " + ds + "</p></body></html>";
-  };
-
-  // Upload score report HTML to Cloudinary and attach URL to task (immutable — doer cannot delete)
-  const uploadAndAttachScoreReport = async (task: any, score: any, doerName: string): Promise<string | null> => {
-    const html = buildScoreReportHtml(task, score, doerName);
-    const filename = "SmartCue_Report_" + (task?.title || "task").replace(/\s+/g, "_") + "_" + new Date().toISOString().slice(0, 10);
-    try {
-      const API_URL = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
-      const res = await fetch(`${API_URL}/api/upload-report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html, filename }),
-      });
-      const data = await res.json();
-      if (data.success && data.url) {
-        // Attach to task in MongoDB — immutable (we never expose a delete button for this)
-        updateTask?.(task.id, { scoreReportUrl: data.url } as any);
-        return data.url;
-      }
-    } catch (err) {
-      console.error("[ScoreReport] Upload failed:", err);
-    }
-    return null;
-  };
-
-  const downloadScoreReport = (task: any, score: any, doerName: string) => {
-    const html = buildScoreReportHtml(task, score, doerName);
+    const html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SmartCue Score Report</title></head><body style='font-family:Arial,sans-serif;padding:32px'><h1>SmartCue AI Score Report</h1><p>Generated: " + ds + " at " + ts + " | ID: " + (task?.id||"") + "-" + Date.now() + "</p><p style='color:red;font-size:12px'>Auto-generated. Read-only. Cannot be altered.</p><hr/><h2>Task: " + (task?.title||"") + "</h2><p><b>Doer:</b> " + doerName + " | <b>By:</b> " + (task?.assignedBy||"-") + " | <b>Purpose:</b> " + (task?.purpose||"-") + "</p><hr/><h2>Score: " + score.percentScore + "/100 - Grade " + score.grade + "</h2><p>" + (score.verdict||"") + "</p><h3>Categories</h3>" + cats + ((score.strengths||[]).length?"<h3 style='color:green'>Strengths</h3>"+(score.strengths||[]).map((s:any)=>"<p>+ "+s+"</p>").join(""):"") + ((score.improvements||[]).length?"<h3 style='color:orange'>Improvements</h3>"+(score.improvements||[]).map((s:any)=>"<p>- "+s+"</p>").join(""):"") + "<hr/><p style='color:#999;font-size:11px'>SmartCue AI - Roswalt Realty | " + ds + "</p></body></html>";
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const now = new Date();
     const a = document.createElement("a");
     a.href = url;
     a.download = "SmartCue_Report_" + (task?.title||"task").replace(/\s+/g,"_") + "_" + now.toISOString().slice(0,10) + ".html";
@@ -1950,27 +1893,26 @@ const StaffDashboard: React.FC = () => {
     catch { return "—"; }
   };
 
-  const handlePhotoUpload = async (taskId: string, files: FileList | null) => {
+  const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
-    const allowed = Array.from(files).filter(file => {
-      return file.type.startsWith("image/") ||
-             file.type.startsWith("video/") ||
-             file.type === "application/pdf" ||
-             file.type.includes("word") ||
-             file.type.includes("presentation") ||
-             file.type.includes("sheet");
+    Array.from(files).forEach((file) => {
+      // Accept images, videos, and documents (PDF, DOCX, PPTX)
+      const isImage    = file.type.startsWith("image/");
+      const isVideo    = file.type.startsWith("video/");
+      const isDocument = file.type === "application/pdf" ||
+                         file.type.includes("word") ||
+                         file.type.includes("presentation") ||
+                         file.type.includes("sheet");
+      if (!isImage && !isVideo && !isDocument) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), url] }));
+      };
+      reader.readAsDataURL(file);
     });
-    if (allowed.length === 0) return;
-    showSuccess("⏳ Uploading to cloud…");
-    try {
-      for (const file of allowed) {
-        const url = await uploadToCloudinary(file, "roswalt/task-attachments");
-        setUploadedPhotos(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), url] }));
-      }
-      showSuccess(`✓ ${allowed.length} file${allowed.length > 1 ? "s" : ""} uploaded`);
-    } catch (err: any) {
-      showSuccess("✕ Upload failed: " + (err?.message || "Unknown error"));
-    }
+    showSuccess("File uploaded ✓");
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -2012,38 +1954,6 @@ const StaffDashboard: React.FC = () => {
     setShowCompletionForm(true);
   };
 
-  // ── Voice alert when a NEW task is assigned ─────────────────────────────
-  const prevTaskCountRef = useRef<number | null>(null);
-  const prevTaskIdsRef   = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (assignedTasks.length === 0) return;
-    const currentIds = new Set(assignedTasks.map(t => t.id));
-    const prev = prevTaskCountRef.current;
-
-    if (prev !== null && assignedTasks.length > prev) {
-      // Find newly added tasks
-      const newTasks = assignedTasks.filter(t => !prevTaskIdsRef.current.has(t.id));
-      newTasks.forEach(task => {
-        const adminName = task.assignedBy
-          ? (task.assignedBy.split("@")[0].replace(".", " "))
-          : "your admin";
-        const due = task.dueDate
-          ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
-          : "no deadline set";
-        speakText(
-          `Attention. You have a new task assigned by ${adminName}. ` +
-          `Task: ${task.title}. ` +
-          `Priority: ${task.priority ?? "medium"}. ` +
-          `Due by ${due}. ` +
-          `Please review and begin work immediately.`
-        );
-      });
-    }
-
-    prevTaskCountRef.current = assignedTasks.length;
-    prevTaskIdsRef.current   = currentIds;
-  }, [assignedTasks.length]);
-
   // ── Auto-generate Assistance Tickets for delayed tasks ──────────────────────
   useEffect(() => {
     if (ticketInitRef.current) return;
@@ -2059,10 +1969,10 @@ const StaffDashboard: React.FC = () => {
         taskId:      t.id,
         taskTitle:   t.title,
         taskDueDate: t.dueDate,
-        assignedTo:  (t as any).assignedBy ?? "",
-        assignedBy:  user?.email ?? "",
-        raisedBy:    user?.name  ?? "",
-        ticketType:  "small-activity" as const,
+        assignedTo:  user?.email ?? "",
+        assignedBy:  (t as any).assignedBy ?? "",
+        raisedBy:    user?.email ?? "",
+        ticketType:  "general-query" as TicketType,
         reason:      `This task was due on ${new Date(t.dueDate).toLocaleDateString()} and has not been completed. An assistance ticket has been automatically raised to notify your admin and track the delay.`,
         staffNote:   "",
       });
@@ -2096,6 +2006,45 @@ const StaffDashboard: React.FC = () => {
     });
   }, [assignedTasks, contextTickets]);
 
+  // ── Desktop notifications: fire when a brand-new task is assigned ─────────
+  useEffect(() => {
+    // Request browser notification permission once
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!assignedTasks.length) return;
+
+    // On first run, silently seed the seen-set with all current task IDs
+    // so we only notify about tasks that arrive AFTER the session starts.
+    if (seenTaskIdsRef.current === null) {
+      seenTaskIdsRef.current = new Set(assignedTasks.map(t => t.id));
+      return;
+    }
+
+    assignedTasks.forEach(task => {
+      if (seenTaskIdsRef.current!.has(task.id)) return; // already seen
+      seenTaskIdsRef.current!.add(task.id);
+
+      // Only notify if permission is granted
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+      const priority  = (task as any).priority ?? "Normal";
+      const dueDate   = task.dueDate
+        ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+        : "No due date";
+      const assignedBy = (task as any).assignedBy ?? "Admin";
+
+      new Notification("📋 New Task Assigned", {
+        body: `${task.title}\nPriority: ${priority}  •  Due: ${dueDate}\nAssigned by: ${assignedBy}`,
+        icon: "/favicon.ico",
+        requireInteraction: priority?.toLowerCase() === "high",
+      });
+    });
+  }, [assignedTasks]);
+
   const handleUpdateTicket = (id: string, updates: Partial<AssistanceTicket>) => {
     ctxUpdateTicket(id, updates);
     showSuccess("✓ Ticket note saved");
@@ -2107,81 +2056,25 @@ const StaffDashboard: React.FC = () => {
   const handleSubmitTicketToAdmin = (id: string) => {
     const ticket = tickets.find(t => t.id === id);
     ctxSubmitTicket(id);
+
+    // Belt-and-suspenders: also directly freeze the linked task
     if (ticket?.taskId) {
       updateTask?.(ticket.taskId, { isFrozen: true } as any);
     }
+
     showSuccess("📤 Ticket submitted to admin for review");
+
+    // Find the assigning admin name from the linked task
     const linkedTask = assignedTasks.find(t => t.id === ticket?.taskId);
     const assignerInfo = linkedTask ? getAssignerInfo((linkedTask as any).assignedBy) : null;
     const adminName = assignerInfo?.name || "your admin";
     const taskTitle = ticket?.taskTitle || "the delayed task";
+
     speakText(
       `Your assistance ticket for "${taskTitle}" has been submitted to ${adminName} for review. ` +
       `Please wait for ${adminName} to review your explanation and approve the ticket. ` +
       `Once approved, the ticket will be automatically closed.`
     );
-  };
-
-  // ── Voice alert when a ticket status changes (admin approved/rejected) ─────
-  const prevTicketStatusesRef = React.useRef<Record<string, string>>({});
-  React.useEffect(() => {
-    const prev = prevTicketStatusesRef.current;
-    tickets.forEach(t => {
-      const prevStatus = prev[t.id];
-      if (prevStatus && prevStatus !== t.status) {
-        if (t.status === "admin-approved" || t.status === "superadmin-approved") {
-          speakText(`Good news! Your assistance ticket for ${t.taskTitle} has been approved. You may now continue working on it.`);
-        } else if (t.status === "rejected") {
-          speakText(`Your assistance ticket for ${t.taskTitle} has been reviewed. Please check the admin's feedback.`);
-        }
-      }
-      prev[t.id] = t.status;
-    });
-    prevTicketStatusesRef.current = prev;
-  }, [tickets]);
-
-  // ── Manual raise ticket modal ─────────────────────────────────────────────
-  const [showManualTicketModal,    setShowManualTicketModal]    = React.useState(false);
-  const [manualTicketType,         setManualTicketType]         = React.useState<"small-activity"|"general-query"|"task-delegation">("small-activity");
-  const [manualTicketNote,         setManualTicketNote]         = React.useState("");
-  const [manualTicketTitle,        setManualTicketTitle]        = React.useState("");
-  const [manualTicketAssignTo,     setManualTicketAssignTo]     = React.useState("");
-  const [manualTicketAttachments,  setManualTicketAttachments]  = React.useState<string[]>([]);
-  const manualTicketFileRef = React.useRef<HTMLInputElement | null>(null);
-
-  const handleManualTicketFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    showSuccess("⏳ Uploading attachment…");
-    try {
-      for (const file of files) {
-        const url = await uploadToCloudinary(file, "roswalt/ticket-attachments");
-        setManualTicketAttachments(prev => [...prev, url]);
-      }
-      showSuccess("✓ Attachment uploaded");
-    } catch (err: any) {
-      showSuccess("✕ Upload failed: " + (err?.message || "Unknown error"));
-    }
-  };
-
-  const handleSubmitManualTicket = () => {
-    if (!manualTicketNote.trim() || !manualTicketTitle.trim() || !manualTicketAssignTo) return;
-    raiseAssistanceTicket({
-      taskId:      "manual-" + Date.now(),
-      taskTitle:   manualTicketTitle,
-      taskDueDate: new Date().toISOString().slice(0, 10),
-      assignedTo:  manualTicketAssignTo,
-      assignedBy:  user?.email ?? "",
-      raisedBy:    user?.name ?? "",
-      ticketType:  manualTicketType,
-      reason:      manualTicketNote,
-      staffNote:   manualTicketNote,
-      attachments: manualTicketAttachments,
-    } as any);
-    speakText(`Assistance ticket raised for ${manualTicketTitle}. Your admin has been notified.`);
-    showSuccess("🎫 Ticket raised successfully");
-    setShowManualTicketModal(false);
-    setManualTicketTitle(""); setManualTicketNote(""); setManualTicketAssignTo(""); setManualTicketAttachments([]);
   };
 
   const showAnalytics = activeTab === "pending" || activeTab === "delayed" || activeTab === "tickets";
@@ -3050,7 +2943,6 @@ const StaffDashboard: React.FC = () => {
                 tickets={tickets}
                 onUpdateTicket={handleUpdateTicket}
                 onSubmitToAdmin={handleSubmitTicketToAdmin}
-                onRaiseTicket={() => setShowManualTicketModal(true)}
               />
             )}
 
@@ -3065,87 +2957,6 @@ const StaffDashboard: React.FC = () => {
           {showAnalytics && (
             <div className="sd-analytics-panel" style={{ position: "sticky", top: "28px" }}>
               <AnalyticsPanel tasks={assignedTasks} tickets={tickets} />
-            </div>
-          )}
-
-          {/* ── Manual Raise Ticket Modal ─────────────────────────────────── */}
-          {showManualTicketModal && (
-            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-              onClick={e => { if (e.target === e.currentTarget) setShowManualTicketModal(false); }}>
-              <div style={{ background: "#13152a", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 16, padding: 28, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#ff9500", fontFamily: "'Space Grotesk',sans-serif" }}>🎫 Raise Assistance Ticket</div>
-                  <button onClick={() => setShowManualTicketModal(false)} style={{ background: "none", border: "none", color: "#7e84a3", cursor: "pointer", fontSize: 18 }}>✕</button>
-                </div>
-
-                {/* Ticket type */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Ticket Type</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
-                    {(["small-activity","general-query","task-delegation"] as const).map(t => (
-                      <button key={t} onClick={() => setManualTicketType(t)}
-                        style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${manualTicketType === t ? "#ff9500" : "rgba(255,255,255,0.1)"}`, background: manualTicketType === t ? "rgba(255,149,0,0.1)" : "transparent", color: manualTicketType === t ? "#ff9500" : "#7e84a3", fontSize: 11, fontWeight: 700, cursor: "pointer", textTransform: "capitalize" as const }}>
-                        {t.replace(/-/g, " ")}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Subject */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Subject / Title *</div>
-                  <input value={manualTicketTitle} onChange={e => setManualTicketTitle(e.target.value)}
-                    placeholder="Brief title of this ticket…"
-                    style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,149,0,0.2)", borderRadius: 10, color: "#e8eaf6", fontSize: 12, outline: "none", boxSizing: "border-box" as const }} />
-                </div>
-
-                {/* Assign to */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Assign To *</div>
-                  <select value={manualTicketAssignTo} onChange={e => setManualTicketAssignTo(e.target.value)}
-                    style={{ width: "100%", padding: "10px 14px", background: "#0d0f1f", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#c8ccdd", fontSize: 12, outline: "none" }}>
-                    <option value="">— Select recipient —</option>
-                    {([] as any[]).concat(
-                      assignedTasks.map((t: any) => t.assignedBy).filter(Boolean)
-                    ).filter((v, i, a) => a.indexOf(v) === i).map((email: string) => (
-                      <option key={email} value={email}>{email}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Description */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Description *</div>
-                  <textarea value={manualTicketNote} onChange={e => setManualTicketNote(e.target.value)}
-                    placeholder="Describe what you need help with or what activity needs to be delegated…"
-                    style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,149,0,0.2)", borderRadius: 10, color: "#e8eaf6", fontSize: 12, resize: "vertical", outline: "none", minHeight: 80, lineHeight: 1.6, fontFamily: "inherit", boxSizing: "border-box" as const }} />
-                </div>
-
-                {/* Attachments */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 8 }}>Attachments (optional)</div>
-                  <input ref={manualTicketFileRef} type="file" accept="image/*,.pdf" multiple style={{ display: "none" }} onChange={handleManualTicketFile} />
-                  <button onClick={() => manualTicketFileRef.current?.click()}
-                    style={{ padding: "7px 14px", background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.12)", borderRadius: 8, color: "#7e84a3", fontSize: 11, cursor: "pointer" }}>
-                    📎 Attach Files
-                  </button>
-                  {manualTicketAttachments.length > 0 && (
-                    <span style={{ marginLeft: 10, fontSize: 11, color: "#ff9500" }}>✓ {manualTicketAttachments.length} attached</span>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setShowManualTicketModal(false)}
-                    style={{ flex: 1, padding: "11px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    Cancel
-                  </button>
-                  <button onClick={handleSubmitManualTicket}
-                    disabled={!manualTicketNote.trim() || !manualTicketTitle.trim() || !manualTicketAssignTo}
-                    style={{ flex: 2, padding: "11px", background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.4)", borderRadius: 10, color: "#ff9500", fontSize: 12, fontWeight: 800, cursor: "pointer", opacity: (!manualTicketNote.trim() || !manualTicketTitle.trim() || !manualTicketAssignTo) ? 0.45 : 1 }}>
-                    🎫 Submit Ticket
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </main>
@@ -4119,3 +3930,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
+
+
+
+
+
+
+
+
