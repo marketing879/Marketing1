@@ -224,7 +224,7 @@ const SAFlashPanel: React.FC<SAFlashPanelProps> = ({
 const SADashboard: React.FC = () => {
   const {
     tasks = [], teamMembers = [], addUser, superadminReviewTask, logout, user,
-    addTask, projects = [], addProject, updateTask,
+    addTask, projects = [], addProject, updateTask, updateUser, getNextOTP,
     assistanceTickets, superadminApproveTicket, deleteTask,
     activityLog = [], logActivity,
   } = useUser() as any;
@@ -232,9 +232,12 @@ const SADashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [mounted, setMounted] = useState(false);
-  const [newUser, setNewUser] = useState({ name:"", email:"", role:"staff", password:"" });
+  const [newUser, setNewUser] = useState({ name:"", email:"", role:"staff", password:"", phone:"" });
   const [successMsg, setSuccessMsg] = useState("");
   const [exporting, setExporting] = useState(false);
+  // Phone inline-edit state (used in Team Directory tab)
+  const [editPhoneId, setEditPhoneId] = useState<string|null>(null);
+  const [editPhoneVal, setEditPhoneVal] = useState("");
 
   // Background video
   const [backgroundVideo, setBackgroundVideo] = useState<string | null>(() => {
@@ -424,6 +427,13 @@ const SADashboard: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxPhotos.length]);
 
+  // Auto-generate OTP when the Add User tab opens
+  useEffect(() => {
+    if (activeTab === "addUser" && !newUser.password) {
+      setNewUser(prev => ({ ...prev, password: (getNextOTP as any)() }));
+    }
+  }, [activeTab]);
+
   const pendingApprovals = tasks.filter((t: Task) => t.approvalStatus === "admin-approved");
   const fullyApproved    = tasks.filter((t: Task) => t.approvalStatus === "superadmin-approved");
   const inReview         = tasks.filter((t: Task) => t.approvalStatus === "in-review");
@@ -477,10 +487,11 @@ const SADashboard: React.FC = () => {
   };
 
   const handleAddUser = () => {
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) return;
+    if (!newUser.name.trim() || !newUser.email.trim()) return;
     const result = (addUser as any)(newUser as any);
     if (result.success) {
-      setNewUser({ name:"", email:"", role:"staff", password:"" });
+      const nextOTP = (getNextOTP as any)();
+      setNewUser({ name:"", email:"", role:"staff", password: nextOTP, phone:"" });
       speakText(`New member ${newUser.name} has been added to the team.`);
       showSuccess("User added successfully ✓");
     } else {
@@ -2055,7 +2066,7 @@ const SADashboard: React.FC = () => {
               <div className="sa-table-wrap">
                 <table className="sa-table">
                   <thead>
-                    <tr><th>Name</th><th>Email</th><th>Role</th><th>OTP / Password</th></tr>
+                    <tr><th>Name</th><th>Email</th><th>Role</th><th>OTP / Password</th><th>Mobile</th></tr>
                   </thead>
                   <tbody>
                     {[...teamMembers]
@@ -2070,7 +2081,45 @@ const SADashboard: React.FC = () => {
                             </span>
                           </td>
                           <td style={{ fontFamily:"'Space Mono',monospace", fontSize:12 }}>
-                            {user?.role==="superadmin" ? DEFAULT_PASSWORDS[member.email.toLowerCase()]??"—" : "••••••"}
+                            {user?.role==="superadmin" ? DEFAULT_PASSWORDS[member.email.toLowerCase()]??member.password??"—" : "••••••"}
+                          </td>
+                          <td>
+                            {editPhoneId === member.id ? (
+                              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                <input
+                                  value={editPhoneVal}
+                                  onChange={e => setEditPhoneVal(e.target.value)}
+                                  placeholder="+91XXXXXXXXXX"
+                                  style={{ background:"rgba(8,6,20,0.8)", border:`1px solid ${G.gold}55`, borderRadius:6, padding:"5px 9px", color:G.textPrimary, fontSize:12, fontFamily:"'Space Mono',monospace", width:148, outline:"none" }}
+                                  autoFocus
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      (updateUser as any)(member.id, { phone: editPhoneVal });
+                                      showSuccess(`✓ Mobile updated for ${member.name}`);
+                                      setEditPhoneId(null);
+                                    }
+                                    if (e.key === "Escape") setEditPhoneId(null);
+                                  }}
+                                />
+                                <button
+                                  onClick={() => { (updateUser as any)(member.id, { phone: editPhoneVal }); showSuccess(`✓ Mobile updated for ${member.name}`); setEditPhoneId(null); }}
+                                  style={{ padding:"5px 10px", background:`${G.success}22`, border:`1px solid ${G.success}55`, borderRadius:6, color:G.success, fontSize:11, fontWeight:700, cursor:"pointer" }}>✓</button>
+                                <button
+                                  onClick={() => setEditPhoneId(null)}
+                                  style={{ padding:"5px 8px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:6, color:G.textMuted, fontSize:11, cursor:"pointer" }}>✕</button>
+                              </div>
+                            ) : (
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <span style={{ fontFamily:"'Space Mono',monospace", fontSize:12, color: member.phone ? G.textSecondary : G.textMuted }}>
+                                  {member.phone || "—"}
+                                </span>
+                                <button
+                                  onClick={() => { setEditPhoneId(member.id); setEditPhoneVal(member.phone || ""); }}
+                                  style={{ padding:"3px 9px", background:`${G.gold}12`, border:`1px solid ${G.gold}35`, borderRadius:5, color:G.gold, fontSize:10, fontWeight:700, cursor:"pointer", opacity:0.75 }}>
+                                  {member.phone ? "Edit" : "+ Add"}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -2099,8 +2148,8 @@ const SADashboard: React.FC = () => {
                   <input className="sa-form-input" type="email" placeholder="arjun@roswalt.com" value={newUser.email} onChange={e=>setNewUser({...newUser,email:e.target.value})} />
                 </div>
                 <div className="sa-form-group">
-                  <label className="sa-form-label">Password</label>
-                  <input className="sa-form-input" type="password" placeholder="Min. 6 characters" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} />
+                  <label className="sa-form-label">Mobile Number <span style={{ fontSize:10, color:G.textMuted, fontWeight:400 }}>(optional)</span></label>
+                  <input className="sa-form-input" type="tel" placeholder="+91XXXXXXXXXX" value={newUser.phone} onChange={e=>setNewUser({...newUser,phone:e.target.value})} />
                 </div>
                 <div className="sa-form-group">
                   <label className="sa-form-label">Access Role</label>
@@ -2108,6 +2157,27 @@ const SADashboard: React.FC = () => {
                     <option value="staff">Staff</option>
                     <option value="admin">Admin</option>
                   </select>
+                </div>
+                <div className="sa-form-group">
+                  <label className="sa-form-label" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    Auto-generated OTP / Password
+                    <span style={{ padding:"2px 8px", borderRadius:4, background:`${G.success}18`, border:`1px solid ${G.success}44`, fontSize:9, color:G.success, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.6px" }}>Auto</span>
+                  </label>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input
+                      className="sa-form-input"
+                      value={newUser.password}
+                      onChange={e=>setNewUser({...newUser,password:e.target.value})}
+                      style={{ fontFamily:"'Space Mono',monospace", letterSpacing:"2px", fontSize:15, color:G.gold, flex:1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewUser(prev => ({ ...prev, password: (getNextOTP as any)() }))}
+                      style={{ padding:"0 14px", background:`${G.gold}12`, border:`1px solid ${G.gold}35`, borderRadius:8, color:G.gold, fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                      ↺ Refresh
+                    </button>
+                  </div>
+                  <div style={{ fontSize:10, color:G.textMuted, marginTop:5 }}>Generated automatically — you may override if needed.</div>
                 </div>
                 <button className="sa-btn sa-btn-primary" style={{ width:"100%" }} onClick={handleAddUser} disabled={!newUser.name.trim()||!newUser.email.trim()||!newUser.password.trim()}>
                   <Plus size={14} /> Add Member
@@ -2866,7 +2936,3 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
-
-
-
-

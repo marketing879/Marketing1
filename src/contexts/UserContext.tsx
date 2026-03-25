@@ -158,6 +158,8 @@ interface UserContextType {
     success: boolean;
     message: string;
   };
+  updateUser: (userId: string, updates: { phone?: string; name?: string; role?: Role }) => void;
+  getNextOTP: () => string;
   deleteTeamMember: (memberId: string) => void;
   addTask: (task: Omit<Task, "id" | "createdAt"> & { id?: string; createdAt?: string }) => void;
   updateTask: (taskId: string, task: Partial<Task>) => void;
@@ -328,6 +330,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStoredUsers((prev) => [...prev, { ...newUser, id: Date.now().toString() }]);
     logActivity({ category: "user", action: "User Added", actorEmail: user?.email || "", actorName: user?.name || "", targetName: newUser.name, meta: { role: newUser.role, email: newUser.email } });
     return { success: true, message: "User created successfully." };
+  };
+
+  const updateUser = (
+    userId: string,
+    updates: { phone?: string; name?: string; role?: Role }
+  ): void => {
+    setStoredUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
+    );
+  };
+
+  const getNextOTP = (): string => {
+    const otpCodes = storedUsers
+      .map((u) => parseInt(u.password))
+      .filter((n) => n >= 100001 && n <= 199999);
+    const max = otpCodes.length > 0 ? Math.max(...otpCodes) : 100000;
+    return String(max + 1);
   };
 
   const deleteTeamMember = (memberId: string): void =>
@@ -604,6 +623,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginAsUser,
         logout,
         addUser,
+        updateUser,
+        getNextOTP,
         deleteTeamMember,
         addTask,
         updateTask,
