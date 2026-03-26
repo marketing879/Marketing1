@@ -508,13 +508,36 @@ Return this exact JSON:
 
   userContent.push({ type: "text", text: contextNote });
 
-  const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ systemPrompt, userContent }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ systemPrompt, userContent }),
+    });
+  } catch (networkErr) {
+    // Catches CORS blocks and network failures before a response is received
+    throw new Error(
+      "Could not reach the scoring service. This is usually a CORS or network issue — " +
+      "please ensure the server allows requests from this origin, or try again shortly."
+    );
+  }
 
-  if (!response.ok) throw new Error(`API error ${response.status}`);
+  if (response.status === 401) {
+    throw new Error(
+      "AI scoring is not configured on the server (missing API key). " +
+      "Please set REACT_APP_TTS_SECRET in your Railway environment variables."
+    );
+  }
+  if (response.status === 503) {
+    throw new Error(
+      "The scoring service is temporarily unavailable (503). " +
+      "The Railway service may be starting up — please wait a moment and try again."
+    );
+  }
+  if (!response.ok) {
+    throw new Error(`Scoring failed with status ${response.status}. Please try again.`);
+  }
   const data = await response.json();
   const parsed = data.result;
 

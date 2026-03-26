@@ -282,11 +282,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((data: any[]) => setAssistanceTickets(data.map((t: any) => ({ ...t, id: t.id || String(t._id) }))))
         .catch((err) => console.error("[UserContext] Failed to load tickets:", err));
 
-      // Load activity log (superadmin/supremo see all; others see own)
-      fetch(`${API_URL}/api/activity?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
-        .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-        .then((data: any[]) => setActivityLog(data))
-        .catch(() => {});
+      // Load activity log — only for privileged roles; silently skip if route returns 404
+      if (u.role === "superadmin" || u.role === "supremo") {
+        fetch(`${API_URL}/api/activity?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
+          .then((r) => {
+            if (r.status === 404) return [] as any[]; // route not yet deployed — ignore
+            return r.ok ? r.json() : Promise.reject(r.status);
+          })
+          .then((data: any[]) => setActivityLog(data))
+          .catch((err) => console.warn("[UserContext] activity log unavailable:", err));
+      }
     }
   }, [user?.email]);
 
