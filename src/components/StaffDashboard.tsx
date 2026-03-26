@@ -120,10 +120,25 @@ async function extractVideoFrames(videoDataUrl: string, frameCount = 6): Promise
   });
 }
 
+// ── Strip our appended #filename tag before checking MIME ─────────────────────
+function cleanDataUrl(dataUrl: string): string {
+  const hashIdx = dataUrl.indexOf("#filename=");
+  return hashIdx > -1 ? dataUrl.slice(0, hashIdx) : dataUrl;
+}
+function getFilenameFromUrl(dataUrl: string): string {
+  const m = dataUrl.match(/#filename=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+function getFileSizeFromUrl(dataUrl: string): number {
+  const m = dataUrl.match(/&size=(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 // ── Detect if a dataURL is a document (non-image, non-video) ─────────────────
 function isDocumentFile(dataUrl: string): boolean {
-  if (!dataUrl.startsWith("data:")) return false;
-  const mime = dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+  const clean = cleanDataUrl(dataUrl);
+  if (!clean.startsWith("data:")) return false;
+  const mime = clean.split(";")[0].replace("data:", "").toLowerCase();
   return (
     mime === "application/pdf" ||
     mime.includes("word") || mime.includes("document") ||
@@ -135,7 +150,8 @@ function isDocumentFile(dataUrl: string): boolean {
 }
 
 function getDocumentFormat(dataUrl: string): string {
-  const mime = dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+  const clean = cleanDataUrl(dataUrl);
+  const mime = clean.split(";")[0].replace("data:", "").toLowerCase();
   if (mime === "application/pdf") return "PDF";
   if (mime.includes("sheet") || mime.includes("excel")) return "Excel / Spreadsheet";
   if (mime.includes("word") || mime.includes("document")) return "Word Document";
@@ -146,33 +162,72 @@ function getDocumentFormat(dataUrl: string): string {
 }
 
 function getMimeFromDataUrl(dataUrl: string): string {
-  return dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+  return cleanDataUrl(dataUrl).split(";")[0].replace("data:", "").toLowerCase();
 }
 function getBase64FromDataUrl(dataUrl: string): string {
-  return dataUrl.split(",")[1] || "";
+  return cleanDataUrl(dataUrl).split(",")[1] || "";
+}
+
+// ── File size from dataURL (approximate bytes) ────────────────────────────────
+function getDataUrlBytes(dataUrl: string): number {
+  const b64 = getBase64FromDataUrl(dataUrl);
+  return Math.round((b64.length * 3) / 4);
+}
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// ── Doc icon map ───────────────────────────────────────────────────────────────
+function getDocIcon(fmt: string): { icon: string; color: string; bg: string; border: string } {
+  switch (fmt) {
+    case "PDF":                 return { icon: "📄", color: "#ff6b6b", bg: "rgba(255,107,107,0.12)", border: "rgba(255,107,107,0.35)" };
+    case "Word Document":       return { icon: "📝", color: "#4fc3f7", bg: "rgba(79,195,247,0.12)",  border: "rgba(79,195,247,0.35)"  };
+    case "Excel / Spreadsheet": return { icon: "📊", color: "#81c784", bg: "rgba(129,199,132,0.12)", border: "rgba(129,199,132,0.35)" };
+    case "CSV":                 return { icon: "📋", color: "#aed581", bg: "rgba(174,213,129,0.12)", border: "rgba(174,213,129,0.35)" };
+    case "PowerPoint":          return { icon: "📑", color: "#ffb74d", bg: "rgba(255,183,77,0.12)",  border: "rgba(255,183,77,0.35)"  };
+    case "Text File":           return { icon: "📃", color: "#b0bec5", bg: "rgba(176,190,197,0.12)", border: "rgba(176,190,197,0.35)" };
+    default:                    return { icon: "📎", color: "#b06af3", bg: "rgba(176,106,243,0.12)", border: "rgba(176,106,243,0.35)" };
+  }
 }
 
 // ── Extract actual text content from uploaded document dataURLs ───────────────
-// TXT/CSV  → decode base64 directly
-// DOCX     → mammoth (dynamic import)
-// XLSX/XLS → SheetJS (dynamic import)
-// PDF      → passed directly as document block to Anthropic (no extraction needed)
-async function extractDocumentText(dataUrl: string): Promise<{ text: string; isPDF: boolean }> {
-  const mime  = getMimeFromDataUrl(dataUrl);
-  const b64   = getBase64FromDataUrl(dataUrl);
+async function extractDocumentText(dataUrl: string): Promise<{ text: string; isPDF: boolean; pages?: number }> {
+  const mime = getMimeFromDataUrl(dataUrl);
+  const b64  = getBase64FromDataUrl(dataUrl);
 
-  // ── Plain text / CSV ──────────────────────────────────────────────────────
+  // ── Plain text / CSV ───────────────────────────────────────────────────────
   if (mime === "text/plain" || mime === "text/csv") {
-    try {
-      return { text: decodeURIComponent(escape(atob(b64))), isPDF: false };
-    } catch {
-      return { text: atob(b64), isPDF: false };
-    }
+    try { return { text: decodeURIComponent(escape(atob(b64))), isPDF: false }; }
+    catch { return { text: atob(b64), isPDF: false }; }
   }
 
-  // ── PDF — tell caller to use document block, don't extract text ───────────
+  // ── PDF — extract text with pdf.js ─────────────────────────────────────────
   if (mime === "application/pdf") {
-    return { text: "", isPDF: true };
+    try {
+      // @ts-ignore
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf");
+      // Use CDN worker so there's no bundler config needed
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+      const bytes  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const pdf    = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const pages: string[] = [];
+
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page    = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        pages.push(content.items.map((item: any) => item.str).join(" "));
+      }
+
+      const fullText = pages.join("\n\n--- Page Break ---\n\n");
+      return { text: fullText || "(PDF parsed but no text layer found — may be a scanned/image PDF)", isPDF: false, pages: pdf.numPages };
+    } catch (err) {
+      // Fallback: pass as Anthropic document block
+      return { text: "", isPDF: true };
+    }
   }
 
   // ── DOCX / DOC ────────────────────────────────────────────────────────────
@@ -180,21 +235,21 @@ async function extractDocumentText(dataUrl: string): Promise<{ text: string; isP
     try {
       // @ts-ignore
       const mammoth = await import("mammoth");
-      const bytes  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
+      const bytes   = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const result  = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
       return { text: result.value || "(DOCX: no text found)", isPDF: false };
     } catch (err) {
       return { text: `(DOCX extraction failed: ${err})`, isPDF: false };
     }
   }
 
-  // ── XLSX / XLS / CSV (spreadsheet mime variants) ──────────────────────────
+  // ── XLSX / XLS / spreadsheet ───────────────────────────────────────────────
   if (mime.includes("sheet") || mime.includes("excel") || mime.includes("officedocument.spreadsheet")) {
     try {
       // @ts-ignore
-      const XLSX   = await import("xlsx");
-      const bytes  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      const wb     = XLSX.read(bytes, { type: "array" });
+      const XLSX  = await import("xlsx");
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const wb    = XLSX.read(bytes, { type: "array" });
       const lines: string[] = [];
       wb.SheetNames.forEach((name: string) => {
         lines.push(`=== Sheet: ${name} ===`);
@@ -208,7 +263,6 @@ async function extractDocumentText(dataUrl: string): Promise<{ text: string; isP
 
   // ── PPTX / PPT ────────────────────────────────────────────────────────────
   if (mime.includes("presentation") || mime.includes("powerpoint") || mime.includes("officedocument.presentation")) {
-    // PPTX text extraction requires complex XML parsing — send metadata note instead
     return { text: "(PowerPoint file — scoring based on notes and purpose context)", isPDF: false };
   }
 
@@ -2135,6 +2189,10 @@ const StaffDashboard: React.FC = () => {
 
   const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
+    const MAX_WARN_MB  = 5;
+    const MAX_BLOCK_MB = 25;
+    let uploaded = 0;
+
     Array.from(files).forEach((file) => {
       const isImage    = file.type.startsWith("image/");
       const isVideo    = file.type.startsWith("video/");
@@ -2149,27 +2207,38 @@ const StaffDashboard: React.FC = () => {
                          file.type === "text/plain" ||
                          file.type === "text/csv" ||
                          file.name.match(/\.(xlsx|xls|csv|doc|docx|ppt|pptx|pdf|txt)$/i) !== null;
+
       if (!isImage && !isVideo && !isDocument) {
-        showSuccess(`⚠ Unsupported file type: ${file.name}`);
+        showSuccess(`⚠ Unsupported: ${file.name}`);
         return;
       }
+
+      // ── Size checks ──────────────────────────────────────────────────────
+      const sizeMB = file.size / (1024 * 1024);
+      if (sizeMB > MAX_BLOCK_MB) {
+        showSuccess(`🚫 "${file.name}" is ${sizeMB.toFixed(2)} MB — exceeds the ${MAX_BLOCK_MB} MB limit. Please compress and re-upload.`);
+        speakText(`File too large. ${file.name} is ${sizeMB.toFixed(1)} megabytes. Maximum allowed is ${MAX_BLOCK_MB} megabytes. Please compress or reduce the file and try again.`);
+        return;
+      }
+      if (sizeMB > MAX_WARN_MB) {
+        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — large files may slow down analysis.`);
+      }
+
       const reader = new FileReader();
       reader.onload = (e) => {
         const url = e.target?.result as string;
-        setUploadedPhotos((prev) => {
-          const updated = { ...prev, [taskId]: [...(prev[taskId] || []), url] };
-          // Auto-trigger scoring when a document is uploaded
-          if (isDocument) {
-            setTimeout(() => {
-              showSuccess("📄 Document uploaded — SmartCue auto-scoring will run on submit.");
-            }, 300);
-          }
-          return updated;
-        });
+        // Embed file name as a query-param comment so we can display it later
+        const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
+        setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
+        if (isDocument) {
+          setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
+        }
       };
       reader.readAsDataURL(file);
+      uploaded++;
     });
-    showSuccess(`✓ ${files.length} file${files.length > 1 ? "s" : ""} uploaded`);
+
+    if (uploaded > 0) showSuccess(`✓ ${uploaded} file${uploaded > 1 ? "s" : ""} added`);
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -3754,13 +3823,34 @@ const StaffDashboard: React.FC = () => {
 
                   <div className="sd-photo-grid" style={{ marginBottom: "8px" }}>
                     {(uploadedPhotos[selectedTask.id] || []).map((url, i) => {
-                      const isVid = url.startsWith("data:video/");
+                      const isVid  = cleanDataUrl(url).startsWith("data:video/");
+                      const isDoc  = isDocumentFile(url);
+                      const fmt    = isDoc ? getDocumentFormat(url) : "";
+                      const di     = isDoc ? getDocIcon(fmt) : null;
+                      const fname  = getFilenameFromUrl(url);
+                      const fsize  = getFileSizeFromUrl(url);
                       return (
-                        <div className="sd-photo-thumb" key={i} onClick={() => openLightbox(uploadedPhotos[selectedTask.id], i)}>
-                          {isVid
-                            ? <video src={url} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted playsInline />
-                            : <img src={url} alt={`upload-${i}`} />}
-                          <div className="sd-photo-expand">{isVid ? "▶" : "🔍"}</div>
+                        <div className="sd-photo-thumb" key={i}
+                          onClick={() => !isDoc && openLightbox(uploadedPhotos[selectedTask.id], i)}
+                          style={isDoc ? { cursor: "default" } : {}}
+                        >
+                          {isDoc ? (
+                            <div style={{
+                              width: "100%", height: "100%",
+                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                              background: di!.bg, borderRadius: 8, padding: "6px 4px", gap: 3,
+                            }}>
+                              <span style={{ fontSize: 26 }}>{di!.icon}</span>
+                              <span style={{ fontSize: 9, fontWeight: 800, color: di!.color, letterSpacing: "0.5px" }}>{fmt.split(" ")[0]}</span>
+                              {fname && <span style={{ fontSize: 7, color: "#7e84a3", maxWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{fname}</span>}
+                              {fsize > 0 && <span style={{ fontSize: 7, color: "#434763" }}>{formatBytes(fsize)}</span>}
+                            </div>
+                          ) : isVid ? (
+                            <video src={cleanDataUrl(url)} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted playsInline />
+                          ) : (
+                            <img src={cleanDataUrl(url)} alt={`upload-${i}`} />
+                          )}
+                          {!isDoc && <div className="sd-photo-expand">{isVid ? "▶" : "🔍"}</div>}
                           <button
                             className="sd-photo-remove"
                             onClick={(e) => { e.stopPropagation(); removePhoto(selectedTask.id, i); setFileTypeBadge(null); setEvalStage(0); }}
@@ -3964,27 +4054,44 @@ const StaffDashboard: React.FC = () => {
                 <div style={{ fontSize: 9, color: "#434763", marginTop: 3 }}>Images · Videos · PDF · Word · Excel · CSV · PPT</div>
               </div>
 
-              {/* ── Document file badges ── */}
+              {/* ── Document file badges with icon, name, size ── */}
               {(uploadedPhotos[selectedTask.id] || []).filter(f => isDocumentFile(f)).length > 0 && (
-                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {(uploadedPhotos[selectedTask.id] || []).filter(f => isDocumentFile(f)).map((f, i) => (
-                    <div key={i} style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "5px 10px", borderRadius: 6,
-                      background: "rgba(176,106,243,0.10)", border: "1px solid rgba(176,106,243,0.30)",
-                      fontSize: 10, color: "#b06af3", fontWeight: 700,
-                    }}>
-                      📄 {getDocumentFormat(f)}
-                      <button onClick={() => {
-                        setUploadedPhotos(prev => ({
-                          ...prev,
-                          [selectedTask.id]: prev[selectedTask.id].filter(x => x !== f),
-                        }));
-                      }} style={{ background: "none", border: "none", color: "#b06af3", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
-                    </div>
-                  ))}
-                  <div style={{ width: "100%", fontSize: 9, color: "#7e84a3", marginTop: 2 }}>
-                    📊 SmartCue will auto-score document(s) on submit
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {(uploadedPhotos[selectedTask.id] || []).filter(f => isDocumentFile(f)).map((f, i) => {
+                    const fmt   = getDocumentFormat(f);
+                    const di    = getDocIcon(fmt);
+                    const fname = getFilenameFromUrl(f);
+                    const fsize = getFileSizeFromUrl(f);
+                    const sizeMB = fsize / (1024 * 1024);
+                    const sizeWarn = fsize > 0 && sizeMB > 5;
+                    return (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "7px 12px", borderRadius: 9,
+                        background: di.bg, border: `1px solid ${di.border}`,
+                        minWidth: 0, maxWidth: 260,
+                      }}>
+                        <span style={{ fontSize: 18, flexShrink: 0 }}>{di.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: di.color }}>{fmt}</div>
+                          {fname && <div style={{ fontSize: 9, color: "#7e84a3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fname}</div>}
+                          {fsize > 0 && (
+                            <div style={{ fontSize: 9, color: sizeWarn ? "#ff9500" : "#434763", fontWeight: sizeWarn ? 700 : 400 }}>
+                              {sizeWarn ? "⚠ " : ""}{formatBytes(fsize)}{sizeWarn ? " — large file" : ""}
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => {
+                          setUploadedPhotos(prev => ({
+                            ...prev,
+                            [selectedTask.id]: prev[selectedTask.id].filter(x => x !== f),
+                          }));
+                        }} style={{ background: "none", border: "none", color: di.color, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, flexShrink: 0 }}>✕</button>
+                      </div>
+                    );
+                  })}
+                  <div style={{ width: "100%", fontSize: 9, color: "#7e84a3", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ color: "#00d4ff" }}>◈</span> SmartCue will extract &amp; scan all text on submit
                   </div>
                 </div>
               )}
@@ -4291,17 +4398,39 @@ const TaskCard: React.FC<TaskCardProps> = ({
           {photos.length > 0 && (
             <div className="sd-photo-grid">
               {photos.map((url, i) => {
-                const isVid = url.startsWith("data:video/");
+                const isVid = cleanDataUrl(url).startsWith("data:video/");
+                const isDoc = isDocumentFile(url);
+                const fmt   = isDoc ? getDocumentFormat(url) : "";
+                const di    = isDoc ? getDocIcon(fmt) : null;
+                const fname = getFilenameFromUrl(url);
+                const fsize = getFileSizeFromUrl(url);
                 return (
                   <div
                     className="sd-photo-thumb"
                     key={i}
-                    onClick={() => onOpenLightbox(photos, i)}
+                    onClick={() => !isDoc && onOpenLightbox(photos, i)}
+                    style={isDoc ? { cursor: "default", overflow: "hidden" } : {}}
                   >
-                    {isVid
-                      ? <video src={url} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted playsInline />
-                      : <img src={url} alt={`photo-${i}`} />}
-                    <div className="sd-photo-expand">{isVid ? "▶" : "🔍"}</div>
+                    {isDoc ? (
+                      <div style={{
+                        width: "100%", height: "100%",
+                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                        background: di!.bg, border: `1px solid ${di!.border}`, borderRadius: 8,
+                        padding: "6px 4px", gap: 3,
+                      }}>
+                        <span style={{ fontSize: 22 }}>{di!.icon}</span>
+                        <span style={{ fontSize: 8, fontWeight: 800, color: di!.color, textAlign: "center", letterSpacing: "0.5px", lineHeight: 1.2, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {fmt.split(" ")[0]}
+                        </span>
+                        {fname && <span style={{ fontSize: 7, color: "#7e84a3", maxWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{fname}</span>}
+                        {fsize > 0 && <span style={{ fontSize: 7, color: "#434763" }}>{formatBytes(fsize)}</span>}
+                      </div>
+                    ) : isVid ? (
+                      <video src={cleanDataUrl(url)} style={{ width: "100%", height: "100%", objectFit: "cover" }} muted playsInline />
+                    ) : (
+                      <img src={cleanDataUrl(url)} alt={`photo-${i}`} />
+                    )}
+                    {!isDoc && <div className="sd-photo-expand">{isVid ? "▶" : "🔍"}</div>}
                     <button
                       className="sd-photo-remove"
                       onClick={(e) => { e.stopPropagation(); onRemovePhoto(i); }}
