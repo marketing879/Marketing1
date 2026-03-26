@@ -145,79 +145,185 @@ function getDocumentFormat(dataUrl: string): string {
   return "Document";
 }
 
+function getMimeFromDataUrl(dataUrl: string): string {
+  return dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+}
+function getBase64FromDataUrl(dataUrl: string): string {
+  return dataUrl.split(",")[1] || "";
+}
+
+// ── Extract actual text content from uploaded document dataURLs ───────────────
+// TXT/CSV  → decode base64 directly
+// DOCX     → mammoth (dynamic import)
+// XLSX/XLS → SheetJS (dynamic import)
+// PDF      → passed directly as document block to Anthropic (no extraction needed)
+async function extractDocumentText(dataUrl: string): Promise<{ text: string; isPDF: boolean }> {
+  const mime  = getMimeFromDataUrl(dataUrl);
+  const b64   = getBase64FromDataUrl(dataUrl);
+
+  // ── Plain text / CSV ──────────────────────────────────────────────────────
+  if (mime === "text/plain" || mime === "text/csv") {
+    try {
+      return { text: decodeURIComponent(escape(atob(b64))), isPDF: false };
+    } catch {
+      return { text: atob(b64), isPDF: false };
+    }
+  }
+
+  // ── PDF — tell caller to use document block, don't extract text ───────────
+  if (mime === "application/pdf") {
+    return { text: "", isPDF: true };
+  }
+
+  // ── DOCX / DOC ────────────────────────────────────────────────────────────
+  if (mime.includes("word") || mime.includes("officedocument.wordprocessing")) {
+    try {
+      // @ts-ignore
+      const mammoth = await import("mammoth");
+      const bytes  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
+      return { text: result.value || "(DOCX: no text found)", isPDF: false };
+    } catch (err) {
+      return { text: `(DOCX extraction failed: ${err})`, isPDF: false };
+    }
+  }
+
+  // ── XLSX / XLS / CSV (spreadsheet mime variants) ──────────────────────────
+  if (mime.includes("sheet") || mime.includes("excel") || mime.includes("officedocument.spreadsheet")) {
+    try {
+      // @ts-ignore
+      const XLSX   = await import("xlsx");
+      const bytes  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const wb     = XLSX.read(bytes, { type: "array" });
+      const lines: string[] = [];
+      wb.SheetNames.forEach((name: string) => {
+        lines.push(`=== Sheet: ${name} ===`);
+        lines.push(XLSX.utils.sheet_to_csv(wb.Sheets[name]));
+      });
+      return { text: lines.join("\n"), isPDF: false };
+    } catch (err) {
+      return { text: `(Excel extraction failed: ${err})`, isPDF: false };
+    }
+  }
+
+  // ── PPTX / PPT ────────────────────────────────────────────────────────────
+  if (mime.includes("presentation") || mime.includes("powerpoint") || mime.includes("officedocument.presentation")) {
+    // PPTX text extraction requires complex XML parsing — send metadata note instead
+    return { text: "(PowerPoint file — scoring based on notes and purpose context)", isPDF: false };
+  }
+
+  return { text: "(Unknown document type)", isPDF: false };
+}
+
 async function scoreWithAI(notes: string, files: string[], purpose?: string, links?: string[]): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
   const isVideo   = hasFiles && files[0].startsWith("data:video/");
 
   // ── Detect document uploads ────────────────────────────────────────────────
-  const documentFiles = files.filter(f => isDocumentFile(f));
+  const documentFiles  = files.filter(f => isDocumentFile(f));
   const isDocumentOnly = documentFiles.length > 0 && !isVideo && files.every(f => isDocumentFile(f));
-  const hasLinks = links && links.filter(l => l.trim()).length > 0;
+  const hasLinks       = links && links.filter(l => l.trim()).length > 0;
 
   // For videos: extract 6 frames to send as images
   let scoringImages: string[] = [];
   if (isVideo) {
-    try {
-      scoringImages = await extractVideoFrames(files[0], 6);
-    } catch {
-      scoringImages = [];
-    }
+    try { scoringImages = await extractVideoFrames(files[0], 6); }
+    catch { scoringImages = []; }
   } else {
-    // Only pass image files to AI vision — not documents
     scoringImages = files.filter(f => !f.startsWith("data:video/") && !isDocumentFile(f));
   }
 
   const hasImages = scoringImages.length > 0;
 
-  // ── DOCUMENT-SPECIFIC SCORING ─────────────────────────────────────────────
+  // ── DOCUMENT-SPECIFIC SCORING WITH REAL TEXT EXTRACTION ──────────────────
   if (isDocumentOnly || (documentFiles.length > 0 && !hasImages && !isVideo)) {
-    const docFormats = documentFiles.map(getDocumentFormat).join(", ");
-    const linkList   = hasLinks ? links!.filter(l => l.trim()).join(", ") : "";
+    const linkList = hasLinks ? links!.filter(l => l.trim()).join("\n") : "";
 
-    const docSystemPrompt = `You are a professional content quality scorer for Roswalt Realty marketing documents. Score the submitted document/file across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — evaluate all content against this purpose as the primary lens.` : ""}
+    // ── Step 1: Extract text from every document ──────────────────────────
+    const extractionResults = await Promise.all(documentFiles.map(extractDocumentText));
+    const pdfFiles    = documentFiles.filter((_, i) => extractionResults[i].isPDF);
+    const textBlocks  = extractionResults
+      .filter(r => !r.isPDF && r.text.trim())
+      .map((r, i) => `=== Document ${i + 1} (${getDocumentFormat(documentFiles.filter((_, j) => !extractionResults[j].isPDF)[i])}) ===\n${r.text}`);
 
-Document type(s) submitted: ${docFormats}${linkList ? `\nLinks/References submitted: ${linkList}` : ""}
+    const combinedText   = textBlocks.join("\n\n---\n\n");
+    const hasPDFs        = pdfFiles.length > 0;
+    const hasExtractedText = combinedText.trim().length > 0;
+    const docFormats     = documentFiles.map(getDocumentFormat).join(", ");
+
+    // ── Step 2: Build system prompt with real content awareness ───────────
+    const docSystemPrompt = `You are a professional content quality scorer and grammar expert for Roswalt Realty. You are reviewing the ACTUAL TEXT CONTENT extracted from uploaded documents.
+
+Your job:
+1. Read every word of the document text provided.
+2. Find ALL grammar, spelling, punctuation, and language errors — quote the exact problematic phrase and the corrected version.
+3. Score the document across 5 categories (A–E), each worth 20 marks (total 100).
+4. For EVERY subcriteria that loses marks, provide a GOOD → BETTER → BEST improvement tip.
+
+Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — evaluate all content against this purpose.` : ""}
+
+Document type(s): ${docFormats}${linkList ? `\nReference links: ${linkList}` : ""}
 
 Categories and subcriteria (each subcriterion is worth 4 marks):
 
-A) Content Quality & Clarity: A1=Headline/title impact, A2=Body copy clarity, A3=Information completeness, A4=Logical flow & structure, A5=Audience appropriateness
+A) Content Quality & Clarity: A1=Headline/title impact, A2=Body copy clarity & conciseness, A3=Information completeness, A4=Logical flow & structure, A5=Audience appropriateness
 B) Compliance & Accuracy: B1=RERA/legal disclaimers present, B2=No unsubstantiated claims, B3=Data/numbers accuracy, B4=Brand guideline adherence, B5=Source citations where needed
-C) Grammar & Language: C1=Spelling accuracy, C2=Punctuation & syntax, C3=Sentence structure, C4=Tone consistency, C5=CTA clarity & persuasiveness
-D) Creativity & Engagement: D1=Concept originality, D2=Headline hook strength, D3=Storytelling effectiveness, D4=Value proposition clarity, D5=Memorability / differentiation
+C) Grammar & Language (MOST IMPORTANT — score strictly based on actual text): C1=Spelling accuracy (quote each error found), C2=Punctuation & syntax correctness, C3=Sentence structure & readability, C4=Tone consistency & professionalism, C5=CTA clarity & persuasiveness
+D) Creativity & Engagement: D1=Concept originality, D2=Headline hook strength, D3=Storytelling & narrative, D4=Value proposition clarity, D5=Memorability / differentiation
 E) Purpose Alignment: E1=Task purpose match, E2=Target audience fit, E3=Brand voice alignment, E4=Expected output delivered, E5=Overall professionalism
 
-SCORING RULES:
-- Score grammar based on the completion notes text since document content cannot be directly parsed.
-- For spreadsheets/Excel: focus on B (data accuracy), C (labelling), D (presentation logic), E (usefulness).
-- For PDFs/Word: focus on all 5 categories equally.
-- For CSVs/data: weight B and E heavily; A and D less.
-- CRITICAL: Every subcriteria score MUST be 0–4. Every category score MUST equal sum of its 5 subcriteria (max 20). Never inflate.
-- The "note" field MUST explain the exact reason — be specific and actionable.
-- "improvements" array: Format EACH item as one of three tiers: "GOOD: [what's already working]", "BETTER: [specific improvement to make]", or "BEST: [gold standard version to aim for]". Each improvement item must start with exactly "GOOD:", "BETTER:", or "BEST:".
+CRITICAL RULES:
+- Category C (Grammar) MUST be scored strictly on the ACTUAL TEXT extracted. Every spelling error, comma splice, run-on sentence, missing article, or wrong tense MUST be listed in grammarErrors as: "Line/phrase: '[original]' → should be '[corrected]'".
+- If the document has no grammar errors, set grammarClean:true and grammarErrors:[].
+- For spreadsheets: weight C on column/header labels; weight B on data validity; score A and D based on structure.
+- Every subcriteria score MUST be 0–4. Category score MUST equal sum of subcriteria (max 20). Never inflate.
+- The "note" field for each subcriteria MUST quote specific text from the document and explain exactly what is wrong.
+- "improvements" array: EVERY item MUST start with exactly "GOOD:", "BETTER:", or "BEST:". Provide at least one of each tier for any category scoring below 15/20. Example: "GOOD: Headline is present but generic", "BETTER: Add the project name and USP in the headline", "BEST: Lead with a bold claim + RERA number + emotional hook in the first line".
+- "strengths" array: Quote actual text/phrases from the document that are well-written.
 
 Return this exact JSON:
 {
   "categories": [
-    { "id": "A", "name": "Content Quality & Clarity", "score": 0, "subcriteria": [{ "label": "A1: Headline/title impact", "score": 0, "max": 4, "note": "..." }, ...5 items] },
-    { "id": "B", "name": "Compliance & Accuracy", "score": 0, "subcriteria": [...5] },
-    { "id": "C", "name": "Grammar & Language", "score": 0, "subcriteria": [...5] },
-    { "id": "D", "name": "Creativity & Engagement", "score": 0, "subcriteria": [...5] },
-    { "id": "E", "name": "Purpose Alignment", "score": 0, "subcriteria": [...5] }
+    { "id": "A", "name": "Content Quality & Clarity", "score": 0, "subcriteria": [{ "label": "A1: Headline/title impact", "score": 0, "max": 4, "note": "..." }, {"label":"A2: Body copy clarity","score":0,"max":4,"note":"..."}, {"label":"A3: Information completeness","score":0,"max":4,"note":"..."}, {"label":"A4: Logical flow & structure","score":0,"max":4,"note":"..."}, {"label":"A5: Audience appropriateness","score":0,"max":4,"note":"..."} ] },
+    { "id": "B", "name": "Compliance & Accuracy", "score": 0, "subcriteria": [{"label":"B1: RERA/legal disclaimers","score":0,"max":4,"note":"..."},{"label":"B2: No unsubstantiated claims","score":0,"max":4,"note":"..."},{"label":"B3: Data/numbers accuracy","score":0,"max":4,"note":"..."},{"label":"B4: Brand guideline adherence","score":0,"max":4,"note":"..."},{"label":"B5: Source citations","score":0,"max":4,"note":"..."}] },
+    { "id": "C", "name": "Grammar & Language", "score": 0, "subcriteria": [{"label":"C1: Spelling accuracy","score":0,"max":4,"note":"..."},{"label":"C2: Punctuation & syntax","score":0,"max":4,"note":"..."},{"label":"C3: Sentence structure","score":0,"max":4,"note":"..."},{"label":"C4: Tone consistency","score":0,"max":4,"note":"..."},{"label":"C5: CTA clarity & persuasiveness","score":0,"max":4,"note":"..."}] },
+    { "id": "D", "name": "Creativity & Engagement", "score": 0, "subcriteria": [{"label":"D1: Concept originality","score":0,"max":4,"note":"..."},{"label":"D2: Headline hook","score":0,"max":4,"note":"..."},{"label":"D3: Storytelling","score":0,"max":4,"note":"..."},{"label":"D4: Value proposition","score":0,"max":4,"note":"..."},{"label":"D5: Memorability","score":0,"max":4,"note":"..."}] },
+    { "id": "E", "name": "Purpose Alignment", "score": 0, "subcriteria": [{"label":"E1: Task purpose match","score":0,"max":4,"note":"..."},{"label":"E2: Target audience fit","score":0,"max":4,"note":"..."},{"label":"E3: Brand voice alignment","score":0,"max":4,"note":"..."},{"label":"E4: Expected output delivered","score":0,"max":4,"note":"..."},{"label":"E5: Overall professionalism","score":0,"max":4,"note":"..."}] }
   ],
-  "grammarErrors": [],
-  "grammarClean": true,
-  "strengths": [],
-  "improvements": [],
-  "extractedText": "",
-  "verdict": ""
+  "grammarErrors": ["phrase: '[original]' → '[corrected]'"],
+  "grammarClean": false,
+  "strengths": ["Quote actual strong text here"],
+  "improvements": ["GOOD: ...", "BETTER: ...", "BEST: ..."],
+  "extractedText": "(first 300 chars of document text for reference)",
+  "verdict": "One paragraph overall assessment."
 }`;
 
+    // ── Step 3: Build userContent — PDF blocks + extracted text ─────────
     const docUserContent: any[] = [];
-    docUserContent.push({
-      type: "text",
-      text: `Document submission for scoring.\n\nStaff completion notes:\n${notes || "(no notes provided)"}\n\nDocument format(s): ${docFormats}${linkList ? `\n\nLinks/References included:\n${linkList}` : ""}\n\nPlease score this document submission across all 5 categories based on the notes, document type, and context.`,
-    });
 
+    // Add PDF files as Anthropic document blocks (the API can read PDFs natively)
+    for (const pdfDataUrl of pdfFiles) {
+      const b64 = getBase64FromDataUrl(pdfDataUrl);
+      docUserContent.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: b64 },
+      });
+    }
+
+    // Add extracted text from DOCX/XLSX/TXT/CSV as a text block
+    const textPayload = [
+      hasExtractedText
+        ? `EXTRACTED DOCUMENT CONTENT FOR GRAMMAR REVIEW:\n\n${combinedText}`
+        : "(No extractable text — scoring based on document type, notes, and purpose)",
+      `\nSTAFF COMPLETION NOTES:\n${notes || "(no notes provided)"}`,
+      linkList ? `\nREFERENCE LINKS:\n${linkList}` : "",
+      `\nDOCUMENT FORMAT(S): ${docFormats}`,
+      "\n\nPlease read every word of the document text above, identify all grammar/spelling errors quoting the exact phrase, score across all 5 categories, and provide Good → Better → Best improvement tips for every gap.",
+    ].filter(Boolean).join("\n");
+
+    docUserContent.push({ type: "text", text: textPayload });
+
+    // ── Step 4: Call the backend ──────────────────────────────────────────
     const docResponse = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -225,7 +331,7 @@ Return this exact JSON:
     });
 
     if (!docResponse.ok) throw new Error(`API error ${docResponse.status}`);
-    const docData = await docResponse.json();
+    const docData   = await docResponse.json();
     const docParsed = docData.result;
 
     const docCategories: AIScoreCategory[] = (docParsed.categories || []).map((cat: any) => ({
@@ -242,19 +348,19 @@ Return this exact JSON:
       score: Math.min(cat.subcriteria.reduce((s, sub) => s + sub.score, 0), 20),
     }));
 
-    const docTotal = docCategories.reduce((s: number, c: AIScoreCategory) => s + c.score, 0);
+    const docTotal   = docCategories.reduce((s: number, c: AIScoreCategory) => s + c.score, 0);
     const docPercent = Math.round((docTotal / 100) * 100);
 
     return {
-      categories: docCategories,
-      percentScore: docPercent,
-      grade: gradeFromPercent(docPercent),
+      categories:    docCategories,
+      percentScore:  docPercent,
+      grade:         gradeFromPercent(docPercent),
       grammarErrors: docParsed.grammarErrors || [],
-      grammarClean: docParsed.grammarClean ?? true,
-      strengths: docParsed.strengths || [],
-      improvements: docParsed.improvements || [],
-      extractedText: docParsed.extractedText || "",
-      verdict: docParsed.verdict || "",
+      grammarClean:  docParsed.grammarClean ?? true,
+      strengths:     docParsed.strengths || [],
+      improvements:  docParsed.improvements || [],
+      extractedText: docParsed.extractedText || combinedText.slice(0, 300),
+      verdict:       docParsed.verdict || "",
     };
   }
 
@@ -1866,16 +1972,19 @@ const StaffDashboard: React.FC = () => {
     }
 
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-    const isVid = photos.length > 0 && photos[0].startsWith("data:video/");
+    const isVid  = photos.length > 0 && photos[0].startsWith("data:video/");
+    const isDoc  = photos.length > 0 && photos.every(f => isDocumentFile(f));
 
     setAnalyzingImage(true);
-    setEvalStage(1); // File type detection
+    setEvalStage(1);
     await sleep(500);
-    setEvalStage(2); // Content category
+    setEvalStage(2);
     await sleep(600);
-    setEvalStage(3); // Frame extraction (video) or visual analysis (image)
+    setEvalStage(3);
     speakText(isVid
       ? "SmartCue is extracting video frames and analysing your submission across 5 quality categories. Please wait."
+      : isDoc
+      ? "SmartCue is reading your document, extracting all text, and performing a full grammar and quality review. Please wait."
       : "SmartCue is Analysing your submission across 5 quality categories. Please wait."
     );
 
@@ -1908,7 +2017,9 @@ const StaffDashboard: React.FC = () => {
         `${result.verdict} ` +
         `Category breakdown: ${catBreakdown}. ` +
         (weakCats.length > 0 ? `Weak areas requiring attention: ${weakCats.join(", ")}. ` : "All categories passed. ") +
-        (result.grammarClean ? "Grammar is clean. " : `${result.grammarErrors.length} grammar issue${result.grammarErrors.length !== 1 ? "s" : ""} detected. `) +
+        (result.grammarClean
+          ? "Grammar is clean — no errors found. "
+          : `${result.grammarErrors.length} grammar issue${result.grammarErrors.length !== 1 ? "s" : ""} detected in the document. Each error has been listed with Good, Better, and Best improvement tips. `) +
         (result.percentScore >= 55 ? "You may proceed and submit for approval." : "Consider revising your submission before submitting.");
 
       await speakText(voiceMsg);
@@ -3382,16 +3493,60 @@ const StaffDashboard: React.FC = () => {
               })}
             </div>
 
-            {/* ── GRAMMAR ERRORS ── */}
+            {/* ── GRAMMAR ERRORS — detailed per-line ── */}
             {aiScoreResult.grammarErrors.length > 0 && (
-              <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(255,51,102,0.05)", border: "1px solid rgba(255,51,102,0.16)", borderRadius: 9 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, color: "#ff3366", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 7 }}>Grammar Issues Found</div>
-                {aiScoreResult.grammarErrors.map((err, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#c8ccdd", paddingLeft: 8, marginBottom: 3, display: "flex", gap: 6 }}>
-                    <span style={{ color: "#ff3366", flexShrink: 0 }}>✗</span>{err}
-                  </div>
-                ))}
+              <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(255,51,102,0.05)", border: "1px solid rgba(255,51,102,0.22)", borderRadius: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                  <span style={{ fontSize: 9, fontWeight: 800, color: "#ff3366", textTransform: "uppercase", letterSpacing: "0.8px" }}>✗ Grammar &amp; Language Issues Found</span>
+                  <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 4, background: "rgba(255,51,102,0.12)", color: "#ff3366", border: "1px solid rgba(255,51,102,0.3)", fontWeight: 900 }}>{aiScoreResult.grammarErrors.length}</span>
+                </div>
+                {aiScoreResult.grammarErrors.map((err, i) => {
+                  // Try to split "phrase: 'original' → 'corrected'" format
+                  const arrowIdx = err.indexOf("→");
+                  const hasSplit = arrowIdx > -1;
+                  const before   = hasSplit ? err.slice(0, arrowIdx).trim() : err;
+                  const after    = hasSplit ? err.slice(arrowIdx + 1).trim() : "";
+                  return (
+                    <div key={i} style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 7, background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.12)" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <span style={{ color: "#ff3366", fontSize: 10, flexShrink: 0, marginTop: 1 }}>✗</span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 10, color: "#ff8fa3", lineHeight: 1.55 }}>{before}</span>
+                          {after && (
+                            <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 9, color: "#434763" }}>should be →</span>
+                              <span style={{ fontSize: 10, color: "#00ff88", fontWeight: 700, background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.2)", borderRadius: 4, padding: "1px 7px" }}>{after}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Inline Good/Better/Best tip for this specific error */}
+                      <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" as const }}>
+                        <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 3, background: "rgba(245,197,24,0.1)", color: "#f5c518", border: "1px solid rgba(245,197,24,0.25)", fontWeight: 800 }}>● GOOD: Fix this error</span>
+                        <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 3, background: "rgba(255,149,0,0.1)", color: "#ff9500", border: "1px solid rgba(255,149,0,0.25)", fontWeight: 800 }}>◆ BETTER: Rewrite the sentence for clarity</span>
+                        <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 3, background: "rgba(0,255,136,0.08)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.22)", fontWeight: 800 }}>★ BEST: Use polished, brand-voice language throughout</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            )}
+            {aiScoreResult.grammarClean && aiScoreResult.grammarErrors.length === 0 && (
+              <div style={{ marginBottom: 14, padding: "8px 12px", background: "rgba(0,255,136,0.05)", border: "1px solid rgba(0,255,136,0.18)", borderRadius: 8, fontSize: 10, color: "#00ff88", display: "flex", alignItems: "center", gap: 7 }}>
+                <span>✓</span> No grammar or spelling issues found in this document.
+              </div>
+            )}
+
+            {/* ── Extracted text preview ── */}
+            {aiScoreResult.extractedText && aiScoreResult.extractedText.trim().length > 10 && (
+              <details style={{ marginBottom: 14 }}>
+                <summary style={{ fontSize: 9, fontWeight: 800, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", cursor: "pointer", userSelect: "none", padding: "6px 0" }}>
+                  📄 Document text read by SmartCue (click to expand)
+                </summary>
+                <div style={{ marginTop: 6, padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, fontSize: 9, color: "#7e84a3", lineHeight: 1.7, fontFamily: "monospace", whiteSpace: "pre-wrap", maxHeight: 160, overflowY: "auto" }}>
+                  {aiScoreResult.extractedText}
+                </div>
+              </details>
             )}
 
             {/* ── STRENGTHS + IMPROVEMENTS ── */}
@@ -4190,3 +4345,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
+
+
+
+
+
+
+
+
