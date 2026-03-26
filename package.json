@@ -16,7 +16,9 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "lucide-react": "0.568.0",
+    "mammoth": "^1.12.0",
     "mongodb": "4.1",
+    "pdfjs-dist": "^5.5.207",
     "pg": "^8.20.0",
     "puppeteer": "^24.37.5",
     "qrcode-terminal": "^0.12.0",
@@ -27,9 +29,11 @@
     "recharts": "^3.7.0",
     "sheetjs-style": "^0.15.8",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.7.5",
     "twilio": "^5.12.2",
     "web-vitals": "^3.5.1",
-    "whatsapp-web.js": "^1.34.6"
+    "whatsapp-web.js": "^1.34.6",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -57,6 +61,7 @@
   "devDependencies": {
     "@types/dotenv": "^6.1.1",
     "@types/react-router-dom": "^5.3.3",
+    "@types/socket.io-client": "^1.4.36",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "eslint-plugin-jest": "^25.7.0",
