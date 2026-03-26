@@ -3,33 +3,15 @@ import rateLimit from "express-rate-limit";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { v2 as cloudinary } from "cloudinary";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";  // ← fixed: was imported 3x, now once
+import multer from "multer";                       // ← fixed: was imported 3x, now once
 import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 
 dotenv.config();
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-console.log("Cloudinary: ✔ Configured");
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-console.log("Cloudinary: ✔ Configured");
-
-cloudinary.config({
+cloudinary.config({                                // ← fixed: was called 3x, now once
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
@@ -176,10 +158,45 @@ const taskSchema = new mongoose.Schema({
 taskSchema.index({ assignedBy: 1 });
 taskSchema.index({ assignedTo: 1 });
 taskSchema.index({ approvalStatus: 1 });
-const Project = mongoose.model("Project", projectSchema);
-const Task    = mongoose.model("Task",    taskSchema);
+
+// ── USER SCHEMA — NEW ─────────────────────────────────────────────────────────
+const userSchema = new mongoose.Schema({
+  id:       { type: String, index: true },
+  name:     { type: String, required: true, trim: true },
+  email:    { type: String, required: true, unique: true, lowercase: true, trim: true },
+  role:     { type: String, enum: ["superadmin", "supremo", "admin", "staff"], default: "staff" },
+  phone:    { type: String, default: "" },
+  password: { type: String, default: "" },
+  avatar:   { type: String, default: "" },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true, strict: false });
+
+// ── ASSISTANCE TICKET SCHEMA — NEW ────────────────────────────────────────────
+const assistanceTicketSchema = new mongoose.Schema({
+  id:           { type: String, index: true },
+  taskId:       { type: String },
+  taskTitle:    { type: String },
+  taskDueDate:  { type: String },
+  assignedTo:   { type: String },
+  assignedBy:   { type: String },
+  raisedBy:     { type: String },
+  ticketType:   { type: String, default: "general-query" },
+  reason:       { type: String },
+  staffNote:    { type: String },
+  status:       { type: String, default: "open" },
+  adminComment: { type: String },
+  approvedBy:   { type: String },
+  approvedAt:   { type: String },
+  raisedAt:     { type: String, default: () => new Date().toISOString() },
+}, { timestamps: true, strict: false });
+
+const Project          = mongoose.model("Project",          projectSchema);
+const Task             = mongoose.model("Task",             taskSchema);
+const User             = mongoose.model("User",             userSchema);
+const AssistanceTicket = mongoose.model("AssistanceTicket", assistanceTicketSchema);
 
 let inMemoryProjects = [];
+let inMemoryUsers    = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CHAT SCHEMAS
@@ -375,7 +392,7 @@ const validateProject = (req, res, next) => {
   const missing = [
     !name               && "name",
     !projectCode        && "projectCode",
-        !launchDate         && "launchDate",
+    !launchDate         && "launchDate",
   ].filter(Boolean);
   if (missing.length)
     return res.status(400).json({ message: `Missing: ${missing.join(", ")}.` });
@@ -394,7 +411,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
     const b64 = req.file.buffer.toString("base64");
-    const dataUri = \data:\;base64,\\;
+    const dataUri = `data:${req.file.mimetype};base64,${b64}`;  // ← fixed: broken template literal
     const folder = req.body?.folder || "smartcue";
     const result = await cloudinary.uploader.upload(dataUri, { folder, resource_type: "auto" });
     res.json({ success: true, url: result.secure_url, public_id: result.public_id });
@@ -404,7 +421,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-app.get("/api/projects",, async (req, res) => {
+app.get("/api/projects", async (req, res) => {   // ← fixed: removed double comma
   try {
     if (mongoose.connection.readyState === 1)
       return res.json(await Project.find().sort({ createdAt: -1 }));
@@ -524,6 +541,159 @@ app.delete("/api/tasks/:id", async (req, res) => {
     if (!t) return res.status(404).json({ message: "Task not found." });
     res.json({ success: true, message: `Task "${t.title}" deleted.` });
   } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER ROUTES  ── NEW: fixes SupremoDashboard.tsx:1040 GET /api/users 404
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/users — all team members
+app.get("/api/users", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const users = await User.find({}, "-password").sort({ name: 1 }).lean();
+      const normalized = users.map(u => ({ ...u, id: u.id || String(u._id) }));
+      // If DB has no users yet, fall back to TEAM_DIRECTORY so dashboard
+      // always gets something useful rather than an empty array
+      if (normalized.length === 0) {
+        const fallback = Object.entries(TEAM_DIRECTORY).map(([email, info]) => ({
+          id: email, email, name: info.name, phone: info.phone, role: "staff",
+        }));
+        return res.json(fallback);
+      }
+      return res.json(normalized);
+    }
+    // In-memory fallback — build from TEAM_DIRECTORY
+    const fallback = Object.entries(TEAM_DIRECTORY).map(([email, info]) => ({
+      id: email, email, name: info.name, phone: info.phone, role: "staff",
+    }));
+    res.json(inMemoryUsers.length ? inMemoryUsers : fallback);
+  } catch (e) {
+    console.error("[Users] GET /api/users error:", e.message);
+    res.status(500).json({ message: "Failed to fetch users: " + e.message });
+  }
+});
+
+// GET /api/users/:id — single user by id or email
+app.get("/api/users/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOne(
+        { $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] },
+        "-password"
+      ).lean();
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ ...user, id: user.id || String(user._id) });
+    }
+    const user = inMemoryUsers.find(u => u.id === req.params.id || u.email === req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+    res.json(user);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST /api/users — create a new user
+app.post("/api/users", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      if (await User.findOne({ email: data.email?.toLowerCase() }))
+        return res.status(409).json({ message: "User with this email already exists." });
+      const created = await User.create({ ...data, email: data.email?.toLowerCase() });
+      const obj = created.toObject();
+      obj.id = obj.id || String(obj._id);
+      delete obj.password;
+      return res.status(201).json(obj);
+    }
+    if (inMemoryUsers.find(u => u.email === data.email?.toLowerCase()))
+      return res.status(409).json({ message: "User with this email already exists." });
+    inMemoryUsers.push(data);
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// PUT /api/users/:id — update a user
+app.put("/api/users/:id", async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    delete updates.password; // never update password via this route
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOneAndUpdate(
+        { $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] },
+        { $set: updates },
+        { new: true, projection: "-password" }
+      );
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ ...user.toObject(), id: user.id || String(user._id) });
+    }
+    const idx = inMemoryUsers.findIndex(u => u.id === req.params.id || u.email === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "User not found." });
+    inMemoryUsers[idx] = { ...inMemoryUsers[idx], ...updates };
+    res.json(inMemoryUsers[idx]);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// DELETE /api/users/:id
+app.delete("/api/users/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOneAndDelete(
+        { $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] }
+      );
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ success: true, message: `User "${user.name}" deleted.` });
+    }
+    const idx = inMemoryUsers.findIndex(u => u.id === req.params.id || u.email === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "User not found." });
+    const [removed] = inMemoryUsers.splice(idx, 1);
+    res.json({ success: true, message: `User "${removed.name}" deleted.` });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSISTANCE TICKET ROUTES  ── NEW
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/tickets — all tickets
+app.get("/api/tickets", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const tickets = await AssistanceTicket.find().sort({ createdAt: -1 }).lean();
+      return res.json(tickets.map(t => ({ ...t, id: t.id || String(t._id) })));
+    }
+    res.json([]);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST /api/tickets — create a ticket
+app.post("/api/tickets", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      const created = await AssistanceTicket.create(data);
+      const obj = created.toObject();
+      return res.status(201).json({ ...obj, id: obj.id || String(obj._id) });
+    }
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// PUT /api/tickets/:id — update a ticket (approve / reject / add comment)
+app.put("/api/tickets/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let t = await AssistanceTicket.findOneAndUpdate(
+        { id: req.params.id },
+        { $set: req.body },
+        { new: true }
+      );
+      if (!t) t = await AssistanceTicket.findByIdAndUpdate(
+        req.params.id, { $set: req.body }, { new: true }
+      );
+      if (!t) return res.status(404).json({ message: "Ticket not found." });
+      return res.json({ ...t.toObject(), id: t.id || String(t._id) });
+    }
+    res.status(404).json({ message: "Ticket not found." });
+  } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1044,7 +1214,9 @@ httpServer.listen(PORT, () => {
   console.log(`\n╔══════════════════════════════════════════════════════════╗`);
   console.log(`║  ✔ Server + Socket.io running on port ${PORT}              ║`);
   console.log(`╠══════════════════════════════════════════════════════════╣`);
-  console.log(`║  Projects:   GET/POST/PUT  /api/projects                ║`);
+  console.log(`║  Users:      GET/POST/PUT/DELETE /api/users             ║`);
+  console.log(`║  Tickets:    GET/POST/PUT        /api/tickets           ║`);
+  console.log(`║  Projects:   GET/POST/PUT        /api/projects          ║`);
   console.log(`║  Tasks:      GET/POST/PUT/DELETE /api/tasks             ║`);
   console.log(`║  Chat:       GET  /api/chat/messages/:channelId         ║`);
   console.log(`║              POST /api/chat/messages                    ║`);
@@ -1074,7 +1246,3 @@ httpServer.listen(PORT, () => {
     setInterval(runTATMonitor, 14400000);
   }, 5_000);
 });
-
-
-
-
