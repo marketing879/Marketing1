@@ -3,11 +3,12 @@ import rateLimit from "express-rate-limit";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { v2 as cloudinary } from "cloudinary";  // ← fixed: was imported 3x, now once
-import multer from "multer";                       // ← fixed: was imported 3x, now once
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
 import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
+import webpush from "web-push";
 
 dotenv.config();
 
@@ -17,6 +18,18 @@ cloudinary.config({                                // ← fixed: was called 3x, 
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 console.log("Cloudinary: ✔ Configured");
+
+// ── WEB PUSH (VAPID) ──────────────────────────────────────────────────────────
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    `mailto:${process.env.VAPID_EMAIL || "admin@roswalt.com"}`,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  console.log("✔ Web Push (VAPID) configured");
+} else {
+  console.warn("⚠ VAPID keys not set — push notifications disabled. Run: npx web-push generate-vapid-keys");
+}
 
 const app        = express();
 const httpServer = createServer(app);
@@ -195,6 +208,14 @@ const Task             = mongoose.model("Task",             taskSchema);
 const User             = mongoose.model("User",             userSchema);
 const AssistanceTicket = mongoose.model("AssistanceTicket", assistanceTicketSchema);
 
+// ── PUSH SUBSCRIPTION SCHEMA ──────────────────────────────────────────────────
+const pushSubscriptionSchema = new mongoose.Schema({
+  email:        { type: String, required: true, lowercase: true, trim: true, index: true },
+  subscription: { type: mongoose.Schema.Types.Mixed, required: true },
+  updatedAt:    { type: Date, default: Date.now },
+});
+const PushSub = mongoose.model("PushSub", pushSubscriptionSchema);
+
 let inMemoryProjects = [];
 let inMemoryUsers    = [];
 
@@ -275,6 +296,59 @@ const TEAM_DIRECTORY = {
 async function sendWhatsApp(phone, message) {
   console.log(`[WA STUB] Skipping WA message to ${phone}: ${message.slice(0, 60)}...`);
   return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEB PUSH HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+async function sendPushToSubscription(subscription, payload) {
+  try {
+    await webpush.sendNotification(subscription, JSON.stringify(payload));
+    return true;
+  } catch (err) {
+    if (err.statusCode === 410 || err.statusCode === 404) {
+      // Subscription expired — remove from DB
+      await PushSub.deleteOne({ "subscription.endpoint": subscription.endpoint }).catch(() => {});
+      console.log("[Push] Removed expired subscription");
+    } else {
+      console.error("[Push] sendNotification error:", err.message);
+    }
+    return false;
+  }
+}
+
+async function sendPushToUser(email, payload) {
+  if (!process.env.VAPID_PUBLIC_KEY || mongoose.connection.readyState !== 1) return;
+  try {
+    const subs = await PushSub.find({ email: email.toLowerCase() });
+    if (subs.length === 0) return;
+    await Promise.all(subs.map(s => sendPushToSubscription(s.subscription, payload)));
+    console.log(`[Push] Sent to ${subs.length} device(s) for ${email}`);
+  } catch (err) {
+    console.error("[Push] sendPushToUser error:", err.message);
+  }
+}
+
+// Send push to all users with specific role(s)
+async function sendPushToRole(roles, payload, excludeEmail = "") {
+  if (!process.env.VAPID_PUBLIC_KEY || mongoose.connection.readyState !== 1) return;
+  try {
+    const roleList = Array.isArray(roles) ? roles : [roles];
+    const allSubs  = await PushSub.find({}).lean();
+    const users    = await User.find({ role: { $in: roleList } }, "email").lean();
+    const emails   = new Set(users.map(u => u.email.toLowerCase()));
+    const filtered = allSubs.filter(s => emails.has(s.email.toLowerCase()) && s.email.toLowerCase() !== excludeEmail.toLowerCase());
+    if (filtered.length === 0) return;
+    await Promise.all(filtered.map(s => sendPushToSubscription(s.subscription, payload)));
+    console.log(`[Push] Broadcast to ${filtered.length} device(s) for roles: ${roleList.join(",")}`);
+  } catch (err) {
+    console.error("[Push] sendPushToRole error:", err.message);
+  }
+}
+
+// Broadcast socket notification to ALL connected clients — each filters by role/email client-side
+function broadcastTaskNotification(eventData) {
+  io.emit("task_notification", eventData);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,6 +436,34 @@ Please follow up or use *Smart Assist* in the dashboard to revise the timeline.
         { id: task.id || String(task._id) },
         { reminderCount, lastReminderAt: now.toISOString() }
       );
+
+      // ── Push notification to doer's device (works even when app is closed) ──
+      if (task.assignedTo) {
+        await sendPushToUser(task.assignedTo, {
+          title:   `⚠ Task Overdue — Reminder #${reminderCount}`,
+          body:    `"${task.title}" was due ${delayDuration}. Please submit immediately.`,
+          url:     process.env.FRONTEND_URL || "/",
+          taskId:  task.id || String(task._id),
+          tag:     `tat-${task.id || task._id}`,
+          icon:    "/favicon.png",
+          actions: [
+            { action: "open",    title: "Open Dashboard" },
+            { action: "dismiss", title: "Dismiss"        },
+          ],
+        });
+      }
+
+      // ── Push notification to admin ─────────────────────────────────────────
+      if (task.assignedBy) {
+        await sendPushToUser(task.assignedBy, {
+          title:   `🔴 TAT Breach — ${task.title}`,
+          body:    `Assigned to ${doer?.name ?? task.assignedTo} · Overdue by ${delayDuration}`,
+          url:     process.env.FRONTEND_URL || "/",
+          taskId:  task.id || String(task._id),
+          tag:     `tat-admin-${task.id || task._id}`,
+          icon:    "/favicon.png",
+        });
+      }
 
       console.log(`📲 TAT reminder #${reminderCount} logged → "${task.title}"`);
       alertCount++;
@@ -505,6 +607,35 @@ app.post("/api/tasks", async (req, res) => {
     const created = await Task.create(data);
     const obj = created.toObject();
     if (!obj.id) obj.id = String(obj._id);
+
+    // ── Broadcast via socket to ALL online users (real-time) ────────────────
+    broadcastTaskNotification({
+      type:        "task_assigned",
+      taskId:      obj.id,
+      taskTitle:   obj.title,
+      assignedTo:  obj.assignedTo,
+      assignedBy:  obj.assignedBy,
+      priority:    obj.priority,
+      dueDate:     obj.dueDate,
+      projectId:   obj.projectId,
+    });
+
+    // ── Web push to doer (works when browser is closed) ───────────────────
+    if (obj.assignedTo) {
+      const dueStr = obj.dueDate
+        ? new Date(obj.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+        : "No due date";
+      await sendPushToUser(obj.assignedTo, {
+        title:  `📋 New Task Assigned`,
+        body:   `${obj.title} · Priority: ${(obj.priority || "medium").toUpperCase()} · Due: ${dueStr}`,
+        url:    process.env.FRONTEND_URL || "/",
+        taskId: obj.id,
+        tag:    `new-task-${obj.id}`,
+        icon:   "/favicon.png",
+        type:   "task_assigned",
+      });
+    }
+
     res.status(201).json(obj);
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
@@ -529,6 +660,52 @@ app.put("/api/tasks/:id", async (req, res) => {
     if (!t) return res.status(404).json({ message: "Task not found." });
     const obj = t.toObject();
     if (!obj.id) obj.id = String(obj._id);
+
+    // ── Broadcast socket event to ALL online users ───────────────────────────
+    const newStatus = req.body.approvalStatus;
+    if (newStatus) {
+      broadcastTaskNotification({
+        type:        "task_status_changed",
+        taskId:      obj.id,
+        taskTitle:   obj.title,
+        assignedTo:  obj.assignedTo,
+        assignedBy:  obj.assignedBy,
+        newStatus,
+        priority:    obj.priority,
+        dueDate:     obj.dueDate,
+        projectId:   obj.projectId,
+      });
+    }
+
+    // ── Web push per status — correct recipients per role ──────────────────
+    if (newStatus) {
+      const base = { url: process.env.FRONTEND_URL || "/", taskId: obj.id, tag: `status-${obj.id}`, icon: "/favicon.png", type: "task_status_changed" };
+
+      if (newStatus === "in-review") {
+        // Doer submitted → notify admin who assigned it + all superadmins/supremos
+        const adminMsg = { ...base, title: "👁 Task Submitted for Review", body: `${obj.title} has been submitted and needs your review.` };
+        if (obj.assignedBy) await sendPushToUser(obj.assignedBy, adminMsg);
+        await sendPushToRole(["superadmin", "supremo"], adminMsg, obj.assignedBy);
+      }
+
+      if (newStatus === "admin-approved") {
+        // Admin approved → notify doer + superadmin/supremo
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "✅ Task Approved by Admin", body: `${obj.title} has been approved. Awaiting final sign-off.` });
+        await sendPushToRole(["superadmin", "supremo"], { ...base, title: "📋 Task Ready for Final Approval", body: `${obj.title} has been approved by admin and needs your final review.` }, obj.assignedBy);
+      }
+
+      if (newStatus === "superadmin-approved") {
+        // Fully approved → notify doer + admin who assigned
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "🏆 Task Fully Approved!", body: `${obj.title} has been fully approved. Great work!` });
+        if (obj.assignedBy) await sendPushToUser(obj.assignedBy, { ...base, title: "✅ Final Approval Done", body: `${obj.title} has received full superadmin approval.` });
+      }
+
+      if (newStatus === "rejected") {
+        // Rework → notify doer only
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "↩ Task Needs Rework", body: `${obj.title} was sent back. Please check the admin comments.` });
+      }
+    }
+
     res.json(obj);
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
@@ -694,6 +871,151 @@ app.put("/api/tickets/:id", async (req, res) => {
     }
     res.status(404).json({ message: "Ticket not found." });
   } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEB PUSH ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/push/vapid-public-key — frontend fetches this on load
+app.get("/api/push/vapid-public-key", (req, res) => {
+  if (!process.env.VAPID_PUBLIC_KEY)
+    return res.status(503).json({ message: "Push notifications not configured." });
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+});
+
+// POST /api/push/subscribe — called by browser after permission granted
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const { subscription, email } = req.body;
+    if (!subscription || !email)
+      return res.status(400).json({ message: "subscription and email are required." });
+
+    if (mongoose.connection.readyState === 1) {
+      await PushSub.findOneAndUpdate(
+        { "subscription.endpoint": subscription.endpoint },
+        { email: email.toLowerCase(), subscription, updatedAt: new Date() },
+        { upsert: true, setDefaultsOnInsert: true }
+      );
+    }
+    console.log(`[Push] Subscription saved for ${email}`);
+
+    // Send a welcome push so the user knows it worked
+    await sendPushToUser(email, {
+      title: "✅ SmartCue Notifications Active",
+      body:  "You will now receive task reminders even when this app is closed.",
+      url:   process.env.FRONTEND_URL || "/",
+      tag:   "push-welcome",
+      icon:  "/favicon.png",
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Push] Subscribe error:", err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /api/push/unsubscribe — called on logout
+app.post("/api/push/unsubscribe", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "email is required." });
+    if (mongoose.connection.readyState === 1) {
+      await PushSub.deleteMany({ email: email.toLowerCase() });
+    }
+    console.log(`[Push] Unsubscribed all devices for ${email}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /api/push/send — manual send from superadmin dashboard
+app.post("/api/push/send", async (req, res) => {
+  try {
+    const { email, emails, title, body, url, taskId } = req.body;
+    if (!title) return res.status(400).json({ message: "title is required." });
+
+    const targets = emails ?? (email ? [email] : []);
+    if (targets.length === 0) return res.status(400).json({ message: "email or emails required." });
+
+    await Promise.all(
+      targets.map(e => sendPushToUser(e, { title, body, url: url || "/", taskId, icon: "/favicon.png" }))
+    );
+    res.json({ success: true, sent: targets.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /api/push/broadcast — send to ALL subscribed users (superadmin only)
+app.post("/api/push/broadcast", async (req, res) => {
+  try {
+    const { title, body, url } = req.body;
+    if (!title) return res.status(400).json({ message: "title is required." });
+
+    if (mongoose.connection.readyState !== 1)
+      return res.status(503).json({ message: "Database not connected." });
+
+    const allSubs = await PushSub.find({});
+    let sent = 0;
+    await Promise.all(allSubs.map(async (s) => {
+      const ok = await sendPushToSubscription(s.subscription, { title, body, url: url || "/", icon: "/favicon.png" });
+      if (ok) sent++;
+    }));
+    console.log(`[Push] Broadcast sent to ${sent}/${allSubs.length} devices`);
+    res.json({ success: true, sent, total: allSubs.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUSH SUBSCRIPTION ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/push/vapid-public-key — frontend needs this to subscribe
+app.get("/api/push/vapid-public-key", (req, res) => {
+  const key = process.env.VAPID_PUBLIC_KEY;
+  if (!key) return res.status(503).json({ message: "Push notifications not configured on server." });
+  res.json({ publicKey: key });
+});
+
+// POST /api/push/subscribe — save a new push subscription for a user
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const { email, subscription } = req.body;
+    if (!email || !subscription) return res.status(400).json({ message: "email and subscription required" });
+    if (mongoose.connection.readyState === 1) {
+      await PushSub.findOneAndUpdate(
+        { email: email.toLowerCase(), "subscription.endpoint": subscription.endpoint },
+        { email: email.toLowerCase(), subscription, updatedAt: new Date() },
+        { upsert: true }
+      );
+      console.log(`[Push] Subscription saved for ${email}`);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[Push] Subscribe error:", e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// DELETE /api/push/unsubscribe — remove a push subscription
+app.post("/api/push/unsubscribe", async (req, res) => {
+  try {
+    const { email, endpoint } = req.body;
+    if (!email) return res.status(400).json({ message: "email required" });
+    if (mongoose.connection.readyState === 1) {
+      if (endpoint) {
+        await PushSub.deleteOne({ email: email.toLowerCase(), "subscription.endpoint": endpoint });
+      } else {
+        await PushSub.deleteMany({ email: email.toLowerCase() });
+      }
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

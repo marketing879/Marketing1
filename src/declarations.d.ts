@@ -1,19 +1,23 @@
-declare module "*.png" {
-  const value: string;
-  export default value;
-}
+// Image files
+declare module "*.png"  { const src: string; export default src; }
+declare module "*.jpg"  { const src: string; export default src; }
+declare module "*.jpeg" { const src: string; export default src; }
+declare module "*.gif"  { const src: string; export default src; }
+declare module "*.svg"  { const src: string; export default src; }
+declare module "*.webp" { const src: string; export default src; }
+declare module "*.ico"  { const src: string; export default src; }
 
-declare module "*.jpg" {
-  const value: string;
-  export default value;
-}
+// Font files
+declare module "*.woff"  { const src: string; export default src; }
+declare module "*.woff2" { const src: string; export default src; }
+declare module "*.ttf"   { const src: string; export default src; }
+declare module "*.eot"   { const src: string; export default src; }
 
-declare module "*.jpeg" {
-  const value: string;
-  export default value;
-}
+// Media files
+declare module "*.mp4"  { const src: string; export default src; }
+declare module "*.mp3"  { const src: string; export default src; }
+declare module "*.wav"  { const src: string; export default src; }
 
-declare module "*.mp4" {
-  const value: string;
-  export default value;
-}
+// Other assets
+declare module "*.pdf" { const src: string; export default src; }
+declare module "*.csv" { const src: string; export default src; }
