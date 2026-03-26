@@ -120,9 +120,39 @@ async function extractVideoFrames(videoDataUrl: string, frameCount = 6): Promise
   });
 }
 
-async function scoreWithAI(notes: string, files: string[], purpose?: string): Promise<AIScoreResult> {
+// ── Detect if a dataURL is a document (non-image, non-video) ─────────────────
+function isDocumentFile(dataUrl: string): boolean {
+  if (!dataUrl.startsWith("data:")) return false;
+  const mime = dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+  return (
+    mime === "application/pdf" ||
+    mime.includes("word") || mime.includes("document") ||
+    mime.includes("sheet") || mime.includes("excel") ||
+    mime.includes("presentation") || mime.includes("powerpoint") ||
+    mime === "text/plain" || mime === "text/csv" ||
+    mime.includes("officedocument")
+  );
+}
+
+function getDocumentFormat(dataUrl: string): string {
+  const mime = dataUrl.split(";")[0].replace("data:", "").toLowerCase();
+  if (mime === "application/pdf") return "PDF";
+  if (mime.includes("sheet") || mime.includes("excel")) return "Excel / Spreadsheet";
+  if (mime.includes("word") || mime.includes("document")) return "Word Document";
+  if (mime.includes("presentation") || mime.includes("powerpoint")) return "PowerPoint";
+  if (mime === "text/csv") return "CSV";
+  if (mime === "text/plain") return "Text File";
+  return "Document";
+}
+
+async function scoreWithAI(notes: string, files: string[], purpose?: string, links?: string[]): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
   const isVideo   = hasFiles && files[0].startsWith("data:video/");
+
+  // ── Detect document uploads ────────────────────────────────────────────────
+  const documentFiles = files.filter(f => isDocumentFile(f));
+  const isDocumentOnly = documentFiles.length > 0 && !isVideo && files.every(f => isDocumentFile(f));
+  const hasLinks = links && links.filter(l => l.trim()).length > 0;
 
   // For videos: extract 6 frames to send as images
   let scoringImages: string[] = [];
@@ -133,10 +163,100 @@ async function scoreWithAI(notes: string, files: string[], purpose?: string): Pr
       scoringImages = [];
     }
   } else {
-    scoringImages = files.filter(f => !f.startsWith("data:video/"));
+    // Only pass image files to AI vision — not documents
+    scoringImages = files.filter(f => !f.startsWith("data:video/") && !isDocumentFile(f));
   }
 
   const hasImages = scoringImages.length > 0;
+
+  // ── DOCUMENT-SPECIFIC SCORING ─────────────────────────────────────────────
+  if (isDocumentOnly || (documentFiles.length > 0 && !hasImages && !isVideo)) {
+    const docFormats = documentFiles.map(getDocumentFormat).join(", ");
+    const linkList   = hasLinks ? links!.filter(l => l.trim()).join(", ") : "";
+
+    const docSystemPrompt = `You are a professional content quality scorer for Roswalt Realty marketing documents. Score the submitted document/file across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — evaluate all content against this purpose as the primary lens.` : ""}
+
+Document type(s) submitted: ${docFormats}${linkList ? `\nLinks/References submitted: ${linkList}` : ""}
+
+Categories and subcriteria (each subcriterion is worth 4 marks):
+
+A) Content Quality & Clarity: A1=Headline/title impact, A2=Body copy clarity, A3=Information completeness, A4=Logical flow & structure, A5=Audience appropriateness
+B) Compliance & Accuracy: B1=RERA/legal disclaimers present, B2=No unsubstantiated claims, B3=Data/numbers accuracy, B4=Brand guideline adherence, B5=Source citations where needed
+C) Grammar & Language: C1=Spelling accuracy, C2=Punctuation & syntax, C3=Sentence structure, C4=Tone consistency, C5=CTA clarity & persuasiveness
+D) Creativity & Engagement: D1=Concept originality, D2=Headline hook strength, D3=Storytelling effectiveness, D4=Value proposition clarity, D5=Memorability / differentiation
+E) Purpose Alignment: E1=Task purpose match, E2=Target audience fit, E3=Brand voice alignment, E4=Expected output delivered, E5=Overall professionalism
+
+SCORING RULES:
+- Score grammar based on the completion notes text since document content cannot be directly parsed.
+- For spreadsheets/Excel: focus on B (data accuracy), C (labelling), D (presentation logic), E (usefulness).
+- For PDFs/Word: focus on all 5 categories equally.
+- For CSVs/data: weight B and E heavily; A and D less.
+- CRITICAL: Every subcriteria score MUST be 0–4. Every category score MUST equal sum of its 5 subcriteria (max 20). Never inflate.
+- The "note" field MUST explain the exact reason — be specific and actionable.
+- "improvements" array: Format EACH item as one of three tiers: "GOOD: [what's already working]", "BETTER: [specific improvement to make]", or "BEST: [gold standard version to aim for]". Each improvement item must start with exactly "GOOD:", "BETTER:", or "BEST:".
+
+Return this exact JSON:
+{
+  "categories": [
+    { "id": "A", "name": "Content Quality & Clarity", "score": 0, "subcriteria": [{ "label": "A1: Headline/title impact", "score": 0, "max": 4, "note": "..." }, ...5 items] },
+    { "id": "B", "name": "Compliance & Accuracy", "score": 0, "subcriteria": [...5] },
+    { "id": "C", "name": "Grammar & Language", "score": 0, "subcriteria": [...5] },
+    { "id": "D", "name": "Creativity & Engagement", "score": 0, "subcriteria": [...5] },
+    { "id": "E", "name": "Purpose Alignment", "score": 0, "subcriteria": [...5] }
+  ],
+  "grammarErrors": [],
+  "grammarClean": true,
+  "strengths": [],
+  "improvements": [],
+  "extractedText": "",
+  "verdict": ""
+}`;
+
+    const docUserContent: any[] = [];
+    docUserContent.push({
+      type: "text",
+      text: `Document submission for scoring.\n\nStaff completion notes:\n${notes || "(no notes provided)"}\n\nDocument format(s): ${docFormats}${linkList ? `\n\nLinks/References included:\n${linkList}` : ""}\n\nPlease score this document submission across all 5 categories based on the notes, document type, and context.`,
+    });
+
+    const docResponse = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ systemPrompt: docSystemPrompt, userContent: docUserContent }),
+    });
+
+    if (!docResponse.ok) throw new Error(`API error ${docResponse.status}`);
+    const docData = await docResponse.json();
+    const docParsed = docData.result;
+
+    const docCategories: AIScoreCategory[] = (docParsed.categories || []).map((cat: any) => ({
+      ...cat,
+      max: 20,
+      color: CATEGORY_COLOR[cat.id] || "#00d4ff",
+      subcriteria: (cat.subcriteria || []).map((sub: any) => ({
+        ...sub,
+        score: Math.min(Math.max(0, sub.score ?? 0), sub.max ?? 4),
+        max: sub.max ?? 4,
+      })),
+    })).map((cat: AIScoreCategory) => ({
+      ...cat,
+      score: Math.min(cat.subcriteria.reduce((s, sub) => s + sub.score, 0), 20),
+    }));
+
+    const docTotal = docCategories.reduce((s: number, c: AIScoreCategory) => s + c.score, 0);
+    const docPercent = Math.round((docTotal / 100) * 100);
+
+    return {
+      categories: docCategories,
+      percentScore: docPercent,
+      grade: gradeFromPercent(docPercent),
+      grammarErrors: docParsed.grammarErrors || [],
+      grammarClean: docParsed.grammarClean ?? true,
+      strengths: docParsed.strengths || [],
+      improvements: docParsed.improvements || [],
+      extractedText: docParsed.extractedText || "",
+      verdict: docParsed.verdict || "",
+    };
+  }
 
   const systemPrompt = isVideo
     ? `You are a professional marketing video quality scorer for Roswalt Realty. You are analysing ${scoringImages.length} sequential frames extracted from a marketing video. Score the video across 5 categories (A–E), each worth 20 marks (total 100). Return ONLY valid JSON, no markdown fences.${purpose ? `\n\nTASK PURPOSE: "${purpose}" — use this as the primary lens when evaluating relevance, messaging alignment, and audience fit across all categories.` : ""}
@@ -156,6 +276,7 @@ Rules:
 - Judge storytelling arc and editing rhythm from the sequence of frames.
 - CRITICAL: Every subcriteria score MUST be 0–4 inclusive. Never exceed the max. Every category score MUST equal the sum of its 5 subcriteria (max 20). Never inflate scores.
 - The "note" field for each subcriteria MUST explain the exact reason for the score — especially if below 4. Be specific and actionable.
+- "improvements" array: Format EACH item as one of three tiers starting with exactly "GOOD:", "BETTER:", or "BEST:". Example: "GOOD: Hook is present but generic", "BETTER: Add a location-specific headline", "BEST: Lead with a bold claim + RERA number in the first 3 seconds".
 
 Return this exact JSON:
 {
@@ -189,6 +310,7 @@ Rules:
 - Extract ALL visible on-screen text and list any grammar/spelling mistakes.
 - CRITICAL: Every subcriteria score MUST be 0–4 inclusive. Never exceed the max. Every category score MUST equal the sum of its 5 subcriteria (max 20). Never inflate scores.
 - The "note" field for each subcriteria MUST explain the exact reason for the score — especially if below 4. Be specific and actionable.
+- "improvements" array: Format EACH item as one of three tiers starting with exactly "GOOD:", "BETTER:", or "BEST:". Example: "GOOD: Logo is present", "BETTER: Increase logo size and add tagline", "BEST: Logo + RERA number + high-contrast CTA button all visible in one frame".
 
 Return this exact JSON:
 {
@@ -1464,6 +1586,9 @@ const StaffDashboard: React.FC = () => {
   // Deduction voice prompt state
   const [deductionPrompt,   setDeductionPrompt]   = useState<{ items: { label: string; note: string }[] } | null>(null);
   const [readingDeductions, setReadingDeductions] = useState(false);
+  // Link submissions per task
+  const [taskLinks,         setTaskLinks]         = useState<{ [taskId: string]: string[] }>({});
+  const [linkInputValue,    setLinkInputValue]    = useState<{ [taskId: string]: string }>({});
 
   // Profile pic
   const [profilePic, setProfilePic] = useState<string | null>(() => {
@@ -1734,8 +1859,9 @@ const StaffDashboard: React.FC = () => {
     const review = reviewResults[selectedTask.id];
     if (review && review.hasErrors) { showSuccess("⚠ Cannot submit: Fix the critical errors in attachments."); return; }
     const photos = uploadedPhotos[selectedTask.id] || [];
-    if (!completionNotes.trim() && photos.length === 0) {
-      showSuccess("⚠ Please add completion notes or upload a marketing file.");
+    const links  = taskLinks[selectedTask.id] || [];
+    if (!completionNotes.trim() && photos.length === 0 && links.length === 0) {
+      showSuccess("⚠ Please add completion notes, upload a file, or add a reference link.");
       return;
     }
 
@@ -1754,7 +1880,7 @@ const StaffDashboard: React.FC = () => {
     );
 
     try {
-      const result = await scoreWithAI(completionNotes, photos, (selectedTask as any).purpose);
+      const result = await scoreWithAI(completionNotes, photos, (selectedTask as any).purpose, taskLinks[selectedTask.id] || []);
 
       setEvalStage(4); await sleep(400); // Brand compliance
       setEvalStage(5); await sleep(400); // Grammar validation
@@ -1841,6 +1967,7 @@ const StaffDashboard: React.FC = () => {
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
       attachments:     uploadedPhotos[selectedTask.id] || [],
+      submittedLinks:  taskLinks[selectedTask.id] || [],
       approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
       scoreData:       aiScoreResult ? {
@@ -1867,6 +1994,8 @@ const StaffDashboard: React.FC = () => {
     setFileTypeBadge(null);
     setDeductionPrompt(null);
     setReadingDeductions(false);
+    setTaskLinks(prev => { const u = { ...prev }; if (selectedTask) delete u[selectedTask.id]; return u; });
+    setLinkInputValue(prev => { const u = { ...prev }; if (selectedTask) delete u[selectedTask.id]; return u; });
   };
 
   const downloadScoreReport = (task: any, score: any, doerName: string) => {
@@ -1896,23 +2025,40 @@ const StaffDashboard: React.FC = () => {
   const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
     Array.from(files).forEach((file) => {
-      // Accept images, videos, and documents (PDF, DOCX, PPTX)
       const isImage    = file.type.startsWith("image/");
       const isVideo    = file.type.startsWith("video/");
       const isDocument = file.type === "application/pdf" ||
                          file.type.includes("word") ||
+                         file.type.includes("document") ||
                          file.type.includes("presentation") ||
-                         file.type.includes("sheet");
-      if (!isImage && !isVideo && !isDocument) return;
-
+                         file.type.includes("sheet") ||
+                         file.type.includes("excel") ||
+                         file.type.includes("powerpoint") ||
+                         file.type.includes("officedocument") ||
+                         file.type === "text/plain" ||
+                         file.type === "text/csv" ||
+                         file.name.match(/\.(xlsx|xls|csv|doc|docx|ppt|pptx|pdf|txt)$/i) !== null;
+      if (!isImage && !isVideo && !isDocument) {
+        showSuccess(`⚠ Unsupported file type: ${file.name}`);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (e) => {
         const url = e.target?.result as string;
-        setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), url] }));
+        setUploadedPhotos((prev) => {
+          const updated = { ...prev, [taskId]: [...(prev[taskId] || []), url] };
+          // Auto-trigger scoring when a document is uploaded
+          if (isDocument) {
+            setTimeout(() => {
+              showSuccess("📄 Document uploaded — SmartCue auto-scoring will run on submit.");
+            }, 300);
+          }
+          return updated;
+        });
       };
       reader.readAsDataURL(file);
     });
-    showSuccess("File uploaded ✓");
+    showSuccess(`✓ ${files.length} file${files.length > 1 ? "s" : ""} uploaded`);
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -3262,12 +3408,36 @@ const StaffDashboard: React.FC = () => {
               )}
               {aiScoreResult.improvements.length > 0 && (
                 <div style={{ padding: "10px 12px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.14)", borderRadius: 9 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: "#00d4ff", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>→ Improvements</div>
-                  {aiScoreResult.improvements.map((s, i) => (
-                    <div key={i} style={{ fontSize: 10, color: "#c8ccdd", marginBottom: 3, display: "flex", gap: 6 }}>
-                      <span style={{ color: "#00d4ff", flexShrink: 0 }}>→</span>{s}
-                    </div>
-                  ))}
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#00d4ff", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>→ How to Improve</div>
+                  {aiScoreResult.improvements.map((s, i) => {
+                    const isGood   = s.startsWith("GOOD:");
+                    const isBetter = s.startsWith("BETTER:");
+                    const isBest   = s.startsWith("BEST:");
+                    const tier = isGood ? "GOOD" : isBetter ? "BETTER" : isBest ? "BEST" : null;
+                    const tierColor = isGood ? "#f5c518" : isBetter ? "#ff9500" : isBest ? "#00ff88" : "#00d4ff";
+                    const tierIcon  = isGood ? "●" : isBetter ? "◆" : isBest ? "★" : "→";
+                    const text = tier ? s.slice(tier.length + 1).trim() : s;
+                    return (
+                      <div key={i} style={{ fontSize: 10, color: "#c8ccdd", marginBottom: 6, display: "flex", gap: 7, alignItems: "flex-start" }}>
+                        {tier ? (
+                          <>
+                            <span style={{
+                              fontSize: 8, fontWeight: 900, color: tierColor,
+                              background: `${tierColor}15`, border: `1px solid ${tierColor}35`,
+                              borderRadius: 4, padding: "1px 6px", flexShrink: 0, marginTop: 1,
+                              letterSpacing: "0.5px", minWidth: 44, textAlign: "center",
+                            }}>{tierIcon} {tier}</span>
+                            <span style={{ lineHeight: 1.5 }}>{text}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ color: "#00d4ff", flexShrink: 0 }}>→</span>
+                            <span style={{ lineHeight: 1.5 }}>{s}</span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -3636,10 +3806,99 @@ const StaffDashboard: React.FC = () => {
               >
                 <div className="sd-drop-icon">📎</div>
                 <div className="sd-drop-text">Click to upload · <span>Browse files</span></div>
+                <div style={{ fontSize: 9, color: "#434763", marginTop: 3 }}>Images · Videos · PDF · Word · Excel · CSV · PPT</div>
+              </div>
+
+              {/* ── Document file badges ── */}
+              {(uploadedPhotos[selectedTask.id] || []).filter(f => isDocumentFile(f)).length > 0 && (
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {(uploadedPhotos[selectedTask.id] || []).filter(f => isDocumentFile(f)).map((f, i) => (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "5px 10px", borderRadius: 6,
+                      background: "rgba(176,106,243,0.10)", border: "1px solid rgba(176,106,243,0.30)",
+                      fontSize: 10, color: "#b06af3", fontWeight: 700,
+                    }}>
+                      📄 {getDocumentFormat(f)}
+                      <button onClick={() => {
+                        setUploadedPhotos(prev => ({
+                          ...prev,
+                          [selectedTask.id]: prev[selectedTask.id].filter(x => x !== f),
+                        }));
+                      }} style={{ background: "none", border: "none", color: "#b06af3", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{ width: "100%", fontSize: 9, color: "#7e84a3", marginTop: 2 }}>
+                    📊 SmartCue will auto-score document(s) on submit
+                  </div>
+                </div>
+              )}
+
+              {/* ── Link input section ── */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>
+                  🔗 Add Links / References (optional)
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="url"
+                    placeholder="https://drive.google.com/… or any reference link"
+                    value={linkInputValue[selectedTask.id] || ""}
+                    onChange={e => setLinkInputValue(prev => ({ ...prev, [selectedTask.id]: e.target.value }))}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        const val = (linkInputValue[selectedTask.id] || "").trim();
+                        if (val) {
+                          setTaskLinks(prev => ({ ...prev, [selectedTask.id]: [...(prev[selectedTask.id] || []), val] }));
+                          setLinkInputValue(prev => ({ ...prev, [selectedTask.id]: "" }));
+                        }
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: "8px 10px",
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      borderRadius: 8, color: "#eef0ff", fontSize: 11,
+                      outline: "none", fontFamily: "inherit",
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      const val = (linkInputValue[selectedTask.id] || "").trim();
+                      if (val) {
+                        setTaskLinks(prev => ({ ...prev, [selectedTask.id]: [...(prev[selectedTask.id] || []), val] }));
+                        setLinkInputValue(prev => ({ ...prev, [selectedTask.id]: "" }));
+                      }
+                    }}
+                    style={{
+                      padding: "8px 13px",
+                      background: "rgba(0,212,255,0.10)", border: "1px solid rgba(0,212,255,0.30)",
+                      borderRadius: 8, color: "#00d4ff", fontSize: 11, fontWeight: 700,
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >+ Add</button>
+                </div>
+                {(taskLinks[selectedTask.id] || []).length > 0 && (
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {(taskLinks[selectedTask.id] || []).map((link, li) => (
+                      <div key={li} style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "5px 10px", borderRadius: 6,
+                        background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.18)",
+                        fontSize: 10, color: "#7e84a3",
+                      }}>
+                        <span style={{ color: "#00d4ff" }}>🔗</span>
+                        <a href={link} target="_blank" rel="noreferrer" style={{ color: "#00d4ff", textDecoration: "none", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link}</a>
+                        <button onClick={() => setTaskLinks(prev => ({ ...prev, [selectedTask.id]: prev[selectedTask.id].filter((_, i) => i !== li) }))}
+                          style={{ background: "none", border: "none", color: "#434763", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <input
                 id={`modal-upload-${selectedTask.id}`}
-                type="file" accept="image/*,video/*,.pdf,.docx,.pptx" multiple
+                type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt" multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
                   handlePhotoUpload(selectedTask.id, e.target.files);
@@ -3657,7 +3916,7 @@ const StaffDashboard: React.FC = () => {
             <div style={{ marginBottom: 14, marginTop: 10, padding: "10px 14px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.18)", borderRadius: 9, display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{ fontSize: 16, flexShrink: 0 }}>✨</span>
               <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.6 }}>
-                <span style={{ color: "#00d4ff", fontWeight: 700 }}>SmartCue AI Scoring</span> — Upload your marketing image and add your notes. SmartCue will score your submission across <span style={{ color: "#00d4ff" }}>5 categories</span> (Aesthetics, Compliance, Grammar, Creativity, Engagement) out of <span style={{ color: "#00d4ff" }}>100 points</span> before you submit.
+                <span style={{ color: "#00d4ff", fontWeight: 700 }}>SmartCue AI Scoring</span> — Upload images, videos, documents (PDF, Word, Excel, CSV) or add reference links. SmartCue auto-scores across <span style={{ color: "#00d4ff" }}>5 categories</span> out of <span style={{ color: "#00d4ff" }}>100 points</span>, with <span style={{ color: "#00ff88" }}>Good → Better → Best</span> improvement tips for every gap found.
               </div>
             </div>
 
@@ -3675,8 +3934,8 @@ const StaffDashboard: React.FC = () => {
               >
                 {analyzingImage
                   ? "SmartCue is Analysing…"
-                  : (!completionNotes.trim() && (uploadedPhotos[selectedTask.id] || []).length === 0)
-                  ? "⚠ Add Notes or Upload Image"
+                  : (!completionNotes.trim() && (uploadedPhotos[selectedTask.id] || []).length === 0 && (taskLinks[selectedTask.id] || []).length === 0)
+                  ? "⚠ Add Notes, Upload File, or Add a Link"
                   : "Score & Submit →"}
               </button>
               <button
@@ -3906,10 +4165,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
           >
             <div className="sd-drop-icon"><Upload size={14} /></div>
             <div className="sd-drop-text">Drop files here · <span>browse</span></div>
+            <div style={{ fontSize: 9, color: "#434763", marginTop: 3 }}>Images · Videos · PDF · Word · Excel · CSV · PPT</div>
           </div>
           <input
             id={`upload-${task.id}`}
-            type="file" accept="image/*,video/*,.pdf,.docx,.pptx" multiple
+            type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt" multiple
             style={{ display: "none" }}
             onChange={(e) => onUpload(e.target.files)}
           />
@@ -3930,11 +4190,3 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
-
-
-
-
-
-
-
-
