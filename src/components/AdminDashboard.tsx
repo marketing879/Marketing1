@@ -2664,7 +2664,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   return (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       {sorted.map(ticket => {
-                        const isPending  = ticket.status === "pending-admin";
+                        const isPending  = ticket.status === "pending-admin" || ticket.status === "open";
                         const isApproved = ticket.status === "admin-approved";
                         const staffName  = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
                         const linkedTask = freshTasks.find(t => t.id === ticket.taskId);
