@@ -342,7 +342,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updates: { phone?: string; name?: string; role?: Role }
   ): void => {
     setStoredUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
+      prev.map((u) => (u.id === userId || u.email === userId ? { ...u, ...updates } : u))
     );
   };
 
@@ -667,3 +667,4 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
