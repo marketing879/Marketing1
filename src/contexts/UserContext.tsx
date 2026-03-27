@@ -276,6 +276,17 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then((data: any[]) => setProjects(data.map(normalizeProject)))
       .catch((err) => console.error("[UserContext] Failed to load projects:", err));
 
+    // Merge backend phones into storedUsers on load
+    fetch(`${API_URL}/api/users`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then((backendUsers: any[]) => {
+        setStoredUsers((prev) => prev.map((u) => {
+          const match = backendUsers.find((b: any) => b.email === u.email);
+          return match?.phone ? { ...u, phone: match.phone } : u;
+        }));
+      })
+      .catch(() => {});
+
     if (u) {
       fetch(`${API_URL}/api/tickets?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
         .then((r) => r.ok ? r.json() : Promise.reject(r.status))
@@ -667,4 +678,5 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
 
