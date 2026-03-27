@@ -57,6 +57,8 @@ interface ReviewResult {
   timestamp: string;
 }
 
+const BACKEND = "https://adaptable-patience-production-45da.up.railway.app";
+
 // ── Color palette (matches AdminDashboard G object) ─────────────────────────
 const G = {
   gold:       "#d4af37",
@@ -591,6 +593,24 @@ const SADashboard: React.FC = () => {
   const openReviewModal = (task: Task) => { setSelectedTask(task); setReviewComments(""); setAiReviewResults(null); setReviewPanelOpen(false); setShowReviewModal(true); };
   const handleLogout   = () => { logout(); navigate("/login"); };
   const showSuccess    = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(""), 3500); };
+
+  // ── Save phone number to backend ────────────────────────────────────────────
+  const savePhoneToBackend = async (memberId: string, phone: string, memberName: string) => {
+    try {
+      const res = await fetch(`${BACKEND}/api/users/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!res.ok) throw new Error("Server error");
+      (updateUser as any)(memberId, { phone });
+      showSuccess(`✓ Mobile saved for ${memberName}`);
+    } catch {
+      showSuccess("✕ Failed to save phone number — check backend connection");
+    } finally {
+      setEditPhoneId(null);
+    }
+  };
   const getStaffName   = (email: string) => { const m = teamMembers.find((t: any) => t.email === email); return m ? (m as any).name : email; };
 
   const handleExportCredentials = async () => {
@@ -2340,15 +2360,13 @@ const SADashboard: React.FC = () => {
                                   autoFocus
                                   onKeyDown={e => {
                                     if (e.key === "Enter") {
-                                      (updateUser as any)(member.id, { phone: editPhoneVal });
-                                      showSuccess(`✓ Mobile updated for ${member.name}`);
-                                      setEditPhoneId(null);
+                                      savePhoneToBackend(member.id, editPhoneVal, member.name);
                                     }
                                     if (e.key === "Escape") setEditPhoneId(null);
                                   }}
                                 />
                                 <button
-                                  onClick={() => { (updateUser as any)(member.id, { phone: editPhoneVal }); showSuccess(`✓ Mobile updated for ${member.name}`); setEditPhoneId(null); }}
+                                  onClick={() => savePhoneToBackend(member.id, editPhoneVal, member.name)}
                                   style={{ padding:"5px 10px", background:`${G.success}22`, border:`1px solid ${G.success}55`, borderRadius:6, color:G.success, fontSize:11, fontWeight:700, cursor:"pointer" }}>✓</button>
                                 <button
                                   onClick={() => setEditPhoneId(null)}
