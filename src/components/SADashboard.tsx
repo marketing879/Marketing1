@@ -595,16 +595,16 @@ const SADashboard: React.FC = () => {
   const showSuccess    = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(""), 3500); };
 
   // ── Save phone number to backend ────────────────────────────────────────────
-  const savePhoneToBackend = async (memberEmail: string, phone: string, memberName: string) => {
+  const savePhoneToBackend = async (member: any, phone: string) => {
     try {
-      const res = await fetch(`${BACKEND}/api/users/${memberEmail}`, {
+      const res = await fetch(`${BACKEND}/api/users/${member.email}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone, name: member.name, email: member.email, role: member.role }),
       });
       if (!res.ok) throw new Error("Server error");
-      (updateUser as any)(memberEmail, { phone });
-      showSuccess(`✓ Mobile saved for ${memberName}`);
+      (updateUser as any)(member.email, { phone });
+      showSuccess(`✓ Mobile saved for ${member.name}`);
     } catch {
       showSuccess("✕ Failed to save phone number — check backend connection");
     } finally {
@@ -2360,13 +2360,13 @@ const SADashboard: React.FC = () => {
                                   autoFocus
                                   onKeyDown={e => {
                                     if (e.key === "Enter") {
-                                      savePhoneToBackend(member.email, editPhoneVal, member.name);
+                                      savePhoneToBackend(member, editPhoneVal);
                                     }
                                     if (e.key === "Escape") setEditPhoneId(null);
                                   }}
                                 />
                                 <button
-                                  onClick={() => savePhoneToBackend(member.email, editPhoneVal, member.name)}
+                                  onClick={() => savePhoneToBackend(member, editPhoneVal)}
                                   style={{ padding:"5px 10px", background:`${G.success}22`, border:`1px solid ${G.success}55`, borderRadius:6, color:G.success, fontSize:11, fontWeight:700, cursor:"pointer" }}>✓</button>
                                 <button
                                   onClick={() => setEditPhoneId(null)}
@@ -3200,6 +3200,14 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
+
+
+
+
+
+
+
+
 
 
 
