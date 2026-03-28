@@ -99,7 +99,6 @@ const ChatRoomInner: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLDivElement>(null);
-  const dmListRef      = useRef<HTMLDivElement>(null);
 
   const isAdmin        = ["admin", "superadmin", "supremo"].includes(currentUser.role);
   const activeMessages = useMemo(() => {
@@ -137,15 +136,6 @@ const ChatRoomInner: React.FC = () => {
   }, [appUser?.email]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
-
-  useEffect(() => {
-    if (!showDMList) return;
-    const handle = (e: MouseEvent) => {
-      if (dmListRef.current && !dmListRef.current.contains(e.target as Node)) setShowDMList(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [showDMList]);
 
   const startCall = useCallback((roomUrl?: string) => {
     const room = roomUrl || `roswalt-smartcue-${activeChannel}`;
@@ -312,7 +302,7 @@ const ChatRoomInner: React.FC = () => {
 
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {/* DM button */}
-                <div style={{ position: "relative" }} ref={dmListRef}>
+                <div style={{ position: "relative" }}>
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
                     👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
                     {(() => {
