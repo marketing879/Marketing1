@@ -767,7 +767,7 @@ export const ChatRoom: React.FC = () => {
     status:   "Available",
   };
 
-  const teamMembers: ChatUser[] = (rawMembers || []).filter(m => m?.email && (m.id || m.email)).map(m => ({
+  const teamMembers: ChatUser[] = (rawMembers || []).filter(Boolean).filter((m: any) => m?.email && (m.id || m.email)).map((m: any) => ({
     id:       m.id || m.email,
     name:     m.name || m.email.split("@")[0],
     email:    m.email,
@@ -785,6 +785,7 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
 
 
 
