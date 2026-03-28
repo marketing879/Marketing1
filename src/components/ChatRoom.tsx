@@ -86,7 +86,7 @@ const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
   const { messages, channels, activeChannel, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread } = useChatContext();
 
-  const realUsers: ChatUser[] = useMemo(() => (teamMembers || []).filter(m => m?.email).map(m => ({
+  const realUsers: ChatUser[] = useMemo(() => (teamMembers || []).filter(m => m?.email && (m.id || m.email)).map(m => ({
     id:       m.id || m.email,
     name:     m.name || m.email.split("@")[0],
     email:    m.email,
@@ -131,7 +131,7 @@ const ChatRoomInner: React.FC = () => {
   const activeCh        = channels.find((c: Channel) => c.id === activeChannel);
 
   const totalDMUnread = useMemo(() =>
-    realUsers.reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0),
+    realUsers.filter(u => u?.id).reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0),
   [realUsers, unreadDMs, currentUser.id]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
@@ -663,7 +663,7 @@ const ChatRoomInner: React.FC = () => {
                   <button className="dm-close-btn" onClick={() => setShowDMPanel(false)}>×</button>
                 </div>
                 <div className="dm-list">
-                  {realUsers.map((u: ChatUser) => {
+                  {realUsers.filter(u => u?.id).map((u: ChatUser) => {
                     const dmCh    = getDMChannelId(currentUser.id, u.id);
                     const unread  = unreadDMs[dmCh] || 0;
                     const dmMsgs  = messages[dmCh] || [];
@@ -767,7 +767,7 @@ export const ChatRoom: React.FC = () => {
     status:   "Available",
   };
 
-  const teamMembers: ChatUser[] = (rawMembers || []).filter(m => m?.email).map(m => ({
+  const teamMembers: ChatUser[] = (rawMembers || []).filter(m => m?.email && (m.id || m.email)).map(m => ({
     id:       m.id || m.email,
     name:     m.name || m.email.split("@")[0],
     email:    m.email,
@@ -785,3 +785,5 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
+
