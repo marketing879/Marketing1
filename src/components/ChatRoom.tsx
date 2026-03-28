@@ -248,7 +248,7 @@ const ChatRoomInner: React.FC = () => {
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     .sc-root { width: 100%; height: 100%; background: #0a0b0f; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .sc-card { width: 100%; max-width: 860px; height: 100%; max-height: 90vh; display: flex; flex-direction: column; background: #0d0f18; border: 1px solid #1a1d2e; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.6); }
+    .sc-card { width: 100%; max-width: 860px; height: 100%; max-height: 90vh; display: flex; flex-direction: column; background: #0d0f18; border: 1px solid #1a1d2e; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }
     .msg-row:hover .msg-actions { opacity: 1 !important; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -307,7 +307,7 @@ const ChatRoomInner: React.FC = () => {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {/* DM dropdown */}
+                {/* DM button */}
                 <div style={{ position: "relative" }} ref={dmListRef}>
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
                     👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
@@ -318,39 +318,6 @@ const ChatRoomInner: React.FC = () => {
                       ) : null;
                     })()}
                   </button>
-                  {showDMList && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 280, background: "#111319", border: "1px solid #1a1d2e", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", zIndex: 200, maxHeight: 400, overflowY: "auto" as const, padding: "6px" }}>
-                      {dmTarget && (
-                        <div className="dm-item" onClick={() => { setDmTarget(null); setShowDMList(false); }} style={{ color: "#5a5f7a", fontSize: 12, padding: "8px 12px" }}>← Back to channels</div>
-                      )}
-                      <div style={{ fontSize: 9, fontWeight: 800, color: "#3a3f5c", padding: "6px 12px 4px", textTransform: "uppercase" as const, letterSpacing: "0.1em" }}>Team ({realUsers.length})</div>
-                      {realUsers.map((u: ChatUser) => {
-                        const dmCh   = getDMChannelId(currentUser.id, u.id);
-                        const unread = unreadDMs[dmCh] || 0;
-                        const dmMsgs = messages[dmCh] || [];
-                        const lastMsg = dmMsgs[dmMsgs.length - 1];
-                        return (
-                          <div key={u.id} className="dm-item" onClick={() => { setDmTarget(u); setShowDMList(false); }}
-                            style={{ background: unread > 0 ? "rgba(124,106,247,0.08)" : "transparent", borderRadius: 8, padding: "8px 10px", gap: 10 }}
-                          >
-                            <div style={{ position: "relative", flexShrink: 0 }}>
-                              <img src={u.avatar} alt={u.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", display: "block", border: "2px solid #252840" }} />
-                              {u.isOnline && <div style={{ position: "absolute", bottom: 0, right: 0, width: 9, height: 9, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                                <div style={{ fontSize: 13, fontWeight: unread > 0 ? 700 : 500, color: unread > 0 ? "#f0f0f6" : "#c8ccdd", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
-                                {unread > 0 && <span style={{ background: "#7c6af7", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 10, padding: "1px 6px", flexShrink: 0 }}>{unread}</span>}
-                              </div>
-                              <div style={{ fontSize: 10, color: unread > 0 ? "#a78bfa" : "#434763", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                                {lastMsg ? `${lastMsg.author.id === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 28) || "Attachment"}` : u.role}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
 
                 <button className="hdr-btn" onClick={() => startCall()} title="Video Call">📹</button>
@@ -396,6 +363,52 @@ const ChatRoomInner: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* DM People Panel — slides in over the message area */}
+          {showDMList && (
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex" }}>
+              <div style={{ width: 300, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", boxShadow: "4px 0 24px rgba(0,0,0,0.5)" }}>
+                {/* Panel header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>Direct Messages</div>
+                  <button onClick={() => setShowDMList(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+                </div>
+                {/* User list */}
+                <div style={{ flex: 1, overflowY: "auto" as const, padding: "8px" }}>
+                  {realUsers.map((u: ChatUser) => {
+                    const dmCh    = getDMChannelId(currentUser.id, u.id);
+                    const unread  = unreadDMs[dmCh] || 0;
+                    const dmMsgs  = messages[dmCh] || [];
+                    const lastMsg = dmMsgs[dmMsgs.length - 1];
+                    const isActive = dmTarget?.id === u.id;
+                    return (
+                      <div key={u.id} onClick={() => { setDmTarget(u); setShowDMList(false); }}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", marginBottom: 2, background: isActive ? "rgba(124,106,247,0.15)" : unread > 0 ? "rgba(124,106,247,0.06)" : "transparent", transition: "background 0.15s" }}
+                        onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#1a1d2e"; }}
+                        onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = unread > 0 ? "rgba(124,106,247,0.06)" : "transparent"; }}
+                      >
+                        <div style={{ position: "relative", flexShrink: 0 }}>
+                          <img src={u.avatar} alt={u.name} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", display: "block", border: `2px solid ${isActive ? "#7c6af7" : "#252840"}` }} />
+                          {u.isOnline && <div style={{ position: "absolute", bottom: 1, right: 1, width: 10, height: 10, background: "#34d399", borderRadius: "50%", border: "2px solid #111319" }} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                            <div style={{ fontSize: 13, fontWeight: unread > 0 ? 700 : 500, color: unread > 0 ? "#f0f0f6" : "#c8ccdd", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                            {unread > 0 && <span style={{ background: "#7c6af7", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 10, padding: "1px 7px", flexShrink: 0 }}>{unread}</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: unread > 0 ? "#a78bfa" : "#3a3f5c", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
+                            {lastMsg ? `${lastMsg.author.id === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 30) || "Attachment"}` : u.role}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Click outside to close */}
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.4)", cursor: "pointer" }} onClick={() => setShowDMList(false)} />
+            </div>
+          )}
 
           {/* Music panel */}
           {showMusic && (
