@@ -377,21 +377,21 @@ const ChatRoomInner: React.FC = () => {
             )}
           </div>
 
-          {/* DM People Panel — slides in over the message area */}
+          {/* DM People Panel — contained inside the chat card */}
           {showDMList && (
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex" }}>
-              <div style={{ width: 300, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", boxShadow: "4px 0 24px rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex", borderRadius: 16, overflow: "hidden" }}>
+              <div style={{ width: 280, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", flexShrink: 0 }}>
                 {/* Panel header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>Direct Messages</div>
-                  <button onClick={() => setShowDMList(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+                  <button onClick={() => setShowDMList(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 20, padding: 0, lineHeight: 1 }}>×</button>
                 </div>
                 {/* User list */}
                 <div style={{ flex: 1, overflowY: "auto" as const, padding: "8px" }}>
                   {realUsers.map((u: ChatUser) => {
-                    const dmCh    = getDMChannelId(currentUser.id, u.id);
-                    const unread  = unreadDMs[dmCh] || 0;
-                    const dmMsgs  = messages[dmCh] || [];
+                    const dmCh    = currentUser.id && currentUser.id !== "me" ? getDMChannelId(currentUser.id, u.id) : "";
+                    const unread  = dmCh ? (unreadDMs[dmCh] || 0) : 0;
+                    const dmMsgs  = dmCh ? (messages[dmCh] || []) : [];
                     const lastMsg = dmMsgs[dmMsgs.length - 1];
                     const isActive = dmTarget?.id === u.id;
                     return (
@@ -401,8 +401,8 @@ const ChatRoomInner: React.FC = () => {
                         onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = unread > 0 ? "rgba(124,106,247,0.06)" : "transparent"; }}
                       >
                         <div style={{ position: "relative", flexShrink: 0 }}>
-                          <img src={u.avatar} alt={u.name} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", display: "block", border: `2px solid ${isActive ? "#7c6af7" : "#252840"}` }} />
-                          {u.isOnline && <div style={{ position: "absolute", bottom: 1, right: 1, width: 10, height: 10, background: "#34d399", borderRadius: "50%", border: "2px solid #111319" }} />}
+                          <img src={u.avatar} alt={u.name} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", display: "block", border: `2px solid ${isActive ? "#7c6af7" : "#252840"}` }} />
+                          {u.isOnline && <div style={{ position: "absolute", bottom: 1, right: 1, width: 9, height: 9, background: "#34d399", borderRadius: "50%", border: "2px solid #111319" }} />}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
@@ -420,8 +420,8 @@ const ChatRoomInner: React.FC = () => {
                   })}
                 </div>
               </div>
-              {/* Click outside to close */}
-              <div style={{ flex: 1, background: "rgba(0,0,0,0.4)", cursor: "pointer" }} onClick={() => setShowDMList(false)} />
+              {/* Dimmed rest — click to close */}
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.5)", cursor: "pointer" }} onClick={() => setShowDMList(false)} />
             </div>
           )}
 
@@ -513,5 +513,4 @@ export const ChatRoom: React.FC = () => {
     </ChatProvider>
   );
 };
-
 export default ChatRoom;
