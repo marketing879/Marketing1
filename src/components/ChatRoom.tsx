@@ -128,23 +128,21 @@ const ChatRoomInner: React.FC = () => {
   }, [appUser]);
 
   useEffect(() => {
-    if (!appUser?.id && !appUser?.email) return;
-    const userId = appUser.id || appUser.email;
-    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${userId}`)
+    if (!appUser?.email) return;
+    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${encodeURIComponent(appUser.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data && !data.chatOnboarded) setShowOnboard(true); })
       .catch(() => {});
-  }, [appUser?.id, appUser?.email]);
+  }, [appUser?.email]);
 
   const completeOnboard = useCallback(() => {
     setShowOnboard(false);
-    const userId = appUser?.id || appUser?.email;
-    if (!userId) return;
-    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${userId}`, {
+    if (!appUser?.email) return;
+    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${encodeURIComponent(appUser.email)}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatOnboarded: true }),
     }).catch(() => {});
-  }, [appUser?.id, appUser?.email]);
+  }, [appUser?.email]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
 
@@ -189,9 +187,20 @@ const ChatRoomInner: React.FC = () => {
   const onShareMusic = (text: string) => sendMessage({ channelId: activeChannel, author: profileUser, type: "text", text, reactions: {} });
 
   const renderMsg = (msg: ChatMessage, prevMsg: ChatMessage | null) => {
+    // Reconstruct author from flat fields if nested author object is missing
+    const author = msg.author || {
+      id:     (msg as any).authorId    || "unknown",
+      name:   (msg as any).authorName  || "Unknown",
+      email:  (msg as any).authorEmail || "",
+      role:   (msg as any).authorRole  || "staff",
+      avatar: (msg as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=unknown&backgroundColor=1a1d2e&textColor=a78bfa`,
+      isOnline: false,
+      status: "Available",
+    };
+    if (!author.id) return null; // skip fully broken messages
     const showDate = !prevMsg || !sameDay(prevMsg.createdAt, msg.createdAt);
-    const isMine   = msg.author.id === currentUser.id || msg.author.email === currentUser.email;
-    const reactions = Object.entries(msg.reactions).filter(([, u]) => (u as string[]).length > 0);
+    const isMine   = author.id === currentUser.id || author.email === currentUser.email;
+    const reactions = Object.entries(msg.reactions || {}).filter(([, u]) => (u as string[]).length > 0);
     return (
       <React.Fragment key={msg.id}>
         {showDate && (
@@ -203,11 +212,11 @@ const ChatRoomInner: React.FC = () => {
           onMouseEnter={e => (e.currentTarget.style.background = "#181b27")}
           onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
         >
-          <img src={msg.author.avatar} alt={msg.author.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0, marginTop: 2, border: "1.5px solid #252840" }} />
+          <img src={author.avatar} alt={author.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0, marginTop: 2, border: "1.5px solid #252840" }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" as const }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: isMine ? "#a78bfa" : "#e0e0f0" }}>{msg.author.name}</span>
-              <span style={roleStyle(msg.author.role)}>{msg.author.role}</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: isMine ? "#a78bfa" : "#e0e0f0" }}>{author.name}</span>
+              <span style={roleStyle(author.role)}>{author.role}</span>
               <span style={{ fontSize: 10, color: "#3a3f5c" }}>{fmt(msg.createdAt)}</span>
             </div>
             {msg.type === "sticker" && <div style={{ fontSize: 52, lineHeight: 1, padding: "4px 0" }}>{msg.text}</div>}
