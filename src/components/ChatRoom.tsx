@@ -163,7 +163,7 @@ const ChatRoomInner: React.FC = () => {
     setShowOnboard(false);
     const userId = appUser?.id || appUser?.email;
     if (!userId) return;
-    fetch(`${API}/api/users/${encodeURIComponent(userId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatOnboarded: true }) }).catch(() => {});
+    fetch(`${API}/api/users/${encodeURIComponent(appUser?.email || userId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatOnboarded: true }) }).catch(() => {});
   }, [appUser?.id, appUser?.email]);
 
   const startCall = useCallback((roomUrl?: string) => {
@@ -785,6 +785,7 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
 
 
 
