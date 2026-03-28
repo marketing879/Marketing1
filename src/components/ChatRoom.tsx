@@ -103,6 +103,7 @@ const ChatRoomInner: React.FC = () => {
 
   const isAdmin        = ["admin", "superadmin", "supremo"].includes(currentUser.role);
   const activeMessages = useMemo(() => {
+    if (!currentUser.id || currentUser.id === "me") return messages[activeChannel] || [];
     const ch = dmTarget ? getDMChannelId(currentUser.id, dmTarget.id) : activeChannel;
     return messages[ch] || [];
   }, [messages, dmTarget, activeChannel, currentUser.id]);
@@ -111,7 +112,7 @@ const ChatRoomInner: React.FC = () => {
 
   // When dmTarget changes, join the shared DM channel and clear unread
   useEffect(() => {
-    if (!dmTarget) return;
+    if (!dmTarget?.id || !currentUser.id || currentUser.id === "me") return;
     const dmChannelId = getDMChannelId(currentUser.id, dmTarget.id);
     setActiveChannel(dmChannelId);
     clearDMUnread(dmChannelId);
@@ -314,6 +315,7 @@ const ChatRoomInner: React.FC = () => {
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
                     👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
                     {(() => {
+                      if (!currentUser.id || currentUser.id === "me" || realUsers.length === 0) return null;
                       const total = realUsers.reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0);
                       return total > 0 ? (
                         <span style={{ position: "absolute", top: -4, right: -4, background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: "50%", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{total}</span>
