@@ -86,7 +86,7 @@ const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
   const { messages, channels, activeChannel, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread } = useChatContext();
 
-  const realUsers: ChatUser[] = useMemo(() => (teamMembers || []).filter(m => m?.email && (m.id || m.email)).map(m => ({
+  const realUsers: ChatUser[] = useMemo(() => (teamMembers || []).filter(Boolean).filter((m: any) => m?.email && (m.id || m.email)).map((m: any) => ({
     id:       m.id || m.email,
     name:     m.name || m.email.split("@")[0],
     email:    m.email,
@@ -785,6 +785,7 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
 
 
 
