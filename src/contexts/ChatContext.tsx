@@ -1,333 +1,336 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { ChatMessage, ChatUser, Channel } from "../types/chat";
 import { io } from "socket.io-client";
+type SocketInstance = ReturnType<typeof io>;
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
-type SocketInstance = ReturnType<typeof io>;
-
-export const getDMChannelId = (idA: string, idB: string) =>
+// Shared DM room ID — same for both users regardless of who initiates
+const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");
 
-export const SEED_USERS: ChatUser[] = [];
-
-const DEFAULT_CHANNELS: Channel[] = [
-  { id: "general",       name: "general",       type: "public", description: "General discussion",    unread: 0 },
-  { id: "announcements", name: "announcements", type: "public", description: "Company announcements", unread: 0 },
-  { id: "sales",         name: "sales",         type: "public", description: "Sales team",            unread: 0 },
-  { id: "marketing",     name: "marketing",     type: "public", description: "Marketing team",        unread: 0 },
-  { id: "support",       name: "support",       type: "public", description: "Customer support",      unread: 0 },
-  { id: "random",        name: "random",        type: "public", description: "Off-topic fun",         unread: 0 },
+export const CHANNELS: Channel[] = [
+  { id: "general",       name: "general",       description: "Team-wide chat",  type: "public", unread: 0 },
+  { id: "announcements", name: "announcements", description: "Official updates", type: "public", unread: 0 },
+  { id: "project-alpha", name: "project-alpha", description: "Alpha workspace",  type: "public", unread: 0 },
+  { id: "random",        name: "random",        description: "Anything goes",    type: "public", unread: 0 },
 ];
 
 interface ChatContextValue {
   messages:         Record<string, ChatMessage[]>;
   channels:         Channel[];
   activeChannel:    string;
+  onlineUsers:      ChatUser[];
   typingUser:       string | null;
   unreadDMs:        Record<string, number>;
   setActiveChannel: (id: string) => void;
-  sendMessage:      (msg: Omit<ChatMessage, "id" | "createdAt">) => Promise<void>;
+  sendMessage:      (msg: Omit<ChatMessage, "id" | "createdAt">) => void;
   toggleReaction:   (msgId: string, emoji: string, userId: string) => void;
+  addChannel:       (ch: Channel) => void;
+  clearUnread:      (channelId: string) => void;
   clearDMUnread:    (channelId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+
 export const useChatContext = () => {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error("useChatContext must be inside ChatProvider");
   return ctx;
 };
 
-interface ProviderProps {
-  children:    React.ReactNode;
-  currentUser: ChatUser;
-  teamMembers: ChatUser[];
-}
+export const ChatProvider: React.FC<{
+  children: React.ReactNode;
+  currentUser?: ChatUser;
+  teamMembers?: ChatUser[];
+}> = ({ children, currentUser, teamMembers = [] }) => {
+  const [messages,      setMessages]    = useState<Record<string, ChatMessage[]>>({});
+  const [channels,      setChannels]    = useState<Channel[]>(CHANNELS);
+  const [activeChannel, setActive]      = useState("general");
+  const [onlineUsers,   setOnlineUsers] = useState<ChatUser[]>([]);
+  const [typingUser,    setTypingUser]  = useState<string | null>(null);
+  const [unreadDMs,     setUnreadDMs]   = useState<Record<string, number>>({});
+  const socketRef = useRef<SocketInstance | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeChRef    = useRef("general"); // track active channel for unread logic
 
-export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, teamMembers }) => {
-  const [messages,      setMessages]      = useState<Record<string, ChatMessage[]>>({});
-  const [channels,      setChannels]      = useState<Channel[]>(DEFAULT_CHANNELS);
-  const [activeChannel, setActiveChannelState] = useState("general");
-  const [typingUser,    setTypingUser]    = useState<string | null>(null);
-  const [unreadDMs,     setUnreadDMs]     = useState<Record<string, number>>({});
+  useEffect(() => { activeChRef.current = activeChannel; }, [activeChannel]);
 
-  const socketRef      = useRef<SocketInstance | null>(null);
-  const typingTimer    = useRef<ReturnType<typeof setTimeout>>();
-  const socketInitRef  = useRef(false);
-
-  // Keep latest values accessible inside socket callbacks without re-running the effect
-  const currentUserRef = useRef(currentUser);
-  const teamMembersRef = useRef(teamMembers);
-  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
-  useEffect(() => { teamMembersRef.current = teamMembers; }, [teamMembers]);
-
-  // Stable primitives — only change when the actual logged-in user changes
-  const userId    = currentUser.id    || currentUser.email || "";
-  const userEmail = currentUser.email || "";
-
-  // ── Load messages for a channel from MongoDB ─────────────────────────────
-  const loadMessages = useCallback(async (channelId: string) => {
-    try {
-      const res = await fetch(`${API}/api/chat/messages/${channelId}?limit=100`);
-      if (!res.ok) return;
-      const data: ChatMessage[] = await res.json();
-      setMessages(prev => ({
-        ...prev,
-        [channelId]: data.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
-      }));
-    } catch (e) {
-      console.warn("[Chat] loadMessages failed for", channelId, e);
+  // ── Request notification permission ──────────────────────────────────────
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
     }
   }, []);
 
-  // ── Load ALL channel histories immediately on mount ───────────────────────
-  useEffect(() => {
-    if (!userId) return;
-    DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-  }, [userId, loadMessages]);
+  // ── Load messages from REST ───────────────────────────────────────────────
+  const loadMessages = useCallback(async (channelId: string) => {
+    try {
+      const res = await fetch(`${API}/api/chat/messages/${channelId}?limit=100`);
+      if (!res.ok) { console.warn("[Chat] loadMessages failed:", res.status); return; }
+      const data: any[] = await res.json();
+      console.log(`[Chat] Loaded ${data.length} messages for #${channelId}`);
+      const normalized: ChatMessage[] = data.map(m => ({
+        ...m,
+        id:        m.id || String(m._id),
+        reactions: m.reactions && typeof m.reactions === "object" && !Array.isArray(m.reactions) ? m.reactions : {},
+      }));
+      setMessages(prev => ({ ...prev, [channelId]: normalized }));
+    } catch (e) { console.error("[Chat] loadMessages error:", e); }
+  }, []);
 
-  // ── Load DM histories when teamMembers becomes available ─────────────────
   useEffect(() => {
-    if (!userId || !teamMembers.length) return;
-    teamMembers
-      .filter(m => m?.id)
-      .forEach(member => loadMessages(getDMChannelId(userId, member.id)));
-  }, [userId, teamMembers, loadMessages]);
+    CHANNELS.forEach(ch => loadMessages(ch.id));
+  }, [loadMessages]);
 
-  // ── Socket — created ONCE per logged-in user, never torn down on re-render ─
+  // Pre-load DM histories when teamMembers are available
   useEffect(() => {
-    if (!userId) return;
-    if (socketInitRef.current && socketRef.current) return;
-    socketInitRef.current = true;
+    if (!currentUser?.id || teamMembers.length === 0) return;
+    teamMembers.forEach(member => {
+      if (member.id !== currentUser.id && member.email !== currentUser.email) {
+        const dmCh = getDMChannelId(currentUser.id, member.id);
+        loadMessages(dmCh);
+      }
+    });
+  }, [currentUser?.id, teamMembers.length, loadMessages]);
 
+  // ── Socket.io ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log("[Chat] Connecting socket to", API);
     const socket = io(API, {
-      transports:           ["polling", "websocket"],
-      upgrade:              true,
+      transports:           ["websocket", "polling"],
       withCredentials:      true,
-      autoConnect:          true,
-      reconnection:         true,
-      reconnectionAttempts: 15,
+      reconnectionAttempts: 10,
       reconnectionDelay:    2000,
     });
-
     socketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("[Chat] Socket connected:", socket.id);
-
-      const cu  = currentUserRef.current;
-      const tms = teamMembersRef.current;
-
-      DEFAULT_CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
-      socket.emit("join_channel", `dm_personal_${cu.id}`);
-      socket.emit("join_channel", `dm_personal_${cu.email}`);
-      tms.filter(m => m?.id).forEach(member =>
-        socket.emit("join_channel", getDMChannelId(cu.id, member.id))
-      );
-
-      // Re-fetch histories on reconnect
-      DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-      tms.filter(m => m?.id).forEach(member =>
-        loadMessages(getDMChannelId(cu.id, member.id))
-      );
-    });
-
-    socket.on("disconnect", (reason: string) => {
-      console.log("[Chat] Socket disconnected:", reason);
-      if (reason === "io server disconnect") {
-        socketInitRef.current = false;
+      // Join all public channels
+      CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
+      if (currentUser) {
+        socket.emit("user_join", currentUser);
+        // Pre-join DM room with EVERY team member so first message always arrives
+        teamMembers.forEach(member => {
+          if (member.id !== currentUser.id && member.email !== currentUser.email) {
+            const dmRoom = getDMChannelId(currentUser.id, member.id);
+            socket.emit("join_channel", dmRoom);
+          }
+        });
+        console.log("[Chat] Joined as:", currentUser.email, "| Pre-joined", teamMembers.length, "DM rooms");
       }
     });
 
     socket.on("connect_error", (err: Error) => {
-      console.warn("[Chat] Socket connect error:", err.message);
+      console.error("[Chat] Socket connect_error:", err.message);
     });
 
-    socket.on("new_message", (data: ChatMessage) => {
-      if (!data?.channelId || !data?.id) return;
+    socket.on("disconnect", (reason: string) => {
+      console.warn("[Chat] Socket disconnected:", reason);
+    });
+
+    socket.on("new_message", (msg: any) => {
+      console.log("[Chat] new_message received:", msg.channelId, msg.text?.slice(0, 30));
+      const normalized: ChatMessage = {
+        ...msg,
+        id:        msg.id || String(msg._id),
+        reactions: msg.reactions && typeof msg.reactions === "object" && !Array.isArray(msg.reactions) ? msg.reactions : {},
+      };
+
+      const myEmail  = currentUser?.email?.toLowerCase();
+      const isFromMe = myEmail
+        ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === currentUser?.id)
+        : false;
+
+      // Desktop notification
+      if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
+        try {
+          const n = new Notification(`${normalized.author?.name || "Someone"} · #${normalized.channelId}`, {
+            body:   normalized.type === "text" ? (normalized.text || "").slice(0, 100) : "New message",
+            icon:   "/favicon.ico",
+            tag:    `chat-${normalized.id}`,
+          });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch {}
+      }
+
+      // Increment DM unread if it's a DM channel and not from me
+      if (!isFromMe && normalized.channelId.startsWith("dm_") && normalized.channelId !== activeChRef.current) {
+        setUnreadDMs(prev => ({ ...prev, [normalized.channelId]: (prev[normalized.channelId] || 0) + 1 }));
+      }
 
       setMessages(prev => {
-        const existing = prev[data.channelId] || [];
-        const withoutOptimistic = existing.filter(m => !m.id.startsWith("opt_") || m.id === data.id);
-        if (withoutOptimistic.some(m => m.id === data.id)) return prev;
-        return { ...prev, [data.channelId]: [...withoutOptimistic, data] };
+        const ch       = normalized.channelId;
+        const existing = prev[ch] || [];
+        if (existing.some(m => m.id === normalized.id)) return prev;
+        return { ...prev, [ch]: [...existing, normalized] };
       });
 
-      const cu = currentUserRef.current;
-      const isFromMe = data.author?.id === cu.id || data.author?.email === cu.email;
-
-      if (!isFromMe && Notification.permission === "granted") {
-        const isDM = data.channelId.startsWith("dm_");
-        new Notification(`${data.author?.name || "Someone"} ${isDM ? "(DM)" : `· #${data.channelId}`}`, {
-          body: data.text?.slice(0, 80) || "Sent an attachment",
-          icon: data.author?.avatar,
-          tag:  `chat-${data.id}`,
-        });
-      }
-
-      if (data.channelId.startsWith("dm_") && !isFromMe) {
-        setUnreadDMs(prev => ({ ...prev, [data.channelId]: (prev[data.channelId] || 0) + 1 }));
-      }
-
-      if (!data.channelId.startsWith("dm_") && !isFromMe) {
-        setChannels(prev => prev.map(ch =>
-          ch.id === data.channelId ? { ...ch, unread: (ch.unread || 0) + 1 } : ch
-        ));
-      }
+      setChannels(prev => prev.map(c =>
+        c.id === normalized.channelId && normalized.channelId !== activeChRef.current
+          ? { ...c, unread: (c.unread || 0) + 1 }
+          : c
+      ));
     });
 
-    socket.on("reaction_update", (data: { messageId: string; channelId: string; reactions: Record<string, string[]> }) => {
-      if (!data?.messageId || !data?.channelId) return;
+    socket.on("reaction_update", ({ messageId, emoji, userId }: any) => {
       setMessages(prev => {
-        const msgs = prev[data.channelId] || [];
-        return { ...prev, [data.channelId]: msgs.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m) };
+        const updated = { ...prev };
+        for (const ch of Object.keys(updated)) {
+          const idx = updated[ch].findIndex(m => m.id === messageId);
+          if (idx !== -1) {
+            const msg   = { ...updated[ch][idx] };
+            const users = [...((msg.reactions[emoji] as string[]) || [])];
+            const pos   = users.indexOf(userId);
+            if (pos > -1) users.splice(pos, 1); else users.push(userId);
+            msg.reactions    = { ...msg.reactions, [emoji]: users };
+            updated[ch]      = [...updated[ch]];
+            updated[ch][idx] = msg;
+            return updated;
+          }
+        }
+        return prev;
       });
     });
 
-    socket.on("user_typing", (data: { name: string; channelId: string }) => {
-      setTypingUser(data.name);
-      clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => setTypingUser(null), 2500);
+    socket.on("user_typing", ({ name, isTyping }: { name: string; isTyping: boolean }) => {
+      if (isTyping) {
+        setTypingUser(name);
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(() => setTypingUser(null), 3000);
+      } else {
+        setTypingUser(null);
+      }
     });
 
-    if (Notification.permission === "default") Notification.requestPermission();
+    socket.on("user_online",  (u: ChatUser) => setOnlineUsers(prev => { const f = prev.filter(x => x.email !== u.email); return [...f, { ...u, isOnline: true }]; }));
+    socket.on("user_offline", ({ email }: { email: string }) => setOnlineUsers(prev => prev.map(u => u.email === email ? { ...u, isOnline: false } : u)));
 
     return () => {
+      console.log("[Chat] Disconnecting socket");
       socket.disconnect();
-      socketRef.current     = null;
-      socketInitRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]); // ← only userId as dep — object references don't cause reconnects
+  }, [currentUser?.id]); // socket only reconnects if user identity changes
 
-  // Re-join DM rooms when teamMembers loads after socket is already connected
+  // Re-join DM rooms when teamMembers load — without recreating the socket
   useEffect(() => {
+    if (!currentUser?.id || teamMembers.length === 0) return;
     const socket = socketRef.current;
-    if (!socket?.connected || !teamMembers.length) return;
-    teamMembers.filter(m => m?.id).forEach(member => {
-      socket.emit("join_channel", getDMChannelId(userId, member.id));
+    if (!socket?.connected) return;
+    teamMembers.forEach(member => {
+      if (member.id !== currentUser.id && member.email !== currentUser.email) {
+        socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
+      }
     });
-  }, [teamMembers, userId]);
+  }, [currentUser?.email, teamMembers.length]);
 
-  // ── Set active channel ────────────────────────────────────────────────────
   const setActiveChannel = useCallback((id: string) => {
-    setActiveChannelState(id);
+    setActive(id);
+    activeChRef.current = id;
+    // Only update unread for known public channels
+    setChannels(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
+    socketRef.current?.emit("join_channel", id);
     loadMessages(id);
-    if (!id.startsWith("dm_")) {
-      setChannels(prev => prev.map(ch => ch.id === id ? { ...ch, unread: 0 } : ch));
-    }
   }, [loadMessages]);
 
-  // ── Send message — save to MongoDB FIRST, then socket broadcast ──────────
-  const sendMessage = useCallback(async (partial: Omit<ChatMessage, "id" | "createdAt">) => {
-    const optimisticId = `opt_${Date.now()}_${Math.random()}`;
-    const optimistic: ChatMessage = {
-      ...partial,
-      id:        optimisticId,
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async (msg: Omit<ChatMessage, "id" | "createdAt">) => {
+    const full: ChatMessage = {
+      ...msg,
+      id:        "msg_" + Date.now() + "_" + Math.random().toString(36).slice(2),
       createdAt: new Date().toISOString(),
     };
 
-    setMessages(prev => {
-      const existing = prev[partial.channelId] || [];
-      return { ...prev, [partial.channelId]: [...existing, optimistic] };
-    });
+    // 1. Optimistic local update
+    setMessages(prev => ({
+      ...prev,
+      [msg.channelId]: [...(prev[msg.channelId] || []), full],
+    }));
 
-    let saved: ChatMessage | null = null;
+    // 2. Socket broadcast — backend forwards to all other clients in the channel
+    const payload = { ...full, authorId: full.author.id, authorName: full.author.name };
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("send_message", payload);
+      console.log("[Chat] socket emit send_message:", full.id, "connected:", socketRef.current.connected);
+    } else {
+      console.warn("[Chat] Socket NOT connected, message not broadcast");
+    }
+
+    // 3. Persist to MongoDB via REST
     try {
+      console.log("[Chat] POST /api/chat/messages →", msg.channelId, full.text?.slice(0, 40));
       const res = await fetch(`${API}/api/chat/messages`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channelId:    partial.channelId,
-          authorId:     partial.author.id,
-          authorName:   partial.author.name,
-          authorRole:   partial.author.role || "staff",
-          authorEmail:  partial.author.email,
-          authorAvatar: partial.author.avatar,
-          author: {
-            id:     partial.author.id,
-            name:   partial.author.name,
-            email:  partial.author.email,
-            role:   partial.author.role || "staff",
-            avatar: partial.author.avatar || "",
-          },
-          type:      partial.type || "text",
-          text:      partial.text || "",
-          gif:       partial.gif,
-          meeting:   partial.meeting,
-          reactions: partial.reactions || {},
-        }),
+        body:    JSON.stringify(full),
       });
-
       if (res.ok) {
-        saved = await res.json();
-        console.log("[Chat] Saved to MongoDB:", saved?.id);
-        if (saved) {
-          setMessages(prev => {
-            const msgs = prev[partial.channelId] || [];
-            return {
-              ...prev,
-              [partial.channelId]: msgs.map(m => m.id === optimisticId ? saved! : m),
-            };
-          });
+        const saved = await res.json();
+        console.log("[Chat] Saved to MongoDB:", saved.id || saved._id);
+        const savedId = saved.id || String(saved._id);
+        if (savedId !== full.id) {
+          setMessages(prev => ({
+            ...prev,
+            [msg.channelId]: (prev[msg.channelId] || []).map(m =>
+              m.id === full.id ? { ...m, id: savedId } : m
+            ),
+          }));
         }
       } else {
         const errText = await res.text();
-        console.error("[Chat] MongoDB save failed:", res.status, errText);
+        console.error("[Chat] REST save failed:", res.status, errText);
       }
     } catch (e) {
-      console.error("[Chat] MongoDB save error:", e);
-    }
-
-    const socket = socketRef.current;
-    if (socket?.connected) {
-      socket.emit("send_message", {
-        ...(saved || optimistic),
-        channelId: partial.channelId,
-        authorId:  partial.author.id,
-      });
-    } else {
-      console.warn("[Chat] Socket not connected — message saved to DB but not broadcast live");
+      console.error("[Chat] REST network error:", e);
     }
   }, []);
 
-  // ── Toggle reaction ───────────────────────────────────────────────────────
-  const toggleReaction = useCallback((msgId: string, emoji: string, userId: string) => {
+  const toggleReaction = useCallback(async (msgId: string, emoji: string, userId: string) => {
     setMessages(prev => {
-      for (const [channelId, msgs] of Object.entries(prev)) {
-        const msg = msgs.find(m => m.id === msgId);
-        if (!msg) continue;
-        const users: string[] = (msg.reactions[emoji] as string[]) || [];
-        const updated = users.includes(userId) ? users.filter(u => u !== userId) : [...users, userId];
-        const newReactions = { ...msg.reactions, [emoji]: updated };
-
-        fetch(`${API}/api/chat/messages/${msgId}/react`, {
-          method:  "PUT",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ emoji, userId, channelId }),
-        }).catch(e => console.warn("[Chat] Reaction save failed:", e));
-
-        socketRef.current?.emit("react", { messageId: msgId, channelId, emoji, userId });
-
-        return {
-          ...prev,
-          [channelId]: msgs.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m),
-        };
+      const updated = { ...prev };
+      for (const ch of Object.keys(updated)) {
+        const idx = updated[ch].findIndex(m => m.id === msgId);
+        if (idx !== -1) {
+          const msg   = { ...updated[ch][idx] };
+          const users = [...((msg.reactions[emoji] as string[]) || [])];
+          const pos   = users.indexOf(userId);
+          if (pos > -1) users.splice(pos, 1); else users.push(userId);
+          msg.reactions    = { ...msg.reactions, [emoji]: users };
+          updated[ch]      = [...updated[ch]];
+          updated[ch][idx] = msg;
+          return updated;
+        }
       }
       return prev;
     });
+    try {
+      await fetch(`${API}/api/chat/messages/${msgId}/react`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji, userId, channelId: activeChRef.current }),
+      });
+    } catch {}
+    socketRef.current?.emit("react", { messageId: msgId, emoji, userId, channelId: activeChRef.current });
+  }, []);
+
+  const addChannel = useCallback((ch: Channel) => {
+    setChannels(prev => [...prev, ch]);
+    setMessages(prev => ({ ...prev, [ch.id]: [] }));
   }, []);
 
   const clearDMUnread = useCallback((channelId: string) => {
     setUnreadDMs(prev => ({ ...prev, [channelId]: 0 }));
   }, []);
 
+  const clearUnread = useCallback((channelId: string) => {
+    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, unread: 0 } : c));
+  }, []);
+
   return (
-    <ChatContext.Provider value={{ messages, channels, activeChannel, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread }}>
+    <ChatContext.Provider value={{ messages, channels, activeChannel, onlineUsers, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread, clearDMUnread }}>
       {children}
     </ChatContext.Provider>
   );
 };
 
-export default ChatProvider;
+export const SEED_USERS: ChatUser[] = [];
