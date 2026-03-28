@@ -22,11 +22,13 @@ interface ChatContextValue {
   activeChannel:    string;
   onlineUsers:      ChatUser[];
   typingUser:       string | null;
+  unreadDMs:        Record<string, number>;
   setActiveChannel: (id: string) => void;
   sendMessage:      (msg: Omit<ChatMessage, "id" | "createdAt">) => void;
   toggleReaction:   (msgId: string, emoji: string, userId: string) => void;
   addChannel:       (ch: Channel) => void;
   clearUnread:      (channelId: string) => void;
+  clearDMUnread:    (channelId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -47,6 +49,7 @@ export const ChatProvider: React.FC<{
   const [activeChannel, setActive]      = useState("general");
   const [onlineUsers,   setOnlineUsers] = useState<ChatUser[]>([]);
   const [typingUser,    setTypingUser]  = useState<string | null>(null);
+  const [unreadDMs,     setUnreadDMs]   = useState<Record<string, number>>({});
   const socketRef = useRef<SocketInstance | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeChRef    = useRef("general"); // track active channel for unread logic
@@ -79,6 +82,17 @@ export const ChatProvider: React.FC<{
   useEffect(() => {
     CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [loadMessages]);
+
+  // Pre-load DM histories when teamMembers are available
+  useEffect(() => {
+    if (!currentUser?.id || teamMembers.length === 0) return;
+    teamMembers.forEach(member => {
+      if (member.id !== currentUser.id && member.email !== currentUser.email) {
+        const dmCh = getDMChannelId(currentUser.id, member.id);
+        loadMessages(dmCh);
+      }
+    });
+  }, [currentUser?.id, teamMembers.length, loadMessages]);
 
   // ── Socket.io ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -124,12 +138,12 @@ export const ChatProvider: React.FC<{
         reactions: msg.reactions && typeof msg.reactions === "object" && !Array.isArray(msg.reactions) ? msg.reactions : {},
       };
 
-      // Desktop notification for messages from others
       const myEmail  = currentUser?.email?.toLowerCase();
       const isFromMe = myEmail
         ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === currentUser?.id)
         : false;
 
+      // Desktop notification
       if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
         try {
           const n = new Notification(`${normalized.author?.name || "Someone"} · #${normalized.channelId}`, {
@@ -139,6 +153,11 @@ export const ChatProvider: React.FC<{
           });
           n.onclick = () => { window.focus(); n.close(); };
         } catch {}
+      }
+
+      // Increment DM unread if it's a DM channel and not from me
+      if (!isFromMe && normalized.channelId.startsWith("dm_") && normalized.channelId !== activeChRef.current) {
+        setUnreadDMs(prev => ({ ...prev, [normalized.channelId]: (prev[normalized.channelId] || 0) + 1 }));
       }
 
       setMessages(prev => {
@@ -197,6 +216,7 @@ export const ChatProvider: React.FC<{
   const setActiveChannel = useCallback((id: string) => {
     setActive(id);
     activeChRef.current = id;
+    // Only update unread for known public channels
     setChannels(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     socketRef.current?.emit("join_channel", id);
     loadMessages(id);
@@ -286,12 +306,16 @@ export const ChatProvider: React.FC<{
     setMessages(prev => ({ ...prev, [ch.id]: [] }));
   }, []);
 
+  const clearDMUnread = useCallback((channelId: string) => {
+    setUnreadDMs(prev => ({ ...prev, [channelId]: 0 }));
+  }, []);
+
   const clearUnread = useCallback((channelId: string) => {
     setChannels(prev => prev.map(c => c.id === channelId ? { ...c, unread: 0 } : c));
   }, []);
 
   return (
-    <ChatContext.Provider value={{ messages, channels, activeChannel, onlineUsers, typingUser, setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread }}>
+    <ChatContext.Provider value={{ messages, channels, activeChannel, onlineUsers, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread, clearDMUnread }}>
       {children}
     </ChatContext.Provider>
   );
