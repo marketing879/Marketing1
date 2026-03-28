@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useUser } from "../contexts/UserContext";
 import { ChatProvider, useChatContext } from "../contexts/ChatContext";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
-import { ChatMessage, ChatUser, UserRole } from "../types/chat";
+import { ChatMessage, ChatUser, UserRole, Channel } from "../types/chat";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { EmojiPicker } from "./EmojiPicker";
 import { YoutubePanel } from "./YoutubePanel";
@@ -10,9 +10,7 @@ import { VideoCallPanel } from "./VideoCallPanel";
 import { ProfileModal } from "./ProfileModal";
 import { MeetingModal } from "./MeetingModal";
 
-const FONT_LINK = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-`;
+const FONT_LINK = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');`;
 
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   staff:      { bg: "rgba(110,231,183,0.12)", color: "#6ee7b7" },
@@ -40,7 +38,7 @@ const useToast = () => {
     timer.current = setTimeout(() => setToast(null), 3500);
   }, []);
   _showToast = show;
-  return { toast, show };
+  return { toast };
 };
 const showToast = (m: string, t?: ToastState["type"]) => _showToast?.(m, t);
 
@@ -53,14 +51,15 @@ const fmtDate = (iso: string) => {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 };
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
-function esc(s: string) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function linkify(t: string) { return t.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:#a78bfa">$1</a>'); }
+const esc = (s: string) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const linkify = (t: string) => t.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:#a78bfa">$1</a>');
 
+// ── Inner component ───────────────────────────────────────────────────────────
 const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
   const { messages, channels, activeChannel, typingUser, setActiveChannel, sendMessage, toggleReaction } = useChatContext();
 
-  // ── Real users from UserContext — no mock/seed data ─────────────────────
+  // Real users from teamMembers — no mock data
   const realUsers: ChatUser[] = useMemo(() => {
     return (teamMembers || [])
       .filter(m => m && m.email)
@@ -69,7 +68,6 @@ const ChatRoomInner: React.FC = () => {
         name:     m.name || m.email.split("@")[0],
         email:    m.email,
         role:     (m.role as UserRole) || "staff",
-        // Use saved avatar from MongoDB; only fall back to dicebear if none stored
         avatar:   (m as any).avatar
                     ? (m as any).avatar
                     : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
@@ -83,7 +81,6 @@ const ChatRoomInner: React.FC = () => {
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
     email:    appUser?.email || "me@roswalt.com",
     role:     (appUser?.role as UserRole) || "staff",
-    // Prefer saved avatar from MongoDB, fall back to initials avatar
     avatar:   (appUser as any)?.avatar
                 ? (appUser as any).avatar
                 : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || appUser?.email || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
@@ -92,6 +89,7 @@ const ChatRoomInner: React.FC = () => {
   }), [appUser]);
 
   const [showCall,    setShowCall]    = useState(false);
+  const [callRoomUrl, setCallRoomUrl] = useState<string | null>(null);
   const [showOnboard, setShowOnboard] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showMeeting, setShowMeeting] = useState(false);
@@ -110,8 +108,9 @@ const ChatRoomInner: React.FC = () => {
   const isAdmin        = ["admin", "superadmin", "supremo"].includes(currentUser.role);
   const activeMessages = useMemo(() => messages[dmTarget ? `dm_${dmTarget.id}` : activeChannel] || [], [messages, dmTarget, activeChannel]);
   const activeChName   = dmTarget ? dmTarget.name : `#${activeChannel}`;
-  const activeCh       = channels.find(c => c.id === activeChannel);
+  const activeCh       = channels.find((c: Channel) => c.id === activeChannel);
 
+  // Sync profileUser with appUser
   useEffect(() => {
     setProfileUser(prev => ({
       ...prev,
@@ -121,6 +120,7 @@ const ChatRoomInner: React.FC = () => {
     }));
   }, [appUser]);
 
+  // Load onboard flag from MongoDB
   useEffect(() => {
     if (!appUser?.id && !appUser?.email) return;
     const userId = appUser.id || appUser.email;
@@ -130,6 +130,7 @@ const ChatRoomInner: React.FC = () => {
       .catch(() => {});
   }, [appUser?.id, appUser?.email]);
 
+  // Save onboard completion to MongoDB
   const completeOnboard = useCallback(() => {
     setShowOnboard(false);
     const userId = appUser?.id || appUser?.email;
@@ -152,13 +153,24 @@ const ChatRoomInner: React.FC = () => {
     return () => document.removeEventListener("mousedown", handle);
   }, [showDMList]);
 
+  // Start in-app Jitsi call
+  const startCall = useCallback((roomUrl?: string) => {
+    const room = roomUrl || `roswalt-smartcue-${activeChannel}-${Date.now()}`;
+    const jitsiUrl = room.startsWith("http")
+      ? (room.includes("meet.jit.si") ? room : `https://meet.jit.si/${encodeURIComponent(room.replace(/https?:\/\/[^/]+\//, ""))}`)
+      : `https://meet.jit.si/${room}`;
+    setCallRoomUrl(jitsiUrl);
+    setShowCall(true);
+  }, [activeChannel]);
+
   const doSend = (override?: Partial<ChatMessage>) => {
     const text = inputRef.current?.innerText.trim() || inputText.trim();
     if (!text && !override?.gif && !override?.type) return;
     const channelId = dmTarget ? `dm_${dmTarget.id}` : activeChannel;
     sendMessage({ channelId, author: profileUser, type: "text", text, reactions: {}, ...override });
     if (inputRef.current) inputRef.current.innerText = "";
-    setInputText(""); setShowPicker(false);
+    setInputText("");
+    setShowPicker(false);
   };
 
   const sendSticker = (s: string) => doSend({ type: "sticker", text: s });
@@ -190,7 +202,7 @@ const ChatRoomInner: React.FC = () => {
         >
           <img src={msg.author.avatar} alt={msg.author.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0, marginTop: 2, border: "1.5px solid #252840" }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" as const }}>
               <span style={{ fontWeight: 700, fontSize: 13, color: isMine ? "#a78bfa" : "#e0e0f0" }}>{msg.author.name}</span>
               <span style={roleStyle(msg.author.role)}>{msg.author.role}</span>
               <span style={{ fontSize: 10, color: "#3a3f5c" }}>{fmt(msg.createdAt)}</span>
@@ -202,16 +214,16 @@ const ChatRoomInner: React.FC = () => {
                 <span style={{ fontSize: 22 }}>📹</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "#e0e0f0" }}>{msg.meeting.title}</div>
-                  <div style={{ fontSize: 11, color: "#7c6af7", wordBreak: "break-all" }}>{msg.meeting.link}</div>
+                  <div style={{ fontSize: 11, color: "#7c6af7", wordBreak: "break-all" as const }}>{msg.meeting.link}</div>
                 </div>
-                <button onClick={() => window.open(msg.meeting!.link, "_blank")} style={{ background: "#7c6af7", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Join</button>
+                <button onClick={() => startCall(msg.meeting!.link)} style={{ background: "#7c6af7", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Join</button>
               </div>
             )}
             {(msg.type === "text" || msg.type === "voice" || (!msg.type && msg.text)) && (
-              <div style={{ fontSize: 14, lineHeight: 1.65, color: "#d0d0e8", wordBreak: "break-word" }} dangerouslySetInnerHTML={{ __html: linkify(esc(msg.text || "")) }} />
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: "#d0d0e8", wordBreak: "break-word" as const }} dangerouslySetInnerHTML={{ __html: linkify(esc(msg.text || "")) }} />
             )}
             {reactions.length > 0 && (
-              <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" as const }}>
                 {reactions.map(([emoji, users]) => (
                   <button key={emoji} onClick={() => toggleReaction(msg.id, emoji, currentUser.id)} style={{
                     background: (users as string[]).includes(currentUser.id) ? "rgba(124,106,247,0.2)" : "#1e2230",
@@ -241,7 +253,7 @@ const ChatRoomInner: React.FC = () => {
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #252840; border-radius: 2px; }
-    .ch-tab { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all 0.15s; background: none; color: #5a5f7a; }
+    .ch-tab { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all 0.15s; background: none; color: #5a5f7a; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .ch-tab:hover { background: #1a1d2e; color: #e0e0f0; }
     .ch-tab.active { background: rgba(124,106,247,0.15); color: #a78bfa; }
     .hdr-btn { background: none; border: 1px solid #1f2338; border-radius: 8px; color: #5a5f7a; padding: 5px 9px; cursor: pointer; font-size: 14px; transition: all 0.15s; }
@@ -264,7 +276,7 @@ const ChatRoomInner: React.FC = () => {
 
       {showProfile && (
         <ProfileModal user={profileUser}
-          onSave={updates => {
+          onSave={(updates: Partial<ChatUser>) => {
             setProfileUser(prev => ({ ...prev, ...updates }));
             if (appUser) loginAsUser({ ...appUser, ...(updates.name ? { name: updates.name } : {}), ...(updates.avatar ? { avatar: updates.avatar } : {}), ...(updates.status ? { status: updates.status } : {}) });
           }}
@@ -275,7 +287,7 @@ const ChatRoomInner: React.FC = () => {
       {showMeeting && <MeetingModal currentUser={profileUser} allUsers={realUsers} onSend={sendMeeting} onClose={() => setShowMeeting(false)} />}
 
       {toast && (
-        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9000, background: "#181b27", border: `1px solid ${toast.type === "success" ? "#34d399" : toast.type === "error" ? "#f87171" : "#7c6af7"}`, borderRadius: 12, padding: "12px 18px", fontSize: 13, color: "#f0f0f6", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", animation: "toastIn 0.3s ease", fontFamily: "'DM Sans', sans-serif", maxWidth: 320 }}>
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9000, background: "#181b27", border: `1px solid ${toast.type === "success" ? "#34d399" : toast.type === "error" ? "#f87171" : "#7c6af7"}`, borderRadius: 12, padding: "12px 18px", fontSize: 13, color: "#f0f0f6", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", animation: "toastIn 0.3s ease", maxWidth: 320 }}>
           {toast.msg}
         </div>
       )}
@@ -283,40 +295,37 @@ const ChatRoomInner: React.FC = () => {
       <div className="sc-root">
         <div className="sc-card">
 
-          {/* ── TOP NAVBAR ─────────────────────────────────────────────── */}
+          {/* ── TOP NAVBAR ── */}
           <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
 
-            {/* Brand row */}
+            {/* Brand + actions row */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 8px", borderBottom: "1px solid #1a1d2e" }}>
               <img src={roswaltLogo} alt="Roswalt" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontWeight: 400, fontSize: 14, color: "#c9a96e", letterSpacing: "0.08em" }}>SmartCue ChatRoom</div>
-                <div style={{ fontSize: 9, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" }}>Roswalt Realty</div>
+                <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 14, color: "#c9a96e", letterSpacing: "0.08em" }}>SmartCue ChatRoom</div>
+                <div style={{ fontSize: 9, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
               </div>
 
-              {/* Right actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {/* DM dropdown trigger */}
+                {/* DM dropdown */}
                 <div style={{ position: "relative" }} ref={dmListRef}>
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages">
                     👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
                   </button>
                   {showDMList && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 220, background: "#111319", border: "1px solid #1a1d2e", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", zIndex: 200, maxHeight: 320, overflowY: "auto", padding: "6px" }}>
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 220, background: "#111319", border: "1px solid #1a1d2e", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", zIndex: 200, maxHeight: 320, overflowY: "auto" as const, padding: "6px" }}>
                       {dmTarget && (
-                        <div className="dm-item" onClick={() => { setDmTarget(null); setShowDMList(false); }} style={{ color: "#5a5f7a", fontSize: 12 }}>
-                          ← Back to channel
-                        </div>
+                        <div className="dm-item" onClick={() => { setDmTarget(null); setShowDMList(false); }} style={{ color: "#5a5f7a", fontSize: 12 }}>← Back to channel</div>
                       )}
-                      <div style={{ fontSize: 9, fontWeight: 800, color: "#3a3f5c", padding: "6px 12px 2px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Team ({realUsers.length})</div>
-                      {realUsers.map(u => (
+                      <div style={{ fontSize: 9, fontWeight: 800, color: "#3a3f5c", padding: "6px 12px 2px", textTransform: "uppercase" as const, letterSpacing: "0.1em" }}>Team ({realUsers.length})</div>
+                      {realUsers.map((u: ChatUser) => (
                         <div key={u.id} className="dm-item" onClick={() => { setDmTarget(u); setShowDMList(false); }}>
                           <div style={{ position: "relative", flexShrink: 0 }}>
                             <img src={u.avatar} alt={u.name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", display: "block", border: "1.5px solid #252840" }} />
                             {u.isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "#e0e0f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "#e0e0f0", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
                             <div style={{ fontSize: 10, color: "#3a3f5c" }}>{u.role}</div>
                           </div>
                         </div>
@@ -325,11 +334,11 @@ const ChatRoomInner: React.FC = () => {
                   )}
                 </div>
 
-                <button className="hdr-btn" onClick={() => setShowCall(true)} title="Video Call">📹</button>
+                <button className="hdr-btn" onClick={() => startCall()} title="Video Call">📹</button>
                 {isAdmin && <button className="hdr-btn" onClick={() => setShowMeeting(true)} title="Meeting Link">🔗</button>}
                 <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} title="Music" style={{ color: showMusic ? "#a78bfa" : "#5a5f7a" }}>🎵</button>
 
-                {/* Profile */}
+                {/* Profile pill */}
                 <div onClick={() => setShowProfile(true)} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", padding: "4px 8px", borderRadius: 9, border: "1px solid #1f2338", transition: "all 0.15s" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#1e2230")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
@@ -339,22 +348,18 @@ const ChatRoomInner: React.FC = () => {
                     <div style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#e0e0f0", whiteSpace: "nowrap" }}>{profileUser.name.split(" ")[0]}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#e0e0f0", whiteSpace: "nowrap" as const }}>{profileUser.name.split(" ")[0]}</div>
                     <span style={roleStyle(currentUser.role)}>{currentUser.role}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Channel tabs row */}
+            {/* Channel tabs */}
             {!dmTarget && (
-              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", overflowX: "auto" }}>
-                {channels.map(ch => (
-                  <button key={ch.id}
-                    className={`ch-tab${activeChannel === ch.id ? " active" : ""}`}
-                    onClick={() => setActiveChannel(ch.id)}
-                    style={{ display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}
-                  >
+              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", overflowX: "auto" as const }}>
+                {channels.map((ch: Channel) => (
+                  <button key={ch.id} className={`ch-tab${activeChannel === ch.id ? " active" : ""}`} onClick={() => setActiveChannel(ch.id)}>
                     <span style={{ opacity: 0.5 }}>#</span>{ch.name}
                     {ch.unread ? <span style={{ background: "#7c6af7", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 10, padding: "1px 5px" }}>{ch.unread}</span> : null}
                   </button>
@@ -367,31 +372,31 @@ const ChatRoomInner: React.FC = () => {
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
                 <button onClick={() => setDmTarget(null)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0 }}>←</button>
                 <img src={dmTarget.avatar} alt={dmTarget.name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
-                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#f0f0f6" }}>{dmTarget.name}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: "#f0f0f6" }}>{dmTarget.name}</span>
                 <span style={roleStyle(dmTarget.role)}>{dmTarget.role}</span>
               </div>
             )}
           </div>
 
-          {/* ── MUSIC PANEL (collapsible) ───────────────────────────────── */}
+          {/* Music panel */}
           {showMusic && (
             <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
               <YoutubePanel onShareToChat={onShareMusic} />
             </div>
           )}
 
-          {/* ── MESSAGES ────────────────────────────────────────────────── */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 8px 6px", display: "flex", flexDirection: "column", gap: 1 }}>
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: "auto" as const, padding: "12px 8px 6px", display: "flex", flexDirection: "column" as const, gap: 1 }}>
             {activeMessages.length === 0 ? (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a3f5c", gap: 10 }}>
-                <img src={roswaltLogo} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.2 }} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: "#3a3f5c", gap: 10 }}>
+                <img src={roswaltLogo} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.15 }} />
                 <div style={{ fontSize: 13 }}>No messages yet — start the conversation!</div>
               </div>
             ) : (
-              activeMessages.map((msg, i) => renderMsg(msg, i > 0 ? activeMessages[i - 1] : null))
+              activeMessages.map((msg: ChatMessage, i: number) => renderMsg(msg, i > 0 ? activeMessages[i - 1] : null))
             )}
             {typingUser && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", color: "#5a5f7a", fontSize: 12, fontStyle: "italic" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", color: "#5a5f7a", fontSize: 12, fontStyle: "italic" as const }}>
                 <div style={{ display: "flex", gap: 3 }}>{[0,1,2].map(i => <div key={i} className="typing-dot" style={{ animationDelay: `${i * 0.2}s` }} />)}</div>
                 {typingUser} is typing…
               </div>
@@ -399,14 +404,14 @@ const ChatRoomInner: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ── INPUT ───────────────────────────────────────────────────── */}
+          {/* Input */}
           <div style={{ borderTop: "1px solid #1a1d2e", background: "#111319", padding: "10px 14px", position: "relative", flexShrink: 0 }}>
             {showPicker && <EmojiPicker onEmoji={insertEmoji} onSticker={sendSticker} onGif={sendGif} onClose={() => setShowPicker(false)} />}
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "#1a1d2e", border: "1px solid #252840", borderRadius: 14, padding: "6px 10px" }}>
-              <button onClick={() => setShowPicker(p => !p)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: showPicker ? "#a78bfa" : "#3a3f5c", padding: "2px 2px", flexShrink: 0 }}>😊</button>
+              <button onClick={() => setShowPicker(p => !p)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: showPicker ? "#a78bfa" : "#3a3f5c", padding: "2px", flexShrink: 0 }}>😊</button>
               <div ref={inputRef} contentEditable data-placeholder={`Message ${activeChName}`} className="input-box"
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
-                style={{ flex: 1, minHeight: 24, maxHeight: 130, overflowY: "auto", outline: "none", fontSize: 14, color: "#f0f0f6", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}
+                style={{ flex: 1, minHeight: 24, maxHeight: 130, overflowY: "auto" as const, outline: "none", fontSize: 14, color: "#f0f0f6", lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}
               />
               <button onClick={() => doSend()} style={{ background: "#7c6af7", border: "none", borderRadius: 10, color: "#fff", padding: "7px 13px", cursor: "pointer", flexShrink: 0 }}
                 onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.opacity = "0.85")}
@@ -420,9 +425,12 @@ const ChatRoomInner: React.FC = () => {
       </div>
 
       {showCall && (
-        <VideoCallPanel channel={activeChannel} currentUser={profileUser}
-          participants={realUsers.filter(u => u.isOnline).slice(0, 4)}
-          onEnd={() => { setShowCall(false); showToast("Call ended", "info"); }}
+        <VideoCallPanel
+          channel={activeChannel}
+          currentUser={profileUser}
+          participants={realUsers.filter((u: ChatUser) => u.isOnline).slice(0, 4)}
+          roomUrl={callRoomUrl || undefined}
+          onEnd={() => { setShowCall(false); setCallRoomUrl(null); showToast("Call ended", "info"); }}
         />
       )}
     </>
