@@ -676,7 +676,7 @@ const ChatRoomInner: React.FC = () => {
                         <div className="dm-item-info">
                           <div className={`dm-item-name${unread > 0 ? " unread" : ""}`}>{u.name}</div>
                           <div className={`dm-item-preview${unread > 0 ? " unread" : ""}`}>
-                            {lastMsg ? `${lastMsg.author.id === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 32) || "Attachment"}` : <span style={roleBadge(u.role)}>{u.role}</span>}
+                            {lastMsg ? `${lastMsg.author?.id === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 32) || "Attachment"}` : <span style={roleBadge(u.role)}>{u.role}</span>}
                           </div>
                         </div>
                         {unread > 0 && <span className="dm-unread-badge">{unread}</span>}
@@ -785,6 +785,7 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
 
 
 
