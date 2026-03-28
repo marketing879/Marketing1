@@ -227,7 +227,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
     } catch {}
 
     // 3. Broadcast to other users via socket
-    socketRef.current?.emit("send_message", full);
+    // Backend checks msg.authorId — must be a flat field, not nested in author{}
+    socketRef.current?.emit("send_message", { ...full, authorId: full.author.id });
   }, []);
 
   // ── Toggle reaction: REST + socket ──────────────────────────────────────
