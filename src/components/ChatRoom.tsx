@@ -110,14 +110,6 @@ const ChatRoomInner: React.FC = () => {
   const activeChName = dmTarget ? `${dmTarget.name.split(" ")[0]}` : `#${activeChannel}`;
   const activeCh       = channels.find((c: Channel) => c.id === activeChannel);
 
-  // When dmTarget changes, join the shared DM channel and clear unread
-  useEffect(() => {
-    if (!dmTarget?.id || !currentUser.id || currentUser.id === "me") return;
-    const dmChannelId = getDMChannelId(currentUser.id, dmTarget.id);
-    setActiveChannel(dmChannelId);
-    clearDMUnread(dmChannelId);
-  }, [dmTarget, currentUser.id, setActiveChannel, clearDMUnread]);
-
   useEffect(() => {
     setProfileUser(prev => ({
       ...prev,
@@ -369,7 +361,7 @@ const ChatRoomInner: React.FC = () => {
             {/* DM header */}
             {dmTarget && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
-                <button onClick={() => setDmTarget(null)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0 }}>←</button>
+                <button onClick={() => { setDmTarget(null); setActiveChannel("general"); }} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0 }}>←</button>
                 <img src={dmTarget.avatar} alt={dmTarget.name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
                 <span style={{ fontWeight: 700, fontSize: 14, color: "#f0f0f6" }}>{dmTarget.name}</span>
                 <span style={roleStyle(dmTarget.role)}>{dmTarget.role}</span>
@@ -395,7 +387,15 @@ const ChatRoomInner: React.FC = () => {
                     const lastMsg = dmMsgs[dmMsgs.length - 1];
                     const isActive = dmTarget?.id === u.id;
                     return (
-                      <div key={u.id} onClick={() => { setDmTarget(u); setShowDMList(false); }}
+                      <div key={u.id} onClick={() => {
+                          setShowDMList(false);
+                          setDmTarget(u);
+                          if (currentUser.id && currentUser.id !== "me") {
+                            const dmCh = getDMChannelId(currentUser.id, u.id);
+                            setActiveChannel(dmCh);
+                            clearDMUnread(dmCh);
+                          }
+                        }}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", marginBottom: 2, background: isActive ? "rgba(124,106,247,0.15)" : unread > 0 ? "rgba(124,106,247,0.06)" : "transparent", transition: "background 0.15s" }}
                         onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#1a1d2e"; }}
                         onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = unread > 0 ? "rgba(124,106,247,0.06)" : "transparent"; }}
@@ -513,4 +513,5 @@ export const ChatRoom: React.FC = () => {
     </ChatProvider>
   );
 };
+
 export default ChatRoom;
