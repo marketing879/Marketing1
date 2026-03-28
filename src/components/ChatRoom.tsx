@@ -437,7 +437,7 @@ const ChatRoomInner: React.FC = () => {
 };
 
 export const ChatRoom: React.FC = () => {
-  const { user: appUser } = useUser();
+  const { user: appUser, teamMembers: rawMembers } = useUser();
   const currentUser: ChatUser = {
     id:       appUser?.id || appUser?.email || "me",
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
@@ -447,8 +447,17 @@ export const ChatRoom: React.FC = () => {
     isOnline: true,
     status:   "Available",
   };
+  const teamMembers: ChatUser[] = (rawMembers || []).filter(m => m && m.email).map(m => ({
+    id:       m.id || m.email,
+    name:     m.name || m.email.split("@")[0],
+    email:    m.email,
+    role:     (m.role as UserRole) || "staff",
+    avatar:   (m as any).avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
+    isOnline: (m as any).isOnline ?? false,
+    status:   (m as any).status || "Available",
+  }));
   return (
-    <ChatProvider currentUser={currentUser}>
+    <ChatProvider currentUser={currentUser} teamMembers={teamMembers}>
       <ChatRoomInner />
     </ChatProvider>
   );

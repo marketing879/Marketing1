@@ -5,6 +5,10 @@ type SocketInstance = ReturnType<typeof io>;
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
+// Shared DM room ID — same for both users regardless of who initiates
+const getDMChannelId = (idA: string, idB: string) =>
+  "dm_" + [idA, idB].sort().join("__");
+
 export const CHANNELS: Channel[] = [
   { id: "general",       name: "general",       description: "Team-wide chat",  type: "public", unread: 0 },
   { id: "announcements", name: "announcements", description: "Official updates", type: "public", unread: 0 },
@@ -33,7 +37,11 @@ export const useChatContext = () => {
   return ctx;
 };
 
-export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: ChatUser }> = ({ children, currentUser }) => {
+export const ChatProvider: React.FC<{
+  children: React.ReactNode;
+  currentUser?: ChatUser;
+  teamMembers?: ChatUser[];
+}> = ({ children, currentUser, teamMembers = [] }) => {
   const [messages,      setMessages]    = useState<Record<string, ChatMessage[]>>({});
   const [channels,      setChannels]    = useState<Channel[]>(CHANNELS);
   const [activeChannel, setActive]      = useState("general");
@@ -85,13 +93,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
 
     socket.on("connect", () => {
       console.log("[Chat] Socket connected:", socket.id);
-      CHANNELS.forEach(ch => {
-        socket.emit("join_channel", ch.id);
-        console.log("[Chat] Joined channel:", ch.id);
-      });
+      // Join all public channels
+      CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
       if (currentUser) {
         socket.emit("user_join", currentUser);
-        console.log("[Chat] user_join emitted for:", currentUser.email);
+        // Pre-join DM room with EVERY team member so first message always arrives
+        teamMembers.forEach(member => {
+          if (member.id !== currentUser.id && member.email !== currentUser.email) {
+            const dmRoom = getDMChannelId(currentUser.id, member.id);
+            socket.emit("join_channel", dmRoom);
+          }
+        });
+        console.log("[Chat] Joined as:", currentUser.email, "| Pre-joined", teamMembers.length, "DM rooms");
       }
     });
 
@@ -179,7 +192,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       console.log("[Chat] Disconnecting socket");
       socket.disconnect();
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, teamMembers.length]);
 
   const setActiveChannel = useCallback((id: string) => {
     setActive(id);
