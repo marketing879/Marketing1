@@ -97,8 +97,16 @@ export const ChatProvider: React.FC<{
     return () => clearInterval(interval);
   }, [currentUser?.id, teamMembers.length, loadMessages]);
 
-  // ── Socket.io ─────────────────────────────────────────────────────────────
+  // Stable ref so socket handlers always see latest currentUser without reconnecting
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+  const teamMembersRef = useRef(teamMembers);
+  useEffect(() => { teamMembersRef.current = teamMembers; }, [teamMembers]);
+
+  // ── Socket.io — connect ONCE, never reconnect unless user logs out ────────
   useEffect(() => {
+    if (!currentUser?.id) return; // don't connect until we have a real user
     console.log("[Chat] Connecting socket to", API);
     const socket = io(API, {
       transports:           ["websocket", "polling"],
@@ -110,18 +118,17 @@ export const ChatProvider: React.FC<{
 
     socket.on("connect", () => {
       console.log("[Chat] Socket connected:", socket.id);
-      // Join all public channels
+      const cu = currentUserRef.current;
+      const tm = teamMembersRef.current;
       CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
-      if (currentUser) {
-        socket.emit("user_join", currentUser);
-        // Pre-join DM room with EVERY team member so first message always arrives
-        teamMembers.forEach(member => {
-          if (member.id !== currentUser.id && member.email !== currentUser.email) {
-            const dmRoom = getDMChannelId(currentUser.id, member.id);
-            socket.emit("join_channel", dmRoom);
+      if (cu) {
+        socket.emit("user_join", cu);
+        tm.forEach(member => {
+          if (member.id && member.id !== cu.id && member.email !== cu.email) {
+            socket.emit("join_channel", getDMChannelId(cu.id, member.id));
           }
         });
-        console.log("[Chat] Joined as:", currentUser.email, "| Pre-joined", teamMembers.length, "DM rooms");
+        console.log("[Chat] Joined as:", cu.email, "| Pre-joined", tm.length, "DM rooms");
       }
     });
 
@@ -134,6 +141,7 @@ export const ChatProvider: React.FC<{
     });
 
     socket.on("new_message", (msg: any) => {
+      const cu = currentUserRef.current;
       console.log("[Chat] new_message received:", msg.channelId, msg.text?.slice(0, 30));
       const normalized: ChatMessage = {
         ...msg,
@@ -141,9 +149,9 @@ export const ChatProvider: React.FC<{
         reactions: msg.reactions && typeof msg.reactions === "object" && !Array.isArray(msg.reactions) ? msg.reactions : {},
       };
 
-      const myEmail  = currentUser?.email?.toLowerCase();
+      const myEmail  = cu?.email?.toLowerCase();
       const isFromMe = myEmail
-        ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === currentUser?.id)
+        ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === cu?.id)
         : false;
 
       // Desktop notification
