@@ -15,6 +15,7 @@ import SupremoDashboard from "./components/Supremodashboard";
 
 // ── NEW: ChatRoom import ─────────────────────────────────────────────────────
 import { ChatRoom } from "./components/ChatRoom";
+import { FloatingChatButton } from "./components/FloatingChatButton";
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
@@ -37,7 +38,8 @@ const AppRoutes: React.FC = () => {
   const { user } = useUser();
 
   return (
-    <Routes>
+    <>
+      <Routes>
       {/* LOGIN */}
       <Route
         path="/login"
@@ -106,7 +108,11 @@ const AppRoutes: React.FC = () => {
           )
         }
       />
-    </Routes>
+      </Routes>
+
+      {/* ── Floating chat button — visible on all authenticated pages ── */}
+      <FloatingChatButton />
+    </>
   );
 };
 

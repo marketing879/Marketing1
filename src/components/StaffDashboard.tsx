@@ -271,7 +271,8 @@ async function extractDocumentText(dataUrl: string): Promise<{ text: string; isP
 
 async function scoreWithAI(notes: string, files: string[], purpose?: string, links?: string[]): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
-  const isVideo   = hasFiles && files[0].startsWith("data:video/");
+  const isPreExtractedVideo = files.some(f => f.includes("#video-frame="));
+  const isVideo   = hasFiles && (files[0].startsWith("data:video/") || isPreExtractedVideo);
 
   // ── Detect document uploads ────────────────────────────────────────────────
   const documentFiles  = files.filter(f => isDocumentFile(f));
@@ -280,7 +281,10 @@ async function scoreWithAI(notes: string, files: string[], purpose?: string, lin
 
   // For videos: extract 6 frames to send as images
   let scoringImages: string[] = [];
-  if (isVideo) {
+  if (isPreExtractedVideo) {
+    // Frames were already extracted at upload time — just clean the tags
+    scoringImages = files.filter(f => f.includes("#video-frame=")).map(f => cleanDataUrl(f));
+  } else if (isVideo) {
     try { scoringImages = await extractVideoFrames(files[0], 6); }
     catch { scoringImages = []; }
   } else {
@@ -2210,13 +2214,34 @@ const StaffDashboard: React.FC = () => {
     catch { return "—"; }
   };
 
+  // ── Compress large images before storing ─────────────────────────────────
+  const compressImageFile = async (file: File): Promise<string> => {
+    const MAX_PX  = 1920;
+    const QUALITY = 0.85;
+    return new Promise(resolve => {
+      const img    = new Image();
+      const objUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const ratio   = Math.min(MAX_PX / img.naturalWidth, MAX_PX / img.naturalHeight, 1);
+        const canvas  = document.createElement("canvas");
+        canvas.width  = Math.round(img.naturalWidth * ratio);
+        canvas.height = Math.round(img.naturalHeight * ratio);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", QUALITY));
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(""); };
+      img.src = objUrl;
+    });
+  };
+
   const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
-    const MAX_WARN_MB  = 5;
-    const MAX_BLOCK_MB = 25;
+    const MAX_WARN_MB  = 20;
+    const MAX_BLOCK_MB = 300;
     let uploaded = 0;
 
-    Array.from(files).forEach((file) => {
+    Array.from(files).forEach(async (file) => {
       const isImage    = file.type.startsWith("image/");
       const isVideo    = file.type.startsWith("video/");
       const isDocument = file.type === "application/pdf" ||
@@ -2244,15 +2269,59 @@ const StaffDashboard: React.FC = () => {
         return;
       }
       if (sizeMB > MAX_WARN_MB) {
-        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — large files may slow down analysis.`);
+        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — compressing for analysis.`);
       }
 
+      // ── VIDEO: extract frames via blob URL — never read full video as base64 ──
+      if (isVideo) {
+        showSuccess(`⏳ Extracting frames from "${file.name}"…`);
+        const blobUrl = URL.createObjectURL(file);
+        try {
+          const frames = await extractVideoFrames(blobUrl, 6);
+          URL.revokeObjectURL(blobUrl);
+          if (frames.length === 0) {
+            showSuccess(`⚠ Could not extract frames from "${file.name}". Try a smaller file or different format.`);
+            return;
+          }
+          // Tag each frame so scoreWithAI knows they came from a video
+          const tagged = frames.map((frame, i) =>
+            frame + `#video-frame=${i + 1}&original=${encodeURIComponent(file.name)}&size=${file.size}`
+          );
+          setUploadedPhotos(prev => ({
+            ...prev,
+            [taskId]: [...(prev[taskId] || []), ...tagged],
+          }));
+          setFileTypeBadge({ type: "VIDEO", fmt: file.name.split(".").pop()?.toUpperCase() || "MP4" });
+          showSuccess(`✓ "${file.name}" — ${frames.length} frames extracted for SmartCue`);
+          speakText("Video frames extracted. Ready for SmartCue analysis.");
+          uploaded++;
+        } catch {
+          URL.revokeObjectURL(blobUrl);
+          showSuccess(`✕ Failed to extract frames from "${file.name}"`);
+        }
+        return;
+      }
+
+      // ── IMAGE: compress if > 4 MB to keep API payloads small ─────────────
+      if (isImage && file.size > 4 * 1024 * 1024) {
+        const compressed = await compressImageFile(file);
+        if (compressed) {
+          const tagged = compressed + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
+          setUploadedPhotos(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), tagged] }));
+          setFileTypeBadge(detectFileInfo(file));
+          showSuccess(`✓ "${file.name}" compressed & added`);
+          uploaded++;
+          return;
+        }
+      }
+
+      // ── DOCUMENT or small image: read normally ────────────────────────────
       const reader = new FileReader();
       reader.onload = (e) => {
         const url = e.target?.result as string;
-        // Embed file name as a query-param comment so we can display it later
         const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
         setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
+        setFileTypeBadge(detectFileInfo(file));
         if (isDocument) {
           setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
         }
@@ -2261,7 +2330,7 @@ const StaffDashboard: React.FC = () => {
       uploaded++;
     });
 
-    if (uploaded > 0) showSuccess(`✓ ${uploaded} file${uploaded > 1 ? "s" : ""} added`);
+    if (uploaded > 0) showSuccess(`✓ Processing files…`);
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -4497,11 +4566,3 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
-
-
-
-
-
-
-
-
