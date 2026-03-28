@@ -603,11 +603,11 @@ const SADashboard: React.FC = () => {
         body: JSON.stringify({ phone, name: member.name, email: member.email, role: member.role }),
       });
       if (!res.ok) throw new Error("Server error");
-      // Refetch user data from backend to update UI
+      // Refetch updated user from backend
       const updatedUser = await fetch(`${BACKEND}/api/users/${member.email}`).then(r => r.json());
-      if (updatedUser?.phone) {
-        member.phone = updatedUser.phone;
-        if (updateUser) (updateUser as any)(member.email, updatedUser);
+      if (updatedUser && updateUser) {
+        // Call updateUser with the full updated user object to refresh parent state
+        (updateUser as any)(member.email, updatedUser);
       }
       showSuccess(`✓ Mobile saved for ${member.name}`);
     } catch {
@@ -3205,6 +3205,7 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
+
 
 
 

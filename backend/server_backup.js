@@ -1,0 +1,1146 @@
+import Anthropic from "@anthropic-ai/sdk";
+import rateLimit from "express-rate-limit";
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
+import mongoose from "mongoose";
+import { createServer } from "http";
+import { Server as SocketServer } from "socket.io";
+import webpush from "web-push";
+
+dotenv.config();
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+console.log("Cloudinary: ✔ Configured");
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    `mailto:${process.env.VAPID_EMAIL || "admin@roswalt.com"}`,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  console.log("✔ Web Push (VAPID) configured");
+} else {
+  console.warn("⚠ VAPID keys not set — push notifications disabled.");
+}
+
+const app        = express();
+const httpServer = createServer(app);
+
+const ALLOWED_ORIGINS = [
+  "https://marketing1-delta.vercel.app",
+  "https://www.roswaltsmartcue.com",
+  "https://roswaltsmartcue.com",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+const io = new SocketServer(httpServer, {
+  cors: { origin: ALLOWED_ORIGINS, credentials: true },
+  transports: ["websocket", "polling"],
+});
+
+app.set("trust proxy", 1);
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: "Too many requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { success: false, message: "Too many attempts. Please wait before trying again." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/", apiLimiter);
+app.use("/api/tts", strictLimiter);
+app.use("/api/score-content", strictLimiter);
+app.use("/api/draft-notes", strictLimiter);
+
+// ── CORS — must come before routes ───────────────────────────────────────────
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
+app.use((req, res, next) => {
+  const reqOrigin = req.headers.origin;
+  console.log(`[${req.method}] ${req.path} from origin: ${reqOrigin}`);
+  next();
+});
+
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANTHROPIC CLIENT
+// ─────────────────────────────────────────────────────────────────────────────
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error("✘ ERROR: ANTHROPIC_API_KEY is not set in .env");
+  process.exit(1);
+}
+console.log("✔ ANTHROPIC_API_KEY is configured");
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
+
+async function callAnthropicWithRetry(fn, maxRetries = 4) {
+  let delay = 1000;
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try { return await fn(); }
+    catch (err) {
+      const isOverloaded =
+        err?.status === 529 || err?.status === 503 ||
+        err?.error?.error?.type === "overloaded_error";
+      if (isOverloaded && attempt <= maxRetries) {
+        console.warn(`[RETRY] Anthropic overloaded. Attempt ${attempt}/${maxRetries} – retrying in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+        delay *= 2;
+      } else { throw err; }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONGODB
+// ─────────────────────────────────────────────────────────────────────────────
+if (process.env.MONGO_URI) {
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("✔ MongoDB connected"))
+    .catch((err) => console.error("✘ MongoDB error:", err));
+} else {
+  console.warn("⚠ MONGO_URI not set – projects will use in-memory fallback.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEMAS
+// ─────────────────────────────────────────────────────────────────────────────
+const projectSchema = new mongoose.Schema({
+  name:               { type: String, required: true, trim: true },
+  description:        { type: String, default: "" },
+  color:              { type: String, default: "#c9a96e" },
+  projectCode:        { type: String, required: true, unique: true, uppercase: true, trim: true },
+  concernedDoerEmail: { type: String, required: false, lowercase: true, trim: true },
+  launchDate:         { type: String, required: true },
+  status:             { type: String, enum: ["active", "inactive"], default: "active" },
+  createdBy:          { type: String },
+}, { timestamps: true });
+
+const taskSchema = new mongoose.Schema({
+  id:              { type: String, index: true },
+  title:           { type: String, required: true },
+  description:     { type: String, default: "" },
+  status:          { type: String, default: "pending" },
+  priority:        { type: String, default: "medium" },
+  dueDate:         { type: String },
+  assignedTo:      { type: String },
+  assignedBy:      { type: String },
+  projectId:       { type: String },
+  approvalStatus:  { type: String, default: "assigned" },
+  completionNotes: { type: String },
+  adminComments:   { type: String },
+  reminderCount:   { type: Number, default: 0 },
+  lastReminderAt:  { type: String, default: null },
+}, { timestamps: true, strict: false });
+
+taskSchema.index({ assignedBy: 1 });
+taskSchema.index({ assignedTo: 1 });
+taskSchema.index({ approvalStatus: 1 });
+
+const userSchema = new mongoose.Schema({
+  id:       { type: String, index: true },
+  name:     { type: String, required: true, trim: true },
+  email:    { type: String, required: true, unique: true, lowercase: true, trim: true },
+  role:     { type: String, enum: ["superadmin", "supremo", "admin", "staff"], default: "staff" },
+  phone:    { type: String, default: "" },
+  password: { type: String, default: "" },
+  avatar:   { type: String, default: "" },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true, strict: false });
+
+const assistanceTicketSchema = new mongoose.Schema({
+  id:           { type: String, index: true },
+  taskId:       { type: String },
+  taskTitle:    { type: String },
+  taskDueDate:  { type: String },
+  assignedTo:   { type: String },
+  assignedBy:   { type: String },
+  raisedBy:     { type: String },
+  ticketType:   { type: String, default: "general-query" },
+  reason:       { type: String },
+  staffNote:    { type: String },
+  status:       { type: String, default: "open" },
+  adminComment: { type: String },
+  approvedBy:   { type: String },
+  approvedAt:   { type: String },
+  raisedAt:     { type: String, default: () => new Date().toISOString() },
+}, { timestamps: true, strict: false });
+
+// ── Activity Log Schema ───────────────────────────────────────────────────────
+const activitySchema = new mongoose.Schema({
+  id:         { type: String, index: true },
+  timestamp:  { type: String, default: () => new Date().toISOString() },
+  category:   { type: String },
+  action:     { type: String },
+  actorEmail: { type: String },
+  actorName:  { type: String },
+  targetId:   { type: String },
+  targetName: { type: String },
+  meta:       { type: mongoose.Schema.Types.Mixed },
+}, { timestamps: true });
+activitySchema.index({ actorEmail: 1 });
+activitySchema.index({ timestamp: -1 });
+
+const Project          = mongoose.model("Project",          projectSchema);
+const Task             = mongoose.model("Task",             taskSchema);
+const User             = mongoose.model("User",             userSchema);
+const AssistanceTicket = mongoose.model("AssistanceTicket", assistanceTicketSchema);
+const ActivityLog      = mongoose.model("ActivityLog",      activitySchema);
+
+const pushSubscriptionSchema = new mongoose.Schema({
+  email:        { type: String, required: true, lowercase: true, trim: true, index: true },
+  subscription: { type: mongoose.Schema.Types.Mixed, required: true },
+  updatedAt:    { type: Date, default: Date.now },
+});
+const PushSub = mongoose.model("PushSub", pushSubscriptionSchema);
+
+let inMemoryProjects  = [];
+let inMemoryUsers     = [];
+let inMemoryActivity  = [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT SCHEMAS
+// ─────────────────────────────────────────────────────────────────────────────
+const chatMessageSchema = new mongoose.Schema({
+  id:           { type: String, index: true },
+  channelId:    { type: String, required: true, index: true },
+  authorId:     { type: String, required: true },
+  authorName:   { type: String, required: true },
+  authorRole:   { type: String, required: true },
+  authorAvatar: { type: String, default: "" },
+  authorEmail:  { type: String, default: "" },
+  type:         { type: String, enum: ["text","sticker","gif","meeting","voice","emoji"], default: "text" },
+  text:         { type: String, default: "" },
+  gif:          { type: String },
+  meeting: { title: String, link: String, createdBy: String },
+  reactions:  { type: Map, of: [String], default: {} },
+  readBy:     [String],
+  deletedAt:  Date,
+}, { timestamps: true });
+chatMessageSchema.index({ channelId: 1, createdAt: -1 });
+const ChatMessage = mongoose.model("ChatMessage", chatMessageSchema);
+
+const chatPresenceSchema = new mongoose.Schema({
+  email:    { type: String, unique: true, required: true, lowercase: true },
+  name:     { type: String, default: "" },
+  role:     { type: String, default: "staff" },
+  avatar:   { type: String, default: "" },
+  status:   { type: String, default: "Available" },
+  isOnline: { type: Boolean, default: false },
+  socketId: { type: String },
+  lastSeen: { type: Date, default: Date.now },
+}, { timestamps: true });
+const ChatPresence = mongoose.model("ChatPresence", chatPresenceSchema);
+
+let inMemoryChatMessages = [];
+let inMemoryChatPresence = [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEAM DIRECTORY
+// ─────────────────────────────────────────────────────────────────────────────
+const TEAM_DIRECTORY = {
+  "prathamesh.chile@roswalt.com":  { name: "Prathamesh Chile",  phone: "9XXXXXXXXX" },
+  "samruddhi.shivgan@roswalt.com": { name: "Samruddhi Shivgan", phone: "9XXXXXXXXX" },
+  "irfan.ansari@roswalt.com":      { name: "Irfan Ansari",      phone: "9XXXXXXXXX" },
+  "vishal.chaudhary@roswalt.com":  { name: "Vishal Chaudhary",  phone: "9XXXXXXXXX" },
+  "mithilesh.menge@roswalt.com":   { name: "Mithilesh Menge",   phone: "9XXXXXXXXX" },
+  "jai.bhojwani@roswalt.com":      { name: "Jai Bhojwani",      phone: "9XXXXXXXXX" },
+  "vikrant.pabrekar@roswalt.com":  { name: "Vikrant Pabrekar",  phone: "9XXXXXXXXX" },
+  "gaurav.chavan@roswalt.com":     { name: "Gaurav Chavan",     phone: "9XXXXXXXXX" },
+  "harish.utkam@roswalt.com":      { name: "Harish Utkam",      phone: "9XXXXXXXXX" },
+  "siddhesh.achari@roswalt.com":   { name: "Siddhesh Achari",   phone: "9XXXXXXXXX" },
+  "raj.vichare@roswalt.com":       { name: "Raj Vichare",       phone: "8879142617" },
+  "rohan.fernandes@roswalt.com":   { name: "Rohan Fernandes",   phone: "9XXXXXXXXX" },
+  "vaibhavi.gujjeti@roswalt.com":  { name: "Vaibhavi Gujjeti",  phone: "9870826798" },
+  "aziz.khan@roswalt.com":         { name: "Aziz Khan",         phone: "8879778560" },
+  "vinay.vanmali@roswalt.com":     { name: "Vinay Vanmali",     phone: "9270833482" },
+  "jalal.shaikh@roswalt.com":      { name: "Jalal Shaikh",      phone: "9XXXXXXXXX" },
+  "nidhi.mehta@roswalt.com":       { name: "Nidhi Mehta",       phone: "9XXXXXXXXX" },
+  "keerti.barua@roswalt.com":      { name: "Keerti Barua",      phone: "9XXXXXXXXX" },
+  "hetal.makwana@roswalt.com":     { name: "Hetal Makwana",     phone: "9XXXXXXXXX" },
+  "pushkaraj.gore@roswalt.com":    { name: "Pushkaraj Gore",    phone: "9321181236" },
+};
+
+async function sendWhatsApp(phone, message) {
+  console.log(`[WA STUB] Skipping WA message to ${phone}: ${message.slice(0, 60)}...`);
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEB PUSH HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+async function sendPushToSubscription(subscription, payload) {
+  try {
+    await webpush.sendNotification(subscription, JSON.stringify(payload));
+    return true;
+  } catch (err) {
+    if (err.statusCode === 410 || err.statusCode === 404) {
+      await PushSub.deleteOne({ "subscription.endpoint": subscription.endpoint }).catch(() => {});
+    } else {
+      console.error("[Push] sendNotification error:", err.message);
+    }
+    return false;
+  }
+}
+
+async function sendPushToUser(email, payload) {
+  if (!process.env.VAPID_PUBLIC_KEY || mongoose.connection.readyState !== 1) return;
+  try {
+    const subs = await PushSub.find({ email: email.toLowerCase() });
+    if (subs.length === 0) return;
+    await Promise.all(subs.map(s => sendPushToSubscription(s.subscription, payload)));
+  } catch (err) {
+    console.error("[Push] sendPushToUser error:", err.message);
+  }
+}
+
+async function sendPushToRole(roles, payload, excludeEmail = "") {
+  if (!process.env.VAPID_PUBLIC_KEY || mongoose.connection.readyState !== 1) return;
+  try {
+    const roleList = Array.isArray(roles) ? roles : [roles];
+    const allSubs  = await PushSub.find({}).lean();
+    const users    = await User.find({ role: { $in: roleList } }, "email").lean();
+    const emails   = new Set(users.map(u => u.email.toLowerCase()));
+    const filtered = allSubs.filter(s => emails.has(s.email.toLowerCase()) && s.email.toLowerCase() !== excludeEmail.toLowerCase());
+    if (filtered.length === 0) return;
+    await Promise.all(filtered.map(s => sendPushToSubscription(s.subscription, payload)));
+  } catch (err) {
+    console.error("[Push] sendPushToRole error:", err.message);
+  }
+}
+
+function broadcastTaskNotification(eventData) {
+  io.emit("task_notification", eventData);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAT MONITOR
+// ─────────────────────────────────────────────────────────────────────────────
+function getDelayString(deadline, now) {
+  const diffMs      = now.getTime() - deadline.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours   = Math.floor(diffMinutes / 60);
+  const diffDays    = Math.floor(diffHours / 24);
+  if (diffDays > 0)  return `${diffDays}d ${diffHours % 24}h overdue`;
+  if (diffHours > 0) return `${diffHours}h ${diffMinutes % 60}m overdue`;
+  return `${diffMinutes}m overdue`;
+}
+
+async function runTATMonitor() {
+  if (mongoose.connection.readyState !== 1) return;
+  try {
+    const now   = new Date();
+    const tasks = await Task.find({ approvalStatus: { $nin: ["superadmin-approved", "rejected"] } });
+    let alertCount = 0;
+    for (const task of tasks) {
+      if (!task.dueDate) continue;
+      const deadline = new Date(task.dueDate + "T18:00:00");
+      if (now < deadline) continue;
+      if (task.lastReminderAt) {
+        const minsSince = (now - new Date(task.lastReminderAt)) / 60000;
+        if (minsSince < 60) continue;
+      }
+      const doer  = TEAM_DIRECTORY[task.assignedTo?.toLowerCase()];
+      const admin = TEAM_DIRECTORY[task.assignedBy?.toLowerCase()];
+      if (!doer && !admin) continue;
+      const delayDuration = getDelayString(deadline, now);
+      const reminderCount = (task.reminderCount ?? 0) + 1;
+      await Task.findOneAndUpdate(
+        { id: task.id || String(task._id) },
+        { reminderCount, lastReminderAt: now.toISOString() }
+      );
+      if (task.assignedTo) {
+        await sendPushToUser(task.assignedTo, {
+          title: `⚠ Task Overdue — Reminder #${reminderCount}`,
+          body: `"${task.title}" was due ${delayDuration}. Please submit immediately.`,
+          url: process.env.FRONTEND_URL || "/", taskId: task.id || String(task._id),
+          tag: `tat-${task.id || task._id}`, icon: "/favicon.png",
+        });
+      }
+      alertCount++;
+    }
+    console.log(`✔ TAT check – ${tasks.length} tasks scanned, ${alertCount} breach(es)`);
+  } catch (err) {
+    console.error("✘ TAT monitor error:", err.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIDDLEWARE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.body?.callerRole ?? ""))
+    return res.status(403).json({ message: "Access denied." });
+  next();
+};
+
+const validateProject = (req, res, next) => {
+  let { name, projectCode, launchDate } = req.body;
+  if (launchDate && launchDate.length > 10) launchDate = launchDate.slice(0, 10);
+  req.body.launchDate = launchDate;
+  const missing = [!name && "name", !projectCode && "projectCode", !launchDate && "launchDate"].filter(Boolean);
+  if (missing.length) return res.status(400).json({ message: `Missing: ${missing.join(", ")}.` });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(launchDate))
+    return res.status(400).json({ message: "launchDate must be YYYY-MM-DD." });
+  next();
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPLOAD
+// ─────────────────────────────────────────────────────────────────────────────
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
+    const b64     = req.file.buffer.toString("base64");
+    const dataUri = `data:${req.file.mimetype};base64,${b64}`;
+    const folder  = req.body?.folder || "smartcue";
+    const result  = await cloudinary.uploader.upload(dataUri, { folder, resource_type: "auto" });
+    res.json({ success: true, url: result.secure_url, public_id: result.public_id });
+  } catch (err) {
+    console.error("[Cloudinary] Upload failed:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECT ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/projects", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1)
+      return res.json(await Project.find().sort({ createdAt: -1 }));
+    res.json(inMemoryProjects);
+  } catch (e) { res.status(500).json({ message: "Failed to fetch projects." }); }
+});
+
+app.post("/api/projects", requireRole("superadmin", "supremo"), validateProject, async (req, res) => {
+  try {
+    const { name, description, color, projectCode, concernedDoerEmail, launchDate, status, createdBy } = req.body;
+    if (mongoose.connection.readyState === 1) {
+      if (await Project.findOne({ projectCode: projectCode.toUpperCase() }))
+        return res.status(409).json({ message: `Project code "${projectCode}" already exists.` });
+      return res.status(201).json(await Project.create({ name, description, color, projectCode, concernedDoerEmail, launchDate, status: status ?? "active", createdBy }));
+    }
+    const p = { _id: String(Date.now()), id: String(Date.now()), name, description, color, projectCode: projectCode.toUpperCase(), concernedDoerEmail, launchDate, status: status ?? "active", createdBy, createdAt: new Date().toISOString() };
+    inMemoryProjects.unshift(p);
+    res.status(201).json(p);
+  } catch (e) { res.status(500).json({ message: "Failed to create project." }); }
+});
+
+app.put("/api/projects/:id", requireRole("superadmin", "supremo"), validateProject, async (req, res) => {
+  try {
+    const { name, description, color, projectCode, concernedDoerEmail, launchDate, status } = req.body;
+    if (mongoose.connection.readyState === 1) {
+      if (await Project.findOne({ projectCode: projectCode.toUpperCase(), _id: { $ne: req.params.id } }))
+        return res.status(409).json({ message: `Project code "${projectCode}" already in use.` });
+      const updated = await Project.findByIdAndUpdate(req.params.id, { name, description, color, projectCode, concernedDoerEmail, launchDate, status }, { new: true, runValidators: true });
+      if (!updated) return res.status(404).json({ message: "Project not found." });
+      return res.json(updated);
+    }
+    const idx = inMemoryProjects.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "Project not found." });
+    inMemoryProjects[idx] = { ...inMemoryProjects[idx], name, description, color, projectCode, concernedDoerEmail, launchDate, status };
+    res.json(inMemoryProjects[idx]);
+  } catch (e) { res.status(500).json({ message: "Failed to update project." }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/tasks", async (req, res) => {
+  try {
+    const callerEmail = (req.query.email ?? "").toLowerCase();
+    const callerRole  = (req.query.role  ?? "").toLowerCase();
+    const filter = (callerRole === "superadmin" || callerRole === "supremo")
+      ? {}
+      : callerEmail
+        ? { $or: [{ assignedBy: { $regex: new RegExp("^" + callerEmail + "$", "i") } }, { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } }] }
+        : {};
+    const tasks = await Task.find(filter).select("-attachments -scoreData").sort({ createdAt: -1 }).lean();
+    res.json(tasks.map(t => { if (!t.id) t.id = String(t._id); return t; }));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.post("/api/tasks", async (req, res) => {
+  try {
+    const data    = { ...req.body, id: req.body.id || String(Date.now()) };
+    const created = await Task.create(data);
+    const obj     = created.toObject();
+    if (!obj.id) obj.id = String(obj._id);
+    broadcastTaskNotification({ type: "task_assigned", taskId: obj.id, taskTitle: obj.title, assignedTo: obj.assignedTo, assignedBy: obj.assignedBy, priority: obj.priority, dueDate: obj.dueDate, projectId: obj.projectId });
+    if (obj.assignedTo) {
+      const dueStr = obj.dueDate ? new Date(obj.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "No due date";
+      await sendPushToUser(obj.assignedTo, { title: `📋 New Task Assigned`, body: `${obj.title} · Priority: ${(obj.priority || "medium").toUpperCase()} · Due: ${dueStr}`, url: process.env.FRONTEND_URL || "/", taskId: obj.id, tag: `new-task-${obj.id}`, icon: "/favicon.png", type: "task_assigned" });
+    }
+    res.status(201).json(obj);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.delete("/api/tasks/all", async (req, res) => {
+  try {
+    const r = await Task.deleteMany({});
+    res.json({ success: true, deleted: r.deletedCount });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.put("/api/tasks/:id", async (req, res) => {
+  try {
+    let t = await Task.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true });
+    if (!t) t = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    if (!t) return res.status(404).json({ message: "Task not found." });
+    const obj = t.toObject();
+    if (!obj.id) obj.id = String(obj._id);
+    const newStatus = req.body.approvalStatus;
+    if (newStatus) {
+      broadcastTaskNotification({ type: "task_status_changed", taskId: obj.id, taskTitle: obj.title, assignedTo: obj.assignedTo, assignedBy: obj.assignedBy, newStatus, priority: obj.priority, dueDate: obj.dueDate, projectId: obj.projectId });
+      const base = { url: process.env.FRONTEND_URL || "/", taskId: obj.id, tag: `status-${obj.id}`, icon: "/favicon.png", type: "task_status_changed" };
+      if (newStatus === "in-review") {
+        const adminMsg = { ...base, title: "👁 Task Submitted for Review", body: `${obj.title} has been submitted and needs your review.` };
+        if (obj.assignedBy) await sendPushToUser(obj.assignedBy, adminMsg);
+        await sendPushToRole(["superadmin", "supremo"], adminMsg, obj.assignedBy);
+      }
+      if (newStatus === "admin-approved") {
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "✅ Task Approved by Admin", body: `${obj.title} has been approved. Awaiting final sign-off.` });
+        await sendPushToRole(["superadmin", "supremo"], { ...base, title: "📋 Task Ready for Final Approval", body: `${obj.title} needs your final review.` }, obj.assignedBy);
+      }
+      if (newStatus === "superadmin-approved") {
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "🏆 Task Fully Approved!", body: `${obj.title} has been fully approved. Great work!` });
+        if (obj.assignedBy) await sendPushToUser(obj.assignedBy, { ...base, title: "✅ Final Approval Done", body: `${obj.title} has received full superadmin approval.` });
+      }
+      if (newStatus === "rejected") {
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "↩ Task Needs Rework", body: `${obj.title} was sent back. Please check the admin comments.` });
+      }
+    }
+    res.json(obj);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.delete("/api/tasks/:id", async (req, res) => {
+  try {
+    let t = await Task.findOneAndDelete({ id: req.params.id });
+    if (!t) t = await Task.findByIdAndDelete(req.params.id);
+    if (!t) return res.status(404).json({ message: "Task not found." });
+    res.json({ success: true, message: `Task "${t.title}" deleted.` });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY LOG ROUTES  ── NEW
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/activity — superadmin/supremo see all; others see own
+app.get("/api/activity", async (req, res) => {
+  try {
+    const callerEmail = (req.query.email ?? "").toLowerCase();
+    const callerRole  = (req.query.role  ?? "").toLowerCase();
+    const isPrivileged = callerRole === "superadmin" || callerRole === "supremo";
+    const filter = isPrivileged ? {} : callerEmail ? { actorEmail: { $regex: new RegExp("^" + callerEmail + "$", "i") } } : {};
+
+    if (mongoose.connection.readyState === 1) {
+      const logs = await ActivityLog.find(filter).sort({ timestamp: -1 }).limit(500).lean();
+      return res.json(logs.map(l => ({ ...l, id: l.id || String(l._id) })));
+    }
+    const filtered = isPrivileged ? inMemoryActivity : inMemoryActivity.filter(a => a.actorEmail?.toLowerCase() === callerEmail);
+    res.json(filtered.slice(0, 500));
+  } catch (e) {
+    console.error("[Activity] GET error:", e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// POST /api/activity — log a new activity entry
+app.post("/api/activity", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || "ACT-" + Date.now().toString(36).toUpperCase() };
+    if (mongoose.connection.readyState === 1) {
+      const created = await ActivityLog.create(data);
+      return res.status(201).json({ ...created.toObject(), id: created.id || String(created._id) });
+    }
+    inMemoryActivity.unshift(data);
+    if (inMemoryActivity.length > 500) inMemoryActivity = inMemoryActivity.slice(0, 500);
+    res.status(201).json(data);
+  } catch (e) {
+    console.error("[Activity] POST error:", e.message);
+    res.status(400).json({ message: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/users", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const users = await User.find({}, "-password").sort({ name: 1 }).lean();
+      const normalized = users.map(u => ({ ...u, id: u.id || String(u._id) }));
+      if (normalized.length === 0) {
+        return res.json(Object.entries(TEAM_DIRECTORY).map(([email, info]) => ({ id: email, email, name: info.name, phone: info.phone, role: "staff" })));
+      }
+      return res.json(normalized);
+    }
+    res.json(inMemoryUsers.length ? inMemoryUsers : Object.entries(TEAM_DIRECTORY).map(([email, info]) => ({ id: email, email, name: info.name, phone: info.phone, role: "staff" })));
+  } catch (e) { res.status(500).json({ message: "Failed to fetch users: " + e.message }); }
+});
+
+app.get("/api/users/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOne({ $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] }, "-password").lean();
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ ...user, id: user.id || String(user._id) });
+    }
+    const user = inMemoryUsers.find(u => u.id === req.params.id || u.email === req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+    res.json(user);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.post("/api/users", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      if (await User.findOne({ email: data.email?.toLowerCase() }))
+        return res.status(409).json({ message: "User with this email already exists." });
+      const created = await User.create({ ...data, email: data.email?.toLowerCase() });
+      const obj = created.toObject();
+      obj.id = obj.id || String(obj._id);
+      delete obj.password;
+      return res.status(201).json(obj);
+    }
+    inMemoryUsers.push(data);
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.put("/api/users/:id", async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    delete updates.password;
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOneAndUpdate({ $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] }, { $set: updates }, { new: true, projection: "-password" });
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ ...user.toObject(), id: user.id || String(user._id) });
+    }
+    const idx = inMemoryUsers.findIndex(u => u.id === req.params.id || u.email === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "User not found." });
+    inMemoryUsers[idx] = { ...inMemoryUsers[idx], ...updates };
+    res.json(inMemoryUsers[idx]);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.delete("/api/users/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findOneAndDelete({ $or: [{ id: req.params.id }, { email: req.params.id.toLowerCase() }] });
+      if (!user) return res.status(404).json({ message: "User not found." });
+      return res.json({ success: true, message: `User "${user.name}" deleted.` });
+    }
+    const idx = inMemoryUsers.findIndex(u => u.id === req.params.id || u.email === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: "User not found." });
+    const [removed] = inMemoryUsers.splice(idx, 1);
+    res.json({ success: true, message: `User "${removed.name}" deleted.` });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSISTANCE TICKET ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/tickets", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const tickets = await AssistanceTicket.find().sort({ createdAt: -1 }).lean();
+      return res.json(tickets.map(t => ({ ...t, id: t.id || String(t._id) })));
+    }
+    res.json([]);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.post("/api/tickets", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now()) };
+    if (mongoose.connection.readyState === 1) {
+      const created = await AssistanceTicket.create(data);
+      const obj = created.toObject();
+      return res.status(201).json({ ...obj, id: obj.id || String(obj._id) });
+    }
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.put("/api/tickets/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let t = await AssistanceTicket.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true });
+      if (!t) t = await AssistanceTicket.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+      if (!t) return res.status(404).json({ message: "Ticket not found." });
+      return res.json({ ...t.toObject(), id: t.id || String(t._id) });
+    }
+    res.status(404).json({ message: "Ticket not found." });
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEB PUSH ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/push/vapid-public-key", (req, res) => {
+  if (!process.env.VAPID_PUBLIC_KEY)
+    return res.status(503).json({ message: "Push notifications not configured." });
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const { subscription, email } = req.body;
+    if (!subscription || !email) return res.status(400).json({ message: "subscription and email are required." });
+    if (mongoose.connection.readyState === 1) {
+      await PushSub.findOneAndUpdate({ "subscription.endpoint": subscription.endpoint }, { email: email.toLowerCase(), subscription, updatedAt: new Date() }, { upsert: true, setDefaultsOnInsert: true });
+    }
+    await sendPushToUser(email, { title: "✅ SmartCue Notifications Active", body: "You will now receive task reminders even when this app is closed.", url: process.env.FRONTEND_URL || "/", tag: "push-welcome", icon: "/favicon.png" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post("/api/push/unsubscribe", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "email is required." });
+    if (mongoose.connection.readyState === 1) await PushSub.deleteMany({ email: email.toLowerCase() });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+app.post("/api/push/send", async (req, res) => {
+  try {
+    const { email, emails, title, body, url, taskId } = req.body;
+    if (!title) return res.status(400).json({ message: "title is required." });
+    const targets = emails ?? (email ? [email] : []);
+    if (targets.length === 0) return res.status(400).json({ message: "email or emails required." });
+    await Promise.all(targets.map(e => sendPushToUser(e, { title, body, url: url || "/", taskId, icon: "/favicon.png" })));
+    res.json({ success: true, sent: targets.length });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+app.post("/api/push/broadcast", async (req, res) => {
+  try {
+    const { title, body, url } = req.body;
+    if (!title) return res.status(400).json({ message: "title is required." });
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ message: "Database not connected." });
+    const allSubs = await PushSub.find({});
+    let sent = 0;
+    await Promise.all(allSubs.map(async (s) => { const ok = await sendPushToSubscription(s.subscription, { title, body, url: url || "/", icon: "/favicon.png" }); if (ok) sent++; }));
+    res.json({ success: true, sent, total: allSubs.length });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/draft-notes", async (req, res) => {
+  const { notes } = req.body;
+  if (!notes) return res.status(400).json({ success: false, message: "Notes are required" });
+  try {
+    const message = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: `You are a professional writing assistant. Improve the following task completion notes for clarity, professionalism, and impact. Keep the same meaning but enhance the writing quality.\n\nOriginal notes:\n${notes}\n\nReturn ONLY the improved notes, no preamble.` }],
+      })
+    );
+    const improvedNotes = message.content[0]?.type === "text" ? message.content[0].text : notes;
+    res.json({ success: true, improvedNotes });
+  } catch (error) {
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
+    res.status(500).json({ success: false, message: "Failed to draft notes: " + error.message });
+  }
+});
+
+app.post("/api/review-attachments", async (req, res) => {
+  const { contentArray } = req.body;
+  if (!contentArray?.length) return res.status(400).json({ success: false, message: "Content array is required" });
+  try {
+    const message = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 2000, messages: [{ role: "user", content: contentArray }] })
+    );
+    const responseText = message.content[0]?.type === "text" ? message.content[0].text : "[]";
+    let parsedResults = [];
+    try {
+      const m = responseText.match(/\[[\s\S]*\]/);
+      parsedResults = m ? JSON.parse(m[0]) : JSON.parse(responseText);
+    } catch (e) {
+      return res.status(400).json({ success: false, message: "Could not parse review results" });
+    }
+    res.json({ success: true, results: parsedResults, hasErrors: parsedResults.some(r => r.status === "ERROR") });
+  } catch (error) {
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
+    res.status(500).json({ success: false, message: "Failed to review attachments: " + error.message });
+  }
+});
+
+// ── SCORE CONTENT — FIXED: was referencing undefined `userContent` variable ──
+app.post("/api/score-content", async (req, res) => {
+  const { systemPrompt, userContent } = req.body;
+
+  if (!systemPrompt || !userContent) {
+    return res.status(400).json({ success: false, message: "Missing systemPrompt or userContent" });
+  }
+
+  try {
+    const imageCount = Array.isArray(userContent)
+      ? userContent.filter(c => c.type === "image").length
+      : 0;
+    console.log(`[INFO] 🎯 Scoring content – ${imageCount} image(s)...`);
+
+    const message = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({
+        model:      "claude-haiku-4-5-20251001",
+        max_tokens: 4000,
+        temperature: 0,
+        system:     systemPrompt,
+        messages:   [{ role: "user", content: [
+  {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: "image/png",
+      data: cleanBase64
+    }
+  },
+  {
+    type: "text",
+    text: systemPrompt
+  }
+] }],
+      })
+    );
+
+    const rawText = message.content.map(block => block.type === "text" ? block.text : "").join("");
+    const clean   = rawText.replace(/```json|```/g, "").trim();
+
+    let result;
+    try {
+      result = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("[ERROR] score-content JSON parse failed:", clean.slice(0, 300));
+      return res.status(500).json({ success: false, message: "AI returned invalid JSON – please try again", raw: clean.slice(0, 300) });
+    }
+
+    console.log("[INFO] ✔ Content scored successfully");
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error("[ERROR] score-content:", error);
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) return res.status(503).json({ success: false, message: "Anthropic API overloaded. Try again in a few seconds." });
+    res.status(500).json({ success: false, message: "Failed to score content: " + error.message });
+  }
+});
+
+app.post("/api/chat", async (req, res) => {
+  const { model, max_tokens, system, messages } = req.body;
+  if (!messages?.length) return res.status(400).json({ success: false, message: "messages are required" });
+  try {
+    const response = await callAnthropicWithRetry(() =>
+      anthropic.messages.create({
+        model:      model      || "claude-haiku-4-5-20251001",
+        max_tokens: max_tokens || 1024,
+        system:     system     || "You are SmartCue, an elite AI assistant for Roswalt Realty.",
+        messages,
+      })
+    );
+    res.json({ content: [{ type: "text", text: response.content?.[0]?.text ?? "Systems briefly offline. Please retry." }] });
+  } catch (error) {
+    const isOverloaded = error?.status === 529 || error?.error?.error?.type === "overloaded_error";
+    if (isOverloaded) return res.status(503).json({ content: [{ type: "text", text: "SmartCue is overloaded. Please retry in a moment." }] });
+    res.status(500).json({ content: [{ type: "text", text: "Network disruption detected. Please retry." }] });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELEVENLABS TTS
+// ─────────────────────────────────────────────────────────────────────────────
+app.post("/api/tts", async (req, res) => {
+  try {
+    const secret = process.env.ELEVEN_LABS_API_KEY || process.env.REACT_APP_TTS_SECRET;
+    if (!secret) {
+      console.error("[TTS] No ElevenLabs API key set (ELEVEN_LABS_API_KEY or REACT_APP_TTS_SECRET)");
+      return res.status(401).json({ message: "TTS not configured. Set ELEVEN_LABS_API_KEY in Railway." });
+    }
+    const { text, voiceId } = req.body;
+    if (!text) return res.status(400).json({ message: "Text is required" });
+    const selectedVoice = voiceId || "21m00Tcm4TlvDq8ikWAM";
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "xi-api-key": secret },
+      body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5", voice_settings: { stability: 0.35, similarity_boost: 0.85, style: 0.40, use_speaker_boost: true } }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("ElevenLabs error:", errorText);
+      return res.status(response.status).send(errorText);
+    }
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
+    res.set("Content-Type", "audio/mpeg");
+    res.send(audioBuffer);
+  } catch (error) {
+    console.error("TTS error:", error);
+    res.status(500).json({ message: "Failed to generate speech" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEALTH
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({
+    status:           "ok",
+    apiKeyConfigured: !!process.env.ANTHROPIC_API_KEY,
+    mongoConnected:   mongoose.connection.readyState === 1,
+    ttsConfigured:    !!(process.env.ELEVEN_LABS_API_KEY || process.env.REACT_APP_TTS_SECRET),
+    chat:             "socket.io active",
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT REST ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+function normMsg(m) {
+  const obj = m.toObject ? m.toObject() : m;
+  if (!obj.id) obj.id = String(obj._id);
+  if (obj.reactions instanceof Map) {
+    const plain = {};
+    for (const [k, v] of obj.reactions) plain[k] = v;
+    obj.reactions = plain;
+  }
+  return obj;
+}
+
+app.get("/api/chat/messages/:channelId", async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit ?? "100"), 200);
+    if (mongoose.connection.readyState === 1) {
+      const msgs = await ChatMessage.find({ channelId, deletedAt: null }).sort({ createdAt: -1 }).limit(limit).lean();
+      return res.json(msgs.reverse().map(m => { if (!m.id) m.id = String(m._id); return m; }));
+    }
+    res.json(inMemoryChatMessages.filter(m => m.channelId === channelId).slice(-limit));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.post("/api/chat/messages", async (req, res) => {
+  try {
+    const data = { ...req.body, id: req.body.id || String(Date.now() + Math.random()) };
+    if (mongoose.connection.readyState === 1) {
+      const created = await ChatMessage.create(data);
+      return res.status(201).json(normMsg(created));
+    }
+    inMemoryChatMessages.push(data);
+    if (inMemoryChatMessages.length > 1000) inMemoryChatMessages = inMemoryChatMessages.slice(-800);
+    res.status(201).json(data);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.put("/api/chat/messages/:id/react", async (req, res) => {
+  try {
+    const { emoji, userId } = req.body;
+    if (!emoji || !userId) return res.status(400).json({ message: "emoji and userId are required." });
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOne({ id: req.params.id });
+      if (!msg) return res.status(404).json({ message: "Message not found." });
+      const users = msg.reactions.get(emoji) || [];
+      const idx = users.indexOf(userId);
+      if (idx > -1) users.splice(idx, 1); else users.push(userId);
+      msg.reactions.set(emoji, users);
+      await msg.save();
+      const updated = normMsg(msg);
+      io.to(`channel:${msg.channelId}`).emit("reaction_update", { messageId: msg.id, emoji, userId, reactions: updated.reactions });
+      return res.json(updated);
+    }
+    const msg = inMemoryChatMessages.find(m => m.id === req.params.id);
+    if (!msg) return res.status(404).json({ message: "Message not found." });
+    if (!msg.reactions) msg.reactions = {};
+    const users = msg.reactions[emoji] || [];
+    const idx = users.indexOf(userId);
+    if (idx > -1) users.splice(idx, 1); else users.push(userId);
+    msg.reactions[emoji] = users;
+    res.json(msg);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.delete("/api/chat/messages/:id", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOneAndUpdate({ id: req.params.id }, { $set: { deletedAt: new Date(), text: "[message deleted]" } }, { new: true });
+      if (!msg) return res.status(404).json({ message: "Message not found." });
+      io.to(`channel:${msg.channelId}`).emit("message_deleted", { messageId: msg.id });
+      return res.json({ success: true });
+    }
+    inMemoryChatMessages = inMemoryChatMessages.filter(m => m.id !== req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.get("/api/chat/presence", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      return res.json(await ChatPresence.find({ isOnline: true }).lean());
+    }
+    res.json(inMemoryChatPresence.filter(p => p.isOnline));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.patch("/api/chat/presence", async (req, res) => {
+  try {
+    const { email, ...updates } = req.body;
+    if (!email) return res.status(400).json({ message: "email is required." });
+    if (mongoose.connection.readyState === 1) {
+      const presence = await ChatPresence.findOneAndUpdate({ email: email.toLowerCase() }, { $set: { ...updates, email: email.toLowerCase() } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+      return res.json(presence);
+    }
+    const idx = inMemoryChatPresence.findIndex(p => p.email === email.toLowerCase());
+    const record = { email: email.toLowerCase(), ...updates, updatedAt: new Date().toISOString() };
+    if (idx > -1) inMemoryChatPresence[idx] = { ...inMemoryChatPresence[idx], ...record }; else inMemoryChatPresence.push(record);
+    res.json(record);
+  } catch (e) { res.status(400).json({ message: e.message }); }
+});
+
+app.post("/api/chat/meeting", async (req, res) => {
+  try {
+    const { title } = req.body;
+    if (process.env.DAILY_API_KEY) {
+      const response = await fetch("https://api.daily.co/v1/rooms", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.DAILY_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { max_participants: 50, enable_chat: false, exp: Math.floor(Date.now() / 1000) + 7200 } }),
+      });
+      if (!response.ok) throw new Error(`Daily.co error: ${response.status}`);
+      const room = await response.json();
+      return res.json({ url: room.url, roomName: room.name, provider: "daily" });
+    }
+    const roomId = Math.random().toString(36).substr(2, 8);
+    res.json({ url: `https://meet.roswalt.io/room-${roomId}`, roomName: `room-${roomId}`, provider: "mock", title });
+  } catch (e) { res.status(500).json({ message: "Could not create meeting room: " + e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCKET.IO
+// ─────────────────────────────────────────────────────────────────────────────
+io.on("connection", (socket) => {
+  console.log(`[Socket] Connected: ${socket.id}`);
+
+  socket.on("user_join", async (user) => {
+    if (!user?.email) return;
+    socket.data.user = user;
+    socket.join("presence");
+    if (mongoose.connection.readyState === 1) {
+      await ChatPresence.findOneAndUpdate({ email: user.email.toLowerCase() }, { $set: { ...user, email: user.email.toLowerCase(), isOnline: true, socketId: socket.id, lastSeen: new Date() } }, { upsert: true, setDefaultsOnInsert: true }).catch(e => console.error("[Socket] Presence upsert error:", e.message));
+    } else {
+      const idx = inMemoryChatPresence.findIndex(p => p.email === user.email.toLowerCase());
+      const record = { ...user, email: user.email.toLowerCase(), isOnline: true, socketId: socket.id };
+      if (idx > -1) inMemoryChatPresence[idx] = record; else inMemoryChatPresence.push(record);
+    }
+    io.emit("user_online", { ...user, isOnline: true, socketId: socket.id });
+  });
+
+  socket.on("join_channel",  (channelId) => { if (channelId) socket.join(`channel:${channelId}`); });
+  socket.on("leave_channel", (channelId) => { if (channelId) socket.leave(`channel:${channelId}`); });
+
+  socket.on("send_message", async (msg) => {
+    if (!msg?.channelId || !msg?.authorId) return;
+    const data = { ...msg, id: msg.id || String(Date.now() + Math.random()) };
+    if (mongoose.connection.readyState === 1) {
+      ChatMessage.create(data).catch(e => console.error("[Socket] Message save error:", e.message));
+    } else {
+      inMemoryChatMessages.push(data);
+    }
+    socket.to(`channel:${msg.channelId}`).emit("new_message", data);
+  });
+
+  socket.on("typing", ({ channelId, isTyping }) => {
+    if (!channelId) return;
+    socket.to(`channel:${channelId}`).emit("user_typing", { name: socket.data.user?.name || "Someone", channelId, isTyping });
+  });
+
+  socket.on("react", async ({ messageId, emoji, userId, channelId }) => {
+    if (!messageId || !emoji || !userId || !channelId) return;
+    if (mongoose.connection.readyState === 1) {
+      const msg = await ChatMessage.findOne({ id: messageId }).catch(() => null);
+      if (msg) {
+        const users = msg.reactions.get(emoji) || [];
+        const idx = users.indexOf(userId);
+        if (idx > -1) users.splice(idx, 1); else users.push(userId);
+        msg.reactions.set(emoji, users);
+        await msg.save().catch(e => console.error("[Socket] Reaction save error:", e.message));
+      }
+    }
+    io.to(`channel:${channelId}`).emit("reaction_update", { messageId, emoji, userId });
+  });
+
+  socket.on("call_request", ({ channelId, fromUser }) => { socket.to(`channel:${channelId}`).emit("call_incoming", { from: fromUser || socket.data.user, channelId }); });
+  socket.on("call_end",     ({ channelId })           => { socket.to(`channel:${channelId}`).emit("call_ended", { channelId }); });
+
+  socket.on("disconnect", async () => {
+    const user = socket.data.user;
+    if (user?.email) {
+      if (mongoose.connection.readyState === 1) {
+        await ChatPresence.findOneAndUpdate({ email: user.email.toLowerCase() }, { $set: { isOnline: false, socketId: null, lastSeen: new Date() } }).catch(() => {});
+      } else {
+        const p = inMemoryChatPresence.find(p => p.email === user.email.toLowerCase());
+        if (p) { p.isOnline = false; p.socketId = null; }
+      }
+      io.emit("user_offline", { email: user.email, id: user.id || user.email });
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+httpServer.listen(PORT, () => {
+  console.log(`\n✔ Server + Socket.io running on port ${PORT}`);
+  console.log("ElevenLabs Key:", (process.env.ELEVEN_LABS_API_KEY || process.env.REACT_APP_TTS_SECRET) ? "✔ Loaded" : "✗ Missing");
+  console.log("Daily.co Key:  ", process.env.DAILY_API_KEY ? "✔ Loaded" : "✗ Missing (using mock links)");
+
+  setInterval(() => {
+    fetch("https://adaptable-patience-production-45da.up.railway.app/health").catch(() => {});
+  }, 300000);
+
+  setTimeout(() => {
+    console.log("⏱  TAT monitor started");
+    runTATMonitor();
+    setInterval(runTATMonitor, 14400000);
+  }, 5_000);
+});
