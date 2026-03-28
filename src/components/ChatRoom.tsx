@@ -410,7 +410,9 @@ const ChatRoomInner: React.FC = () => {
                             {unread > 0 && <span style={{ background: "#7c6af7", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 10, padding: "1px 7px", flexShrink: 0 }}>{unread}</span>}
                           </div>
                           <div style={{ fontSize: 11, color: unread > 0 ? "#a78bfa" : "#3a3f5c", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                            {lastMsg ? `${lastMsg.author.id === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 30) || "Attachment"}` : u.role}
+                            {lastMsg
+                              ? `${(lastMsg.author?.id || (lastMsg as any).authorId) === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 30) || "Attachment"}`
+                              : u.role}
                           </div>
                         </div>
                       </div>

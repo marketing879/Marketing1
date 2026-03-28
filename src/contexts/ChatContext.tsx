@@ -104,9 +104,14 @@ export const ChatProvider: React.FC<{
   const teamMembersRef = useRef(teamMembers);
   useEffect(() => { teamMembersRef.current = teamMembers; }, [teamMembers]);
 
+  const connectedIdRef = useRef<string | null>(null);
+
   // ── Socket.io — connect ONCE, never reconnect unless user logs out ────────
   useEffect(() => {
-    if (!currentUser?.id) return; // don't connect until we have a real user
+    if (!currentUser?.id) return;
+    // Skip if already connected with same user id
+    if (connectedIdRef.current === currentUser.id && socketRef.current?.connected) return;
+    connectedIdRef.current = currentUser.id;
     console.log("[Chat] Connecting socket to", API);
     const socket = io(API, {
       transports:           ["websocket", "polling"],
