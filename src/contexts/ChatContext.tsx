@@ -71,15 +71,31 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
   }, []);
 
   // ── Socket setup ──────────────────────────────────────────────────────────
+  // ── Load ALL channel histories immediately on mount — independent of socket ──
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
+  }, [currentUser.id, loadMessages]);
+
+  // ── Load DM histories when teamMembers becomes available ──────────────────
+  useEffect(() => {
+    if (!currentUser?.id || !teamMembers.length) return;
+    teamMembers.forEach(member => {
+      const dmCh = getDMChannelId(currentUser.id, member.id);
+      loadMessages(dmCh);
+    });
+  }, [currentUser.id, teamMembers, loadMessages]);
+
+  // ── Socket setup ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
 
     const socket = io(API, {
-      transports:          ["websocket", "polling"],
+      transports:           ["websocket", "polling"],
       reconnectionAttempts: 10,
-      reconnectionDelay:   1500,
-      withCredentials:     true,
-      autoConnect:         true,
+      reconnectionDelay:    1500,
+      withCredentials:      true,
+      autoConnect:          true,
     });
 
     socketRef.current = socket;
@@ -90,14 +106,20 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       // Join all public channels
       DEFAULT_CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
 
-      // Join personal DM room so incoming DMs always arrive
+      // Join personal DM rooms
       socket.emit("join_channel", `dm_personal_${currentUser.id}`);
       socket.emit("join_channel", `dm_personal_${currentUser.email}`);
 
-      // Pre-join all DM rooms with team members
+      // Join all DM rooms with team members
       teamMembers.forEach(member => {
         const dmCh = getDMChannelId(currentUser.id, member.id);
         socket.emit("join_channel", dmCh);
+      });
+
+      // Re-fetch all histories on reconnect so nothing is missed
+      DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
+      teamMembers.forEach(member => {
+        loadMessages(getDMChannelId(currentUser.id, member.id));
       });
     });
 
@@ -114,12 +136,15 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
 
       setMessages(prev => {
         const existing = prev[data.channelId] || [];
-        if (existing.some(m => m.id === data.id)) return prev; // dedupe
-        return { ...prev, [data.channelId]: [...existing, data] };
+        // Dedupe by id — also replace any optimistic placeholder
+        const withoutOptimistic = existing.filter(m => !m.id.startsWith("opt_") || m.id === data.id);
+        if (withoutOptimistic.some(m => m.id === data.id)) return prev;
+        return { ...prev, [data.channelId]: [...withoutOptimistic, data] };
       });
 
-      // Desktop notification for messages not from me
       const isFromMe = data.author?.id === currentUser.id || data.author?.email === currentUser.email;
+
+      // Desktop notification
       if (!isFromMe && Notification.permission === "granted") {
         const isDM = data.channelId.startsWith("dm_");
         new Notification(`${data.author?.name || "Someone"} ${isDM ? "(DM)" : `· #${data.channelId}`}`, {
@@ -134,7 +159,7 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
         setUnreadDMs(prev => ({ ...prev, [data.channelId]: (prev[data.channelId] || 0) + 1 }));
       }
 
-      // Update channel unread badges for public channels
+      // Update channel unread badges
       if (!data.channelId.startsWith("dm_") && !isFromMe) {
         setChannels(prev => prev.map(ch =>
           ch.id === data.channelId ? { ...ch, unread: (ch.unread || 0) + 1 } : ch
@@ -146,12 +171,7 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       if (!data?.messageId || !data?.channelId) return;
       setMessages(prev => {
         const msgs = prev[data.channelId] || [];
-        return {
-          ...prev,
-          [data.channelId]: msgs.map(m =>
-            m.id === data.messageId ? { ...m, reactions: data.reactions } : m
-          ),
-        };
+        return { ...prev, [data.channelId]: msgs.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m) };
       });
     });
 
@@ -161,17 +181,7 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       typingTimer.current = setTimeout(() => setTypingUser(null), 2500);
     });
 
-    // Request notification permission
     if (Notification.permission === "default") Notification.requestPermission();
-
-    // Load all channel histories
-    DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-
-    // Pre-load DM histories for all team members
-    teamMembers.forEach(member => {
-      const dmCh = getDMChannelId(currentUser.id, member.id);
-      loadMessages(dmCh);
-    });
 
     return () => {
       socket.disconnect();
@@ -180,16 +190,15 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser.id, currentUser.email]);
 
-  // Re-join DM rooms when teamMembers loads
+  // Re-join DM rooms when teamMembers loads after socket is already connected
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket?.connected || !teamMembers.length) return;
     teamMembers.forEach(member => {
       const dmCh = getDMChannelId(currentUser.id, member.id);
       socket.emit("join_channel", dmCh);
-      loadMessages(dmCh);
     });
-  }, [teamMembers, currentUser.id, loadMessages]);
+  }, [teamMembers, currentUser.id]);
 
   const setActiveChannel = useCallback((id: string) => {
     setActiveChannelState(id);
@@ -225,7 +234,16 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
           channelId:  partial.channelId,
           authorId:   partial.author.id,
           authorName: partial.author.name,
-          author:     partial.author,
+          authorRole: partial.author.role || "staff",
+          authorEmail: partial.author.email,
+          authorAvatar: partial.author.avatar,
+          author:     {
+            id:     partial.author.id,
+            name:   partial.author.name,
+            email:  partial.author.email,
+            role:   partial.author.role || "staff",
+            avatar: partial.author.avatar || "",
+          },
           type:       partial.type || "text",
           text:       partial.text || "",
           gif:        partial.gif,
