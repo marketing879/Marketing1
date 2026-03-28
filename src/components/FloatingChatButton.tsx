@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ChatProvider, useChatContext } from "../contexts/ChatContext";
 import { useUser } from "../contexts/UserContext";
+import { ChatUser, UserRole } from "../types/chat";
 import { ChatRoom } from "./ChatRoom";
 
 // ── Unread badge tracker ──────────────────────────────────────────────────────
@@ -15,7 +16,7 @@ const UnreadBadge: React.FC<{ onCount: (n: number) => void }> = ({ onCount }) =>
   return null;
 };
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main inner component ──────────────────────────────────────────────────────
 const FloatingChatButtonInner: React.FC = () => {
   const { user }            = useUser();
   const [open, setOpen]     = useState(false);
@@ -29,8 +30,8 @@ const FloatingChatButtonInner: React.FC = () => {
     <>
       <style>{`
         @keyframes fcbPulse {
-          0%,100% { box-shadow: 0 0 0 0 rgba(0,212,255,0.45), 0 4px 20px rgba(0,0,0,0.5); }
-          50%      { box-shadow: 0 0 0 8px rgba(0,212,255,0),  0 4px 20px rgba(0,0,0,0.5); }
+          0%,100% { box-shadow: 0 0 0 0 rgba(201,169,110,0.45), 0 4px 20px rgba(0,0,0,0.5); }
+          50%      { box-shadow: 0 0 0 8px rgba(201,169,110,0),  0 4px 20px rgba(0,0,0,0.5); }
         }
         @keyframes fcbBadgePop {
           0%   { transform: scale(0); }
@@ -38,8 +39,8 @@ const FloatingChatButtonInner: React.FC = () => {
           100% { transform: scale(1); }
         }
         @keyframes fcbSlideIn {
-          from { transform: translateX(100%); }
-          to   { transform: translateX(0); }
+          from { transform: translateX(100%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
         }
 
         .fcb-btn {
@@ -50,7 +51,7 @@ const FloatingChatButtonInner: React.FC = () => {
           width: 52px;
           height: 52px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #7b2fff, #00d4ff);
+          background: linear-gradient(135deg, #c9a96e, #9a7a4a);
           border: none;
           cursor: pointer;
           display: flex;
@@ -61,9 +62,9 @@ const FloatingChatButtonInner: React.FC = () => {
           animation: fcbPulse 3s ease-in-out infinite;
         }
         .fcb-btn.is-open {
-          right: calc(420px + 16px);
+          right: calc(440px + 16px);
           background: rgba(20,22,36,0.95);
-          border: 1px solid rgba(255,255,255,0.1);
+          border: 1px solid rgba(201,169,110,0.2);
           animation: none;
           box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         }
@@ -74,15 +75,15 @@ const FloatingChatButtonInner: React.FC = () => {
           position: absolute;
           top: -2px; right: -2px;
           min-width: 18px; height: 18px;
-          background: #ff3366;
+          background: #f87171;
           border: 2px solid #060a15;
           border-radius: 9px;
           font-size: 9px; font-weight: 900; color: #fff;
           display: flex; align-items: center; justify-content: center;
           padding: 0 4px;
           animation: fcbBadgePop 0.3s cubic-bezier(0.34,1.56,0.64,1);
-          box-shadow: 0 0 8px rgba(255,51,102,0.7);
-          font-family: 'Inter', sans-serif;
+          box-shadow: 0 0 8px rgba(248,113,113,0.7);
+          font-family: 'DM Sans', sans-serif;
         }
 
         .fcb-tooltip {
@@ -91,7 +92,7 @@ const FloatingChatButtonInner: React.FC = () => {
           top: 50%;
           transform: translateY(-50%);
           background: rgba(8,11,26,0.95);
-          border: 1px solid rgba(0,212,255,0.2);
+          border: 1px solid rgba(201,169,110,0.2);
           border-radius: 8px;
           padding: 5px 10px;
           font-size: 11px; font-weight: 600; color: #eef0ff;
@@ -99,32 +100,31 @@ const FloatingChatButtonInner: React.FC = () => {
           pointer-events: none;
           opacity: 0;
           transition: opacity 0.15s;
-          font-family: 'Inter', sans-serif;
+          font-family: 'DM Sans', sans-serif;
           box-shadow: 0 4px 16px rgba(0,0,0,0.5);
         }
         .fcb-btn:hover .fcb-tooltip { opacity: 1; }
 
-        /* ── Side panel ── */
         .fcb-panel {
           position: fixed;
           top: 0;
           right: 0;
-          width: 420px;
+          width: 440px;
           height: 100vh;
           z-index: 7999;
           box-shadow: -8px 0 48px rgba(0,0,0,0.65);
-          border-left: 1px solid rgba(255,255,255,0.07);
+          border-left: 1px solid rgba(201,169,110,0.12);
           animation: fcbSlideIn 0.28s cubic-bezier(0.22,1,0.36,1) forwards;
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          background: #0c0d13;
         }
 
-        /* Transparent click-away strip — doesn't cover the dashboard */
         .fcb-clickaway {
           position: fixed;
           top: 0; left: 0;
-          right: 420px;
+          right: 440px;
           bottom: 0;
           z-index: 7998;
           background: transparent;
@@ -138,39 +138,34 @@ const FloatingChatButtonInner: React.FC = () => {
         }
       `}</style>
 
-      {/* Unread tracker */}
       {!open && <UnreadBadge onCount={setUnread} />}
 
-      {/* Floating button — toggles panel, moves left when open */}
       <button
         className={`fcb-btn${open ? " is-open" : ""}`}
         onClick={open ? () => setOpen(false) : handleOpen}
-        title={open ? "Close Chat" : "Team Chat"}
+        title={open ? "Close Chat" : "SmartCue ChatRoom"}
       >
         {open ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="#a0a8c0" strokeWidth="2.5" strokeLinecap="round">
+            stroke="#c9a96e" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6"  x2="6"  y2="18"/>
             <line x1="6"  y1="6"  x2="18" y2="18"/>
           </svg>
         ) : (
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-            stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            stroke="#0c0d13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         )}
         {!open && unread > 0 && (
           <span className="fcb-badge">{unread > 99 ? "99+" : unread}</span>
         )}
-        <span className="fcb-tooltip">{open ? "Close Chat" : "Team Chat"}</span>
+        <span className="fcb-tooltip">{open ? "Close Chat" : "SmartCue ChatRoom"}</span>
       </button>
 
       {open && (
         <>
-          {/* Click-away area — clicking outside closes the panel */}
           <div className="fcb-clickaway" onClick={() => setOpen(false)} />
-
-          {/* Side panel */}
           <div className="fcb-panel">
             <ChatRoom />
           </div>
@@ -180,10 +175,38 @@ const FloatingChatButtonInner: React.FC = () => {
   );
 };
 
-export const FloatingChatButton: React.FC = () => (
-  <ChatProvider>
-    <FloatingChatButtonInner />
-  </ChatProvider>
-);
+// ── Wrapper — pulls real user + team from context, passes to ChatProvider ─────
+const FloatingChatButtonWrapper: React.FC = () => {
+  const { user: appUser, teamMembers: rawMembers } = useUser();
 
+  const currentUser: ChatUser = {
+    id:       appUser?.id || appUser?.email || "me",
+    name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
+    email:    appUser?.email || "me@roswalt.com",
+    role:     (appUser?.role as UserRole) || "staff",
+    avatar:   (appUser as any)?.avatar || "",
+    isOnline: true,
+    status:   (appUser as any)?.status || "Available",
+  };
+
+  const teamMembers: ChatUser[] = (rawMembers || [])
+    .filter((m: any) => m?.email)
+    .map((m: any) => ({
+      id:       m.id || m.email,
+      name:     m.name || m.email.split("@")[0],
+      email:    m.email,
+      role:     (m.role as UserRole) || "staff",
+      avatar:   (m as any).avatar || "",
+      isOnline: (m as any).isOnline ?? false,
+      status:   (m as any).status || "Available",
+    }));
+
+  return (
+    <ChatProvider currentUser={currentUser} teamMembers={teamMembers}>
+      <FloatingChatButtonInner />
+    </ChatProvider>
+  );
+};
+
+export const FloatingChatButton: React.FC = () => <FloatingChatButtonWrapper />;
 export default FloatingChatButton;
