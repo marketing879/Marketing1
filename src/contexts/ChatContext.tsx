@@ -42,6 +42,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
   const socketRef = useRef<Socket | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Request desktop notification permission once on mount ───────────────
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // ── Load messages for a channel from REST API ───────────────────────────
   const loadMessages = useCallback(async (channelId: string) => {
     try {
@@ -89,13 +96,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
           ? msg.reactions
           : {},
       };
+
+      // ── Desktop notification — only for messages from others ─────────────
+      const isFromMe = currentUser && (
+        normalized.author?.id    === currentUser.id ||
+        normalized.author?.email === currentUser.email
+      );
+      if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
+        const senderName = normalized.author?.name || "Someone";
+        const channel    = normalized.channelId;
+        const body       = normalized.type === "text"
+          ? (normalized.text || "").slice(0, 100)
+          : normalized.type === "meeting"
+          ? "📹 Shared a meeting link"
+          : normalized.type === "sticker"
+          ? normalized.text || "Sent a sticker"
+          : normalized.type === "gif"
+          ? "Sent a GIF"
+          : "New message";
+
+        try {
+          const n = new Notification(`${senderName} · #${channel}`, {
+            body,
+            icon:    "/favicon.ico",
+            tag:     `chat-${normalized.id}`,   // prevents duplicate notifs
+            silent:  false,
+          });
+          // Clicking the notification focuses the tab
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch {}
+      }
+
       setMessages(prev => {
         const ch = normalized.channelId;
         const existing = prev[ch] || [];
-        // Avoid duplicates
         if (existing.some(m => m.id === normalized.id)) return prev;
         return { ...prev, [ch]: [...existing, normalized] };
       });
+
       // Increment unread if not active channel
       setChannels(prev => prev.map(c =>
         c.id === normalized.channelId && normalized.channelId !== activeChannel
