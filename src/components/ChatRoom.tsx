@@ -147,10 +147,11 @@ const ChatRoomInner: React.FC = () => {
   }, [appUser]);
 
   useEffect(() => {
+    // Use MongoDB _id if available, fall back to email — skip silently on 404
     const userId = appUser?.id || appUser?.email;
     if (!userId) return;
-    fetch(`${API}/api/users/${userId}`)
-      .then(r => r.ok ? r.json() : null)
+    fetch(`${API}/api/users/${encodeURIComponent(userId)}`)
+      .then(r => { if (r.status === 404) return null; return r.ok ? r.json() : null; })
       .then(data => { if (data && !data.chatOnboarded) setShowOnboard(true); })
       .catch(() => {});
   }, [appUser?.id, appUser?.email]);
@@ -162,7 +163,7 @@ const ChatRoomInner: React.FC = () => {
     setShowOnboard(false);
     const userId = appUser?.id || appUser?.email;
     if (!userId) return;
-    fetch(`${API}/api/users/${userId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatOnboarded: true }) }).catch(() => {});
+    fetch(`${API}/api/users/${encodeURIComponent(userId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatOnboarded: true }) }).catch(() => {});
   }, [appUser?.id, appUser?.email]);
 
   const startCall = useCallback((roomUrl?: string) => {
@@ -292,19 +293,16 @@ const ChatRoomInner: React.FC = () => {
       --red:     #f87171;
     }
 
-    .sc-shell { width:100%; height:100%; background:var(--void); display:flex; align-items:center; justify-content:center; padding:16px; font-family:'DM Sans',sans-serif; }
+    .sc-shell { width:100%; height:100%; background:var(--void); display:flex; align-items:stretch; justify-content:center; font-family:'DM Sans',sans-serif; }
 
     /* Luxury card */
     .sc-card {
-      width:100%; max-width:900px; height:100%; max-height:92vh;
+      width:100%; max-width:900px; height:100%;
       display:flex; flex-direction:column; position:relative;
       background:var(--bg0);
       border:1px solid var(--gold-dk)40;
-      border-radius:20px; overflow:hidden;
-      box-shadow:
-        0 0 0 1px #00000080,
-        0 32px 80px rgba(0,0,0,0.7),
-        0 0 120px rgba(201,169,110,0.04) inset;
+      overflow:hidden;
+      box-shadow:0 0 0 1px #00000080, 0 32px 80px rgba(0,0,0,0.7);
     }
 
     /* Subtle gold shimmer at top */
@@ -322,26 +320,29 @@ const ChatRoomInner: React.FC = () => {
     }
 
     .sc-nav-row1 {
-      display:flex; align-items:center; gap:10px;
-      padding:10px 16px 8px;
+      display:flex; align-items:center; gap:6px;
+      padding:8px 12px 7px;
       border-bottom:1px solid #1a1c28;
+      min-width:0;
     }
 
-    .brand-logo { width:32px; height:32px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 8px rgba(201,169,110,0.4)); }
+    .brand-logo { width:28px; height:28px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 8px rgba(201,169,110,0.4)); }
 
+    .brand-wrap { min-width:0; flex-shrink:1; overflow:hidden; }
     .brand-name {
-      font-family:'Cormorant Garamond',serif; font-weight:700; font-size:17px;
-      color:var(--gold); letter-spacing:0.06em; line-height:1;
+      font-family:'Cormorant Garamond',serif; font-weight:700; font-size:15px;
+      color:var(--gold); letter-spacing:0.04em; line-height:1;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
-    .brand-sub { font-size:8.5px; color:var(--text3); letter-spacing:0.18em; text-transform:uppercase; margin-top:2px; }
+    .brand-sub { font-size:8px; color:var(--text3); letter-spacing:0.14em; text-transform:uppercase; margin-top:1px; white-space:nowrap; }
 
-    .nav-actions { display:flex; align-items:center; gap:5px; margin-left:auto; }
+    .nav-actions { display:flex; align-items:center; gap:4px; margin-left:auto; flex-shrink:0; }
 
     .nav-btn {
       background:none; border:1px solid var(--border); border-radius:9px;
-      color:var(--text2); padding:5px 10px; cursor:pointer; font-size:13px;
+      color:var(--text2); padding:5px 8px; cursor:pointer; font-size:14px;
       transition:all 0.18s; font-family:'DM Sans',sans-serif; font-weight:500;
-      position:relative; white-space:nowrap;
+      position:relative; white-space:nowrap; flex-shrink:0; line-height:1;
     }
     .nav-btn:hover { background:var(--bg3); color:var(--text0); border-color:var(--gold-dk); }
     .nav-btn.active { background:rgba(201,169,110,0.1); color:var(--gold); border-color:var(--gold-dk); }
@@ -355,11 +356,12 @@ const ChatRoomInner: React.FC = () => {
     }
 
     .profile-pill {
-      display:flex; align-items:center; gap:8px; cursor:pointer;
-      padding:4px 10px 4px 6px; border-radius:10px; border:1px solid var(--border);
-      transition:all 0.18s; background:none;
+      display:flex; align-items:center; gap:6px; cursor:pointer;
+      padding:3px 6px 3px 4px; border-radius:10px; border:1px solid var(--border);
+      transition:all 0.18s; background:none; flex-shrink:0; max-width:120px;
     }
     .profile-pill:hover { background:var(--bg3); border-color:var(--gold-dk)80; }
+    .profile-name { font-size:11px; font-weight:700; color:var(--text0); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:64px; }
 
     /* Channel tabs */
     .sc-tabs {
@@ -597,29 +599,29 @@ const ChatRoomInner: React.FC = () => {
           <div className="sc-nav">
             <div className="sc-nav-row1">
               <img src={roswaltLogo} alt="Roswalt" className="brand-logo" />
-              <div>
+              <div className="brand-wrap">
                 <div className="brand-name">SmartCue ChatRoom</div>
                 <div className="brand-sub">Roswalt Realty</div>
               </div>
 
               <div className="nav-actions">
-                {/* DM button */}
-                <button className={`nav-btn${showDMPanel ? " active" : ""}`} onClick={() => setShowDMPanel(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
-                  {dmTarget ? `✉ ${dmTarget.name.split(" ")[0]}` : "✉ DM"}
+                {/* DM button — icon only */}
+                <button className={`nav-btn${showDMPanel ? " active" : ""}`} onClick={() => setShowDMPanel(p => !p)} title={dmTarget ? `DM: ${dmTarget.name}` : "Direct Messages"} style={{ position: "relative" }}>
+                  ✉
                   {totalDMUnread > 0 && <span className="badge-dot">{totalDMUnread > 9 ? "9+" : totalDMUnread}</span>}
                 </button>
 
                 <button className="nav-btn" onClick={() => startCall()} title="Video Call">📹</button>
-                {isAdmin && <button className="nav-btn" onClick={() => setShowMeeting(true)} title="Meeting">🔗</button>}
-                <button className={`nav-btn${showMusic ? " active" : ""}`} onClick={() => setShowMusic(p => !p)}>♫</button>
+                {isAdmin && <button className="nav-btn" onClick={() => setShowMeeting(true)} title="Schedule Meeting">🔗</button>}
+                <button className={`nav-btn${showMusic ? " active" : ""}`} onClick={() => setShowMusic(p => !p)} title="Music">♫</button>
 
-                {/* Profile */}
+                {/* Profile — avatar + truncated first name only */}
                 <div className="profile-pill" onClick={() => setShowProfile(true)}>
                   <div style={{ position: "relative" }}>
-                    <Avatar src={profileUser.avatar || undefined} name={profileUser.name} size={28} online={true} />
+                    <Avatar src={profileUser.avatar || undefined} name={profileUser.name} size={26} online={true} />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text0)", whiteSpace: "nowrap" }}>{profileUser.name.split(" ")[0]}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="profile-name">{profileUser.name.split(" ")[0]}</div>
                     <span style={roleBadge(currentUser.role)}>{currentUser.role}</span>
                   </div>
                 </div>
