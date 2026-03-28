@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { ChatMessage, ChatUser, Channel } from "../types/chat";
-import { io, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+type SocketInstance = ReturnType<typeof io>;
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
@@ -32,117 +33,115 @@ export const useChatContext = () => {
   return ctx;
 };
 
-// currentUser is passed in from ChatRoom so socket can identify the sender
 export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: ChatUser }> = ({ children, currentUser }) => {
-  const [messages,      setMessages]   = useState<Record<string, ChatMessage[]>>({});
-  const [channels,      setChannels]   = useState<Channel[]>(CHANNELS);
-  const [activeChannel, setActive]     = useState("general");
+  const [messages,      setMessages]    = useState<Record<string, ChatMessage[]>>({});
+  const [channels,      setChannels]    = useState<Channel[]>(CHANNELS);
+  const [activeChannel, setActive]      = useState("general");
   const [onlineUsers,   setOnlineUsers] = useState<ChatUser[]>([]);
-  const [typingUser,    setTypingUser] = useState<string | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const [typingUser,    setTypingUser]  = useState<string | null>(null);
+  const socketRef = useRef<SocketInstance | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeChRef    = useRef("general"); // track active channel for unread logic
 
-  // ── Request desktop notification permission once on mount ───────────────
+  useEffect(() => { activeChRef.current = activeChannel; }, [activeChannel]);
+
+  // ── Request notification permission ──────────────────────────────────────
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
   }, []);
 
-  // ── Load messages for a channel from REST API ───────────────────────────
+  // ── Load messages from REST ───────────────────────────────────────────────
   const loadMessages = useCallback(async (channelId: string) => {
     try {
-      const res  = await fetch(`${API}/api/chat/messages/${channelId}?limit=100`);
-      if (!res.ok) return;
+      const res = await fetch(`${API}/api/chat/messages/${channelId}?limit=100`);
+      if (!res.ok) { console.warn("[Chat] loadMessages failed:", res.status); return; }
       const data: any[] = await res.json();
+      console.log(`[Chat] Loaded ${data.length} messages for #${channelId}`);
       const normalized: ChatMessage[] = data.map(m => ({
         ...m,
         id:        m.id || String(m._id),
-        reactions: m.reactions && typeof m.reactions === "object" && !Array.isArray(m.reactions)
-          ? m.reactions
-          : {},
+        reactions: m.reactions && typeof m.reactions === "object" && !Array.isArray(m.reactions) ? m.reactions : {},
       }));
       setMessages(prev => ({ ...prev, [channelId]: normalized }));
-    } catch {}
+    } catch (e) { console.error("[Chat] loadMessages error:", e); }
   }, []);
 
-  // ── Load all channels on mount ───────────────────────────────────────────
   useEffect(() => {
     CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [loadMessages]);
 
-  // ── Socket.io — connect once, rejoin on channel change ──────────────────
+  // ── Socket.io ─────────────────────────────────────────────────────────────
   useEffect(() => {
+    console.log("[Chat] Connecting socket to", API);
     const socket = io(API, {
-      transports: ["websocket", "polling"],
+      transports:           ["websocket", "polling"],
+      withCredentials:      true,
       reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
+      reconnectionDelay:    2000,
     });
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      // Join all channels so we receive messages from all of them
-      CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
-      // Announce presence
-      if (currentUser) socket.emit("user_join", currentUser);
+      console.log("[Chat] Socket connected:", socket.id);
+      CHANNELS.forEach(ch => {
+        socket.emit("join_channel", ch.id);
+        console.log("[Chat] Joined channel:", ch.id);
+      });
+      if (currentUser) {
+        socket.emit("user_join", currentUser);
+        console.log("[Chat] user_join emitted for:", currentUser.email);
+      }
     });
 
-    // Real-time: new message from another user
+    socket.on("connect_error", (err: Error) => {
+      console.error("[Chat] Socket connect_error:", err.message);
+    });
+
+    socket.on("disconnect", (reason: string) => {
+      console.warn("[Chat] Socket disconnected:", reason);
+    });
+
     socket.on("new_message", (msg: any) => {
+      console.log("[Chat] new_message received:", msg.channelId, msg.text?.slice(0, 30));
       const normalized: ChatMessage = {
         ...msg,
         id:        msg.id || String(msg._id),
-        reactions: msg.reactions && typeof msg.reactions === "object" && !Array.isArray(msg.reactions)
-          ? msg.reactions
-          : {},
+        reactions: msg.reactions && typeof msg.reactions === "object" && !Array.isArray(msg.reactions) ? msg.reactions : {},
       };
 
-      // ── Desktop notification — only for messages from others ─────────────
-      const isFromMe = currentUser && (
-        normalized.author?.id    === currentUser.id ||
-        normalized.author?.email === currentUser.email
-      );
-      if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
-        const senderName = normalized.author?.name || "Someone";
-        const channel    = normalized.channelId;
-        const body       = normalized.type === "text"
-          ? (normalized.text || "").slice(0, 100)
-          : normalized.type === "meeting"
-          ? "📹 Shared a meeting link"
-          : normalized.type === "sticker"
-          ? normalized.text || "Sent a sticker"
-          : normalized.type === "gif"
-          ? "Sent a GIF"
-          : "New message";
+      // Desktop notification for messages from others
+      const myEmail  = currentUser?.email?.toLowerCase();
+      const isFromMe = myEmail
+        ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === currentUser?.id)
+        : false;
 
+      if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
         try {
-          const n = new Notification(`${senderName} · #${channel}`, {
-            body,
-            icon:    "/favicon.ico",
-            tag:     `chat-${normalized.id}`,   // prevents duplicate notifs
-            silent:  false,
+          const n = new Notification(`${normalized.author?.name || "Someone"} · #${normalized.channelId}`, {
+            body:   normalized.type === "text" ? (normalized.text || "").slice(0, 100) : "New message",
+            icon:   "/favicon.ico",
+            tag:    `chat-${normalized.id}`,
           });
-          // Clicking the notification focuses the tab
           n.onclick = () => { window.focus(); n.close(); };
         } catch {}
       }
 
       setMessages(prev => {
-        const ch = normalized.channelId;
+        const ch       = normalized.channelId;
         const existing = prev[ch] || [];
         if (existing.some(m => m.id === normalized.id)) return prev;
         return { ...prev, [ch]: [...existing, normalized] };
       });
 
-      // Increment unread if not active channel
       setChannels(prev => prev.map(c =>
-        c.id === normalized.channelId && normalized.channelId !== activeChannel
+        c.id === normalized.channelId && normalized.channelId !== activeChRef.current
           ? { ...c, unread: (c.unread || 0) + 1 }
           : c
       ));
     });
 
-    // Reaction update from another user
     socket.on("reaction_update", ({ messageId, emoji, userId }: any) => {
       setMessages(prev => {
         const updated = { ...prev };
@@ -163,7 +162,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       });
     });
 
-    // Typing indicator
     socket.on("user_typing", ({ name, isTyping }: { name: string; isTyping: boolean }) => {
       if (isTyping) {
         setTypingUser(name);
@@ -174,23 +172,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       }
     });
 
-    // Online presence
     socket.on("user_online",  (u: ChatUser) => setOnlineUsers(prev => { const f = prev.filter(x => x.email !== u.email); return [...f, { ...u, isOnline: true }]; }));
     socket.on("user_offline", ({ email }: { email: string }) => setOnlineUsers(prev => prev.map(u => u.email === email ? { ...u, isOnline: false } : u)));
 
-    return () => { socket.disconnect(); };
-  }, [currentUser?.id]); // only reconnect if user identity changes
+    return () => {
+      console.log("[Chat] Disconnecting socket");
+      socket.disconnect();
+    };
+  }, [currentUser?.id]);
 
-  // ── Rejoin channel on switch ─────────────────────────────────────────────
   const setActiveChannel = useCallback((id: string) => {
     setActive(id);
+    activeChRef.current = id;
     setChannels(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     socketRef.current?.emit("join_channel", id);
-    // Load fresh messages when switching
     loadMessages(id);
   }, [loadMessages]);
 
-  // ── Send message: optimistic + REST POST + socket broadcast ─────────────
+  // ── Send message ──────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (msg: Omit<ChatMessage, "id" | "createdAt">) => {
     const full: ChatMessage = {
       ...msg,
@@ -204,8 +203,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       [msg.channelId]: [...(prev[msg.channelId] || []), full],
     }));
 
-    // 2. Persist to backend via REST
+    // 2. Socket broadcast — backend forwards to all other clients in the channel
+    const payload = { ...full, authorId: full.author.id, authorName: full.author.name };
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("send_message", payload);
+      console.log("[Chat] socket emit send_message:", full.id, "connected:", socketRef.current.connected);
+    } else {
+      console.warn("[Chat] Socket NOT connected, message not broadcast");
+    }
+
+    // 3. Persist to MongoDB via REST
     try {
+      console.log("[Chat] POST /api/chat/messages →", msg.channelId, full.text?.slice(0, 40));
       const res = await fetch(`${API}/api/chat/messages`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,8 +222,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       });
       if (res.ok) {
         const saved = await res.json();
+        console.log("[Chat] Saved to MongoDB:", saved.id || saved._id);
         const savedId = saved.id || String(saved._id);
-        // Replace optimistic message with saved version (correct _id from DB)
         if (savedId !== full.id) {
           setMessages(prev => ({
             ...prev,
@@ -223,17 +232,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
             ),
           }));
         }
+      } else {
+        const errText = await res.text();
+        console.error("[Chat] REST save failed:", res.status, errText);
       }
-    } catch {}
-
-    // 3. Broadcast to other users via socket
-    // Backend checks msg.authorId — must be a flat field, not nested in author{}
-    socketRef.current?.emit("send_message", { ...full, authorId: full.author.id });
+    } catch (e) {
+      console.error("[Chat] REST network error:", e);
+    }
   }, []);
 
-  // ── Toggle reaction: REST + socket ──────────────────────────────────────
   const toggleReaction = useCallback(async (msgId: string, emoji: string, userId: string) => {
-    // Optimistic local update
     setMessages(prev => {
       const updated = { ...prev };
       for (const ch of Object.keys(updated)) {
@@ -251,18 +259,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
       }
       return prev;
     });
-
-    // Persist + broadcast
     try {
       await fetch(`${API}/api/chat/messages/${msgId}/react`, {
-        method:  "PUT",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ emoji, userId, channelId: activeChannel }),
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji, userId, channelId: activeChRef.current }),
       });
     } catch {}
-
-    socketRef.current?.emit("react", { messageId: msgId, emoji, userId, channelId: activeChannel });
-  }, [activeChannel]);
+    socketRef.current?.emit("react", { messageId: msgId, emoji, userId, channelId: activeChRef.current });
+  }, []);
 
   const addChannel = useCallback((ch: Channel) => {
     setChannels(prev => [...prev, ch]);
@@ -274,10 +278,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser?: C
   }, []);
 
   return (
-    <ChatContext.Provider value={{
-      messages, channels, activeChannel, onlineUsers, typingUser,
-      setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread,
-    }}>
+    <ChatContext.Provider value={{ messages, channels, activeChannel, onlineUsers, typingUser, setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread }}>
       {children}
     </ChatContext.Provider>
   );
