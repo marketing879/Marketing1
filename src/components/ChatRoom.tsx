@@ -241,8 +241,8 @@ const ChatRoomInner: React.FC = () => {
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    .sc-root { width: 100%; height: 100%; background: #0a0b0f; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .sc-card { width: 100%; max-width: 860px; height: 100%; max-height: 90vh; display: flex; flex-direction: column; background: #0d0f18; border: 1px solid #1a1d2e; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }
+    .sc-root { width: 100%; height: 100%; display: flex; align-items: stretch; justify-content: center; background: #0a0b0f; }
+    .sc-card { width: 100%; max-width: 860px; height: 100%; display: flex; flex-direction: column; background: #0d0f18; border-left: 1px solid #1a1d2e; border-right: 1px solid #1a1d2e; overflow: hidden; position: relative; }
     .msg-row:hover .msg-actions { opacity: 1 !important; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -293,43 +293,43 @@ const ChatRoomInner: React.FC = () => {
           <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
 
             {/* Brand + actions */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 8px", borderBottom: "1px solid #1a1d2e" }}>
-              <img src={roswaltLogo} alt="Roswalt" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 14, color: "#c9a96e", letterSpacing: "0.08em" }}>SmartCue ChatRoom</div>
-                <div style={{ fontSize: 9, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #1a1d2e" }}>
+              <img src={roswaltLogo} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 13, color: "#c9a96e", letterSpacing: "0.08em", whiteSpace: "nowrap" as const }}>SmartCue ChatRoom</div>
+                <div style={{ fontSize: 8, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                 {/* DM button */}
                 <div style={{ position: "relative" }}>
-                  <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
-                    👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
+                  <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative", fontSize: 12, padding: "4px 8px" }}>
+                    DM
                     {(() => {
                       if (!currentUser.id || currentUser.id === "me" || realUsers.length === 0) return null;
-                      const total = realUsers.reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0);
+                      const total = realUsers.filter(u => u.id !== currentUser.id && u.email !== currentUser.email).reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0);
                       return total > 0 ? (
-                        <span style={{ position: "absolute", top: -4, right: -4, background: "#ef4444", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: "50%", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{total}</span>
+                        <span style={{ position: "absolute", top: -4, right: -4, background: "#ef4444", color: "#fff", fontSize: 8, fontWeight: 800, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{total}</span>
                       ) : null;
                     })()}
                   </button>
                 </div>
 
-                <button className="hdr-btn" onClick={() => startCall()} title="Video Call">📹</button>
-                {isAdmin && <button className="hdr-btn" onClick={() => setShowMeeting(true)} title="Meeting Link">🔗</button>}
-                <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} style={{ color: showMusic ? "#a78bfa" : "#5a5f7a" }}>🎵</button>
+                <button className="hdr-btn" onClick={() => startCall()} title="Video Call" style={{ padding: "4px 7px" }}>📹</button>
+                {isAdmin && <button className="hdr-btn" onClick={() => setShowMeeting(true)} title="Meeting Link" style={{ padding: "4px 7px" }}>🔗</button>}
+                <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} style={{ color: showMusic ? "#a78bfa" : "#5a5f7a", padding: "4px 7px" }}>🎵</button>
 
                 {/* Profile pill */}
-                <div onClick={() => setShowProfile(true)} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", padding: "4px 8px", borderRadius: 9, border: "1px solid #1f2338", transition: "all 0.15s" }}
+                <div onClick={() => setShowProfile(true)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 7px", borderRadius: 9, border: "1px solid #1f2338", transition: "all 0.15s", flexShrink: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#1e2230")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
-                  <div style={{ position: "relative" }}>
-                    <img src={profileUser.avatar} alt="me" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover", border: "2px solid #7c6af7", display: "block" }} />
-                    <div style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <img src={profileUser.avatar} alt="me" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "2px solid #7c6af7", display: "block" }} />
+                    <div style={{ position: "absolute", bottom: -1, right: -1, width: 7, height: 7, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#e0e0f0", whiteSpace: "nowrap" as const }}>{profileUser.name.split(" ")[0]}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#e0e0f0", whiteSpace: "nowrap" as const }}>{profileUser.name.split(" ")[0]}</div>
                     <span style={roleStyle(currentUser.role)}>{currentUser.role}</span>
                   </div>
                 </div>
@@ -370,7 +370,7 @@ const ChatRoomInner: React.FC = () => {
                 </div>
                 {/* User list */}
                 <div style={{ flex: 1, overflowY: "auto" as const, padding: "8px" }}>
-                  {realUsers.map((u: ChatUser) => {
+                  {realUsers.filter(u => u.id !== currentUser.id && u.email !== currentUser.email).map((u: ChatUser) => {
                     const dmCh    = currentUser.id && currentUser.id !== "me" ? getDMChannelId(currentUser.id, u.id) : "";
                     const unread  = dmCh ? (unreadDMs[dmCh] || 0) : 0;
                     const dmMsgs  = dmCh ? (messages[dmCh] || []) : [];
