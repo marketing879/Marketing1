@@ -204,10 +204,10 @@ const ChatRoomInner: React.FC = () => {
   // ── Render a message ──────────────────────────────────────────────────────
   const renderMsg = (msg: ChatMessage, prevMsg: ChatMessage | null) => {
     const showDate  = !prevMsg || !sameDay(prevMsg.createdAt, msg.createdAt);
-    const isMine    = msg.author.id === currentUser.id || msg.author.email === currentUser.email;
+    const isMine    = msg.author?.id === currentUser.id || msg.author?.email === currentUser.email;
     const isOptimistic = msg.id?.startsWith("opt_");
     const reactions = Object.entries(msg.reactions || {}).filter(([, u]) => (u as string[]).length > 0);
-    const prevSame  = prevMsg && prevMsg.author.id === msg.author.id && !showDate && (new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()) < 5 * 60 * 1000;
+    const prevSame  = prevMsg && prevMsg.author?.id === msg.author?.id && !showDate && (new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()) < 5 * 60 * 1000;
 
     return (
       <React.Fragment key={msg.id}>
@@ -218,15 +218,15 @@ const ChatRoomInner: React.FC = () => {
         )}
         <div className={`msg-row${isMine ? " mine" : ""}${prevSame ? " grouped" : ""}`} style={{ opacity: isOptimistic ? 0.7 : 1 }}>
           {!prevSame ? (
-            <Avatar src={msg.author.avatar || undefined} name={msg.author.name} size={38} />
+            <Avatar src={msg.author?.avatar || undefined} name={msg.author?.name} size={38} />
           ) : (
             <div style={{ width: 38, flexShrink: 0 }} />
           )}
           <div className="msg-body">
             {!prevSame && (
               <div className="msg-meta">
-                <span className="msg-name" style={{ color: isMine ? "#c9a96e" : "#e2e8f0" }}>{msg.author.name}</span>
-                <span style={roleBadge(msg.author.role)}>{msg.author.role}</span>
+                <span className="msg-name" style={{ color: isMine ? "#c9a96e" : "#e2e8f0" }}>{msg.author?.name}</span>
+                <span style={roleBadge(msg.author?.role)}>{msg.author?.role}</span>
                 <span className="msg-time">{fmt(msg.createdAt)}{isOptimistic && " · sending…"}</span>
               </div>
             )}
@@ -785,6 +785,8 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
+
 
 
 
