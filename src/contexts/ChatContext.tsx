@@ -52,8 +52,19 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
   const [typingUser,    setTypingUser]    = useState<string | null>(null);
   const [unreadDMs,     setUnreadDMs]     = useState<Record<string, number>>({});
 
-  const socketRef   = useRef<SocketInstance | null>(null);
-  const typingTimer = useRef<ReturnType<typeof setTimeout>>();
+  const socketRef      = useRef<SocketInstance | null>(null);
+  const typingTimer    = useRef<ReturnType<typeof setTimeout>>();
+  const socketInitRef  = useRef(false);
+
+  // Keep latest values accessible inside socket callbacks without re-running the effect
+  const currentUserRef = useRef(currentUser);
+  const teamMembersRef = useRef(teamMembers);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { teamMembersRef.current = teamMembers; }, [teamMembers]);
+
+  // Stable primitives — only change when the actual logged-in user changes
+  const userId    = currentUser.id    || currentUser.email || "";
+  const userEmail = currentUser.email || "";
 
   // ── Load messages for a channel from MongoDB ─────────────────────────────
   const loadMessages = useCallback(async (channelId: string) => {
@@ -72,36 +83,32 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
 
   // ── Load ALL channel histories immediately on mount ───────────────────────
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!userId) return;
     DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-  }, [currentUser.id, loadMessages]);
+  }, [userId, loadMessages]);
 
   // ── Load DM histories when teamMembers becomes available ─────────────────
   useEffect(() => {
-    if (!currentUser?.id || !teamMembers.length) return;
+    if (!userId || !teamMembers.length) return;
     teamMembers
       .filter(m => m?.id)
-      .forEach(member => {
-        const dmCh = getDMChannelId(currentUser.id, member.id);
-        loadMessages(dmCh);
-      });
-  }, [currentUser.id, teamMembers, loadMessages]);
+      .forEach(member => loadMessages(getDMChannelId(userId, member.id)));
+  }, [userId, teamMembers, loadMessages]);
 
-  // ── Socket setup ──────────────────────────────────────────────────────────
+  // ── Socket — created ONCE per logged-in user, never torn down on re-render ─
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!userId) return;
+    if (socketInitRef.current && socketRef.current) return;
+    socketInitRef.current = true;
 
     const socket = io(API, {
-      // polling first — Railway's proxy requires the HTTP handshake before
-      // upgrading to WebSocket. Starting with "websocket" directly causes the
-      // "WebSocket closed before connection established" error on Railway.
       transports:           ["polling", "websocket"],
       upgrade:              true,
       withCredentials:      true,
       autoConnect:          true,
       reconnection:         true,
-      reconnectionAttempts: 10,
-      reconnectionDelay:    1500,
+      reconnectionAttempts: 15,
+      reconnectionDelay:    2000,
     });
 
     socketRef.current = socket;
@@ -109,27 +116,28 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
     socket.on("connect", () => {
       console.log("[Chat] Socket connected:", socket.id);
 
-      // Join all public channels
+      const cu  = currentUserRef.current;
+      const tms = teamMembersRef.current;
+
       DEFAULT_CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
+      socket.emit("join_channel", `dm_personal_${cu.id}`);
+      socket.emit("join_channel", `dm_personal_${cu.email}`);
+      tms.filter(m => m?.id).forEach(member =>
+        socket.emit("join_channel", getDMChannelId(cu.id, member.id))
+      );
 
-      // Join personal DM rooms
-      socket.emit("join_channel", `dm_personal_${currentUser.id}`);
-      socket.emit("join_channel", `dm_personal_${currentUser.email}`);
-
-      // Join all DM rooms with team members
-      teamMembers.filter(m => m?.id).forEach(member => {
-        socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
-      });
-
-      // Re-fetch all histories on reconnect so nothing is missed
+      // Re-fetch histories on reconnect
       DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-      teamMembers.filter(m => m?.id).forEach(member => {
-        loadMessages(getDMChannelId(currentUser.id, member.id));
-      });
+      tms.filter(m => m?.id).forEach(member =>
+        loadMessages(getDMChannelId(cu.id, member.id))
+      );
     });
 
     socket.on("disconnect", (reason: string) => {
       console.log("[Chat] Socket disconnected:", reason);
+      if (reason === "io server disconnect") {
+        socketInitRef.current = false;
+      }
     });
 
     socket.on("connect_error", (err: Error) => {
@@ -146,9 +154,9 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
         return { ...prev, [data.channelId]: [...withoutOptimistic, data] };
       });
 
-      const isFromMe = data.author?.id === currentUser.id || data.author?.email === currentUser.email;
+      const cu = currentUserRef.current;
+      const isFromMe = data.author?.id === cu.id || data.author?.email === cu.email;
 
-      // Desktop notification
       if (!isFromMe && Notification.permission === "granted") {
         const isDM = data.channelId.startsWith("dm_");
         new Notification(`${data.author?.name || "Someone"} ${isDM ? "(DM)" : `· #${data.channelId}`}`, {
@@ -158,12 +166,10 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
         });
       }
 
-      // Track DM unreads
       if (data.channelId.startsWith("dm_") && !isFromMe) {
         setUnreadDMs(prev => ({ ...prev, [data.channelId]: (prev[data.channelId] || 0) + 1 }));
       }
 
-      // Update channel unread badges
       if (!data.channelId.startsWith("dm_") && !isFromMe) {
         setChannels(prev => prev.map(ch =>
           ch.id === data.channelId ? { ...ch, unread: (ch.unread || 0) + 1 } : ch
@@ -189,21 +195,22 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
 
     return () => {
       socket.disconnect();
-      socketRef.current = null;
+      socketRef.current     = null;
+      socketInitRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser.id, currentUser.email]);
+  }, [userId]); // ← only userId as dep — object references don't cause reconnects
 
   // Re-join DM rooms when teamMembers loads after socket is already connected
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket?.connected || !teamMembers.length) return;
     teamMembers.filter(m => m?.id).forEach(member => {
-      socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
+      socket.emit("join_channel", getDMChannelId(userId, member.id));
     });
-  }, [teamMembers, currentUser.id]);
+  }, [teamMembers, userId]);
 
-  // ── Set active channel — always reload from DB ───────────────────────────
+  // ── Set active channel ────────────────────────────────────────────────────
   const setActiveChannel = useCallback((id: string) => {
     setActiveChannelState(id);
     loadMessages(id);
@@ -221,13 +228,11 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       createdAt: new Date().toISOString(),
     };
 
-    // 1. Optimistic local update
     setMessages(prev => {
       const existing = prev[partial.channelId] || [];
       return { ...prev, [partial.channelId]: [...existing, optimistic] };
     });
 
-    // 2. Save to MongoDB
     let saved: ChatMessage | null = null;
     try {
       const res = await fetch(`${API}/api/chat/messages`, {
@@ -275,7 +280,6 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       console.error("[Chat] MongoDB save error:", e);
     }
 
-    // 3. Broadcast via socket
     const socket = socketRef.current;
     if (socket?.connected) {
       socket.emit("send_message", {
@@ -283,7 +287,6 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
         channelId: partial.channelId,
         authorId:  partial.author.id,
       });
-      console.log("[Chat] Socket emit send_message to", partial.channelId);
     } else {
       console.warn("[Chat] Socket not connected — message saved to DB but not broadcast live");
     }
