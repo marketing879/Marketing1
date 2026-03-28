@@ -12,24 +12,24 @@ export const getDMChannelId = (idA: string, idB: string) =>
 export const SEED_USERS: ChatUser[] = [];
 
 const DEFAULT_CHANNELS: Channel[] = [
-  { id: "general",       name: "general",       type: "public", description: "General discussion", unread: 0 },
+  { id: "general",       name: "general",       type: "public", description: "General discussion",    unread: 0 },
   { id: "announcements", name: "announcements", type: "public", description: "Company announcements", unread: 0 },
-  { id: "sales",         name: "sales",         type: "public", description: "Sales team", unread: 0 },
-  { id: "marketing",     name: "marketing",     type: "public", description: "Marketing team", unread: 0 },
-  { id: "support",       name: "support",       type: "public", description: "Customer support", unread: 0 },
-  { id: "random",        name: "random",        type: "public", description: "Off-topic fun", unread: 0 },
+  { id: "sales",         name: "sales",         type: "public", description: "Sales team",            unread: 0 },
+  { id: "marketing",     name: "marketing",     type: "public", description: "Marketing team",        unread: 0 },
+  { id: "support",       name: "support",       type: "public", description: "Customer support",      unread: 0 },
+  { id: "random",        name: "random",        type: "public", description: "Off-topic fun",         unread: 0 },
 ];
 
 interface ChatContextValue {
-  messages:        Record<string, ChatMessage[]>;
-  channels:        Channel[];
-  activeChannel:   string;
-  typingUser:      string | null;
-  unreadDMs:       Record<string, number>;
+  messages:         Record<string, ChatMessage[]>;
+  channels:         Channel[];
+  activeChannel:    string;
+  typingUser:       string | null;
+  unreadDMs:        Record<string, number>;
   setActiveChannel: (id: string) => void;
-  sendMessage:     (msg: Omit<ChatMessage, "id" | "createdAt">) => Promise<void>;
-  toggleReaction:  (msgId: string, emoji: string, userId: string) => void;
-  clearDMUnread:   (channelId: string) => void;
+  sendMessage:      (msg: Omit<ChatMessage, "id" | "createdAt">) => Promise<void>;
+  toggleReaction:   (msgId: string, emoji: string, userId: string) => void;
+  clearDMUnread:    (channelId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -40,9 +40,9 @@ export const useChatContext = () => {
 };
 
 interface ProviderProps {
-  children:     React.ReactNode;
-  currentUser:  ChatUser;
-  teamMembers:  ChatUser[];
+  children:    React.ReactNode;
+  currentUser: ChatUser;
+  teamMembers: ChatUser[];
 }
 
 export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, teamMembers }) => {
@@ -55,7 +55,7 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
   const socketRef   = useRef<SocketInstance | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  // ── Load messages for a channel from MongoDB ──────────────────────────────
+  // ── Load messages for a channel from MongoDB ─────────────────────────────
   const loadMessages = useCallback(async (channelId: string) => {
     try {
       const res = await fetch(`${API}/api/chat/messages/${channelId}?limit=100`);
@@ -70,20 +70,21 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
     }
   }, []);
 
-  // ── Socket setup ──────────────────────────────────────────────────────────
-  // ── Load ALL channel histories immediately on mount — independent of socket ──
+  // ── Load ALL channel histories immediately on mount ───────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
     DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [currentUser.id, loadMessages]);
 
-  // ── Load DM histories when teamMembers becomes available ──────────────────
+  // ── Load DM histories when teamMembers becomes available ─────────────────
   useEffect(() => {
     if (!currentUser?.id || !teamMembers.length) return;
-    teamMembers.forEach(member => {
-      const dmCh = getDMChannelId(currentUser.id, member.id);
-      loadMessages(dmCh);
-    });
+    teamMembers
+      .filter(m => m?.id)
+      .forEach(member => {
+        const dmCh = getDMChannelId(currentUser.id, member.id);
+        loadMessages(dmCh);
+      });
   }, [currentUser.id, teamMembers, loadMessages]);
 
   // ── Socket setup ──────────────────────────────────────────────────────────
@@ -91,11 +92,16 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
     if (!currentUser?.id) return;
 
     const socket = io(API, {
-      transports:           ["websocket", "polling"],
-      reconnectionAttempts: 10,
-      reconnectionDelay:    1500,
+      // polling first — Railway's proxy requires the HTTP handshake before
+      // upgrading to WebSocket. Starting with "websocket" directly causes the
+      // "WebSocket closed before connection established" error on Railway.
+      transports:           ["polling", "websocket"],
+      upgrade:              true,
       withCredentials:      true,
       autoConnect:          true,
+      reconnection:         true,
+      reconnectionAttempts: 10,
+      reconnectionDelay:    1500,
     });
 
     socketRef.current = socket;
@@ -111,14 +117,13 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       socket.emit("join_channel", `dm_personal_${currentUser.email}`);
 
       // Join all DM rooms with team members
-      teamMembers.forEach(member => {
-        const dmCh = getDMChannelId(currentUser.id, member.id);
-        socket.emit("join_channel", dmCh);
+      teamMembers.filter(m => m?.id).forEach(member => {
+        socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
       });
 
       // Re-fetch all histories on reconnect so nothing is missed
       DEFAULT_CHANNELS.forEach(ch => loadMessages(ch.id));
-      teamMembers.forEach(member => {
+      teamMembers.filter(m => m?.id).forEach(member => {
         loadMessages(getDMChannelId(currentUser.id, member.id));
       });
     });
@@ -136,7 +141,6 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
 
       setMessages(prev => {
         const existing = prev[data.channelId] || [];
-        // Dedupe by id — also replace any optimistic placeholder
         const withoutOptimistic = existing.filter(m => !m.id.startsWith("opt_") || m.id === data.id);
         if (withoutOptimistic.some(m => m.id === data.id)) return prev;
         return { ...prev, [data.channelId]: [...withoutOptimistic, data] };
@@ -194,16 +198,15 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket?.connected || !teamMembers.length) return;
-    teamMembers.forEach(member => {
-      const dmCh = getDMChannelId(currentUser.id, member.id);
-      socket.emit("join_channel", dmCh);
+    teamMembers.filter(m => m?.id).forEach(member => {
+      socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
     });
   }, [teamMembers, currentUser.id]);
 
+  // ── Set active channel — always reload from DB ───────────────────────────
   const setActiveChannel = useCallback((id: string) => {
     setActiveChannelState(id);
     loadMessages(id);
-    // Clear channel unread
     if (!id.startsWith("dm_")) {
       setChannels(prev => prev.map(ch => ch.id === id ? { ...ch, unread: 0 } : ch));
     }
@@ -218,7 +221,7 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       createdAt: new Date().toISOString(),
     };
 
-    // 1. Add optimistically to local state
+    // 1. Optimistic local update
     setMessages(prev => {
       const existing = prev[partial.channelId] || [];
       return { ...prev, [partial.channelId]: [...existing, optimistic] };
@@ -231,31 +234,30 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channelId:  partial.channelId,
-          authorId:   partial.author.id,
-          authorName: partial.author.name,
-          authorRole: partial.author.role || "staff",
-          authorEmail: partial.author.email,
+          channelId:    partial.channelId,
+          authorId:     partial.author.id,
+          authorName:   partial.author.name,
+          authorRole:   partial.author.role || "staff",
+          authorEmail:  partial.author.email,
           authorAvatar: partial.author.avatar,
-          author:     {
+          author: {
             id:     partial.author.id,
             name:   partial.author.name,
             email:  partial.author.email,
             role:   partial.author.role || "staff",
             avatar: partial.author.avatar || "",
           },
-          type:       partial.type || "text",
-          text:       partial.text || "",
-          gif:        partial.gif,
-          meeting:    partial.meeting,
-          reactions:  partial.reactions || {},
+          type:      partial.type || "text",
+          text:      partial.text || "",
+          gif:       partial.gif,
+          meeting:   partial.meeting,
+          reactions: partial.reactions || {},
         }),
       });
 
       if (res.ok) {
         saved = await res.json();
         console.log("[Chat] Saved to MongoDB:", saved?.id);
-        // Replace optimistic with real saved message
         if (saved) {
           setMessages(prev => {
             const msgs = prev[partial.channelId] || [];
@@ -273,34 +275,30 @@ export const ChatProvider: React.FC<ProviderProps> = ({ children, currentUser, t
       console.error("[Chat] MongoDB save error:", e);
     }
 
-    // 3. Broadcast via socket (use saved ID if available, else optimistic)
+    // 3. Broadcast via socket
     const socket = socketRef.current;
     if (socket?.connected) {
-      const payload = {
+      socket.emit("send_message", {
         ...(saved || optimistic),
-        channelId:  partial.channelId,
-        authorId:   partial.author.id,
-      };
-      socket.emit("send_message", payload);
+        channelId: partial.channelId,
+        authorId:  partial.author.id,
+      });
       console.log("[Chat] Socket emit send_message to", partial.channelId);
     } else {
       console.warn("[Chat] Socket not connected — message saved to DB but not broadcast live");
     }
   }, []);
 
+  // ── Toggle reaction ───────────────────────────────────────────────────────
   const toggleReaction = useCallback((msgId: string, emoji: string, userId: string) => {
     setMessages(prev => {
-      // Find which channel has this message
       for (const [channelId, msgs] of Object.entries(prev)) {
         const msg = msgs.find(m => m.id === msgId);
         if (!msg) continue;
         const users: string[] = (msg.reactions[emoji] as string[]) || [];
-        const updated = users.includes(userId)
-          ? users.filter(u => u !== userId)
-          : [...users, userId];
+        const updated = users.includes(userId) ? users.filter(u => u !== userId) : [...users, userId];
         const newReactions = { ...msg.reactions, [emoji]: updated };
 
-        // Persist
         fetch(`${API}/api/chat/messages/${msgId}/react`, {
           method:  "PUT",
           headers: { "Content-Type": "application/json" },
