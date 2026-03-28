@@ -264,13 +264,21 @@ export const ChatProvider: React.FC<{
       console.warn("[Chat] Socket NOT connected, message not broadcast");
     }
 
-    // 3. Persist to MongoDB via REST
+    // 3. Persist to MongoDB via REST — backend schema requires flat authorId/authorName/authorRole
     try {
+      const restPayload = {
+        ...full,
+        authorId:     full.author.id,
+        authorName:   full.author.name,
+        authorRole:   full.author.role,
+        authorEmail:  full.author.email,
+        authorAvatar: full.author.avatar,
+      };
       console.log("[Chat] POST /api/chat/messages →", msg.channelId, full.text?.slice(0, 40));
       const res = await fetch(`${API}/api/chat/messages`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(full),
+        body:    JSON.stringify(restPayload),
       });
       if (res.ok) {
         const saved = await res.json();
