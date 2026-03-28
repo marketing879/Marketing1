@@ -93,6 +93,8 @@ const ChatRoomInner: React.FC = () => {
   const [profileUser, setProfileUser] = useState<ChatUser>(currentUser);
   const [inputText,   setInputText]   = useState("");
   const [dmTarget,    setDmTarget]    = useState<ChatUser | null>(null);
+  // unread count per DM contact id
+  const [dmUnread,    setDmUnread]    = useState<Record<string, number>>({});
   const { toast } = useToast();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,7 +114,31 @@ const ChatRoomInner: React.FC = () => {
     if (!dmTarget) return;
     const dmChannelId = getDMChannelId(currentUser.id, dmTarget.id);
     setActiveChannel(dmChannelId);
+    // Clear unread for this contact when opening DM
+    setDmUnread(prev => ({ ...prev, [dmTarget.id]: 0 }));
   }, [dmTarget, currentUser.id, setActiveChannel]);
+
+  // Watch messages for incoming DMs and update unread badge
+  const prevMessagesRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    realUsers.forEach(u => {
+      const ch     = getDMChannelId(currentUser.id, u.id);
+      const msgs   = messages[ch] || [];
+      const prev   = prevMessagesRef.current[ch] || 0;
+      const newCount = msgs.length;
+      if (newCount > prev) {
+        const newMsgs = msgs.slice(prev);
+        const hasIncoming = newMsgs.some(m =>
+          m.author.id !== currentUser.id && m.author.email !== currentUser.email
+        );
+        // Only badge if this DM is not currently open
+        if (hasIncoming && dmTarget?.id !== u.id) {
+          setDmUnread(prev2 => ({ ...prev2, [u.id]: (prev2[u.id] || 0) + newMsgs.filter(m => m.author.id !== currentUser.id).length }));
+        }
+      }
+      prevMessagesRef.current[ch] = newCount;
+    });
+  }, [messages, realUsers, currentUser.id, currentUser.email, dmTarget?.id]);
 
   useEffect(() => {
     setProfileUser(prev => ({
@@ -308,27 +334,55 @@ const ChatRoomInner: React.FC = () => {
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {/* DM dropdown */}
                 <div style={{ position: "relative" }} ref={dmListRef}>
-                  <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages">
+                  <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative" }}>
                     👤 {dmTarget ? dmTarget.name.split(" ")[0] : "DM"}
+                    {Object.values(dmUnread).reduce((a, b) => a + b, 0) > 0 && (
+                      <span style={{
+                        position: "absolute", top: -4, right: -4,
+                        background: "#ef4444", color: "#fff",
+                        fontSize: 9, fontWeight: 800, borderRadius: "50%",
+                        width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                        border: "1.5px solid #111319",
+                      }}>
+                        {Object.values(dmUnread).reduce((a, b) => a + b, 0)}
+                      </span>
+                    )}
                   </button>
                   {showDMList && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 220, background: "#111319", border: "1px solid #1a1d2e", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", zIndex: 200, maxHeight: 320, overflowY: "auto" as const, padding: "6px" }}>
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 240, background: "#111319", border: "1px solid #1a1d2e", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", zIndex: 200, maxHeight: 360, overflowY: "auto" as const, padding: "6px" }}>
                       {dmTarget && (
                         <div className="dm-item" onClick={() => { setDmTarget(null); setShowDMList(false); }} style={{ color: "#5a5f7a", fontSize: 12 }}>← Back to channel</div>
                       )}
                       <div style={{ fontSize: 9, fontWeight: 800, color: "#3a3f5c", padding: "6px 12px 2px", textTransform: "uppercase" as const, letterSpacing: "0.1em" }}>Team ({realUsers.length})</div>
-                      {realUsers.map((u: ChatUser) => (
-                        <div key={u.id} className="dm-item" onClick={() => { setDmTarget(u); setShowDMList(false); }}>
-                          <div style={{ position: "relative", flexShrink: 0 }}>
-                            <img src={u.avatar} alt={u.name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", display: "block", border: "1.5px solid #252840" }} />
-                            {u.isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />}
+                      {realUsers.map((u: ChatUser) => {
+                        const unread    = dmUnread[u.id] || 0;
+                        const dmCh      = getDMChannelId(currentUser.id, u.id);
+                        const dmMsgs    = messages[dmCh] || [];
+                        const lastMsg   = dmMsgs[dmMsgs.length - 1];
+                        return (
+                          <div key={u.id} className="dm-item" onClick={() => { setDmTarget(u); setShowDMList(false); }}
+                            style={{ background: unread > 0 ? "rgba(124,106,247,0.06)" : "transparent", borderRadius: 8 }}
+                          >
+                            <div style={{ position: "relative", flexShrink: 0 }}>
+                              <img src={u.avatar} alt={u.name} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", display: "block", border: "1.5px solid #252840" }} />
+                              {u.isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ fontSize: 12, fontWeight: unread > 0 ? 700 : 600, color: unread > 0 ? "#f0f0f6" : "#e0e0f0", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                                {unread > 0 && (
+                                  <span style={{ background: "#7c6af7", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 10, padding: "1px 6px", flexShrink: 0, marginLeft: 4 }}>{unread}</span>
+                                )}
+                              </div>
+                              {lastMsg && (
+                                <div style={{ fontSize: 10, color: unread > 0 ? "#a78bfa" : "#3a3f5c", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {lastMsg.author.id === currentUser.id ? "You: " : ""}{lastMsg.text?.slice(0, 30) || "📎 Attachment"}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "#e0e0f0", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
-                            <div style={{ fontSize: 10, color: "#3a3f5c" }}>{u.role}</div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
