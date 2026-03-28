@@ -150,7 +150,7 @@ const ChatRoomInner: React.FC = () => {
     // Use MongoDB _id if available, fall back to email — skip silently on 404
     const userId = appUser?.id || appUser?.email;
     if (!userId) return;
-    fetch(`${API}/api/users/${encodeURIComponent(userId)}`)
+    fetch(`${API}/api/users/${encodeURIComponent(appUser?.email || userId)}`)
       .then(r => { if (r.status === 404) return null; return r.ok ? r.json() : null; })
       .then(data => { if (data && !data.chatOnboarded) setShowOnboard(true); })
       .catch(() => {});
@@ -785,5 +785,8 @@ export const ChatRoom: React.FC = () => {
 };
 
 export default ChatRoom;
+
+
+
 
 
