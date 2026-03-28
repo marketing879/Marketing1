@@ -437,10 +437,23 @@ const ChatRoomInner: React.FC = () => {
   );
 };
 
-export const ChatRoom: React.FC = () => (
-  <ChatProvider>
-    <ChatRoomInner />
-  </ChatProvider>
-);
+export const ChatRoom: React.FC = () => {
+  const { user: appUser } = useUser();
+  const avatarSeed = encodeURIComponent(appUser?.email || "me");
+  const currentUser: ChatUser = {
+    id:       appUser?.id || appUser?.email || "me",
+    name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
+    email:    appUser?.email || "me@roswalt.com",
+    role:     (appUser?.role as UserRole) || "staff",
+    avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${avatarSeed}&backgroundColor=1a1d2e&textColor=a78bfa`,
+    isOnline: true,
+    status:   (appUser as any)?.status || "Available",
+  };
+  return (
+    <ChatProvider currentUser={currentUser}>
+      <ChatRoomInner />
+    </ChatProvider>
+  );
+};
 
 export default ChatRoom;
