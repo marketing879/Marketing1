@@ -10,8 +10,6 @@ import { VideoCallPanel } from "./VideoCallPanel";
 import { ProfileModal } from "./ProfileModal";
 import { MeetingModal } from "./MeetingModal";
 
-const FONT_LINK = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');`;
-
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   staff:      { bg: "rgba(110,231,183,0.12)", color: "#6ee7b7" },
   admin:      { bg: "rgba(103,232,249,0.12)", color: "#67e8f9" },
@@ -52,28 +50,26 @@ const fmtDate = (iso: string) => {
 };
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
 const esc = (s: string) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-const linkify = (t: string) => t.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:#a78bfa">$1</a>');
+const linkify = (t: string) => t.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#a78bfa">$1</a>');
 
-// ── Inner component ───────────────────────────────────────────────────────────
+// Shared DM room — sort both IDs so A→B and B→A use the same channel
+const getDMChannelId = (idA: string, idB: string) =>
+  "dm_" + [idA, idB].sort().join("__");
+
 const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
   const { messages, channels, activeChannel, typingUser, setActiveChannel, sendMessage, toggleReaction } = useChatContext();
 
-  // Real users from teamMembers — no mock data
   const realUsers: ChatUser[] = useMemo(() => {
-    return (teamMembers || [])
-      .filter(m => m && m.email)
-      .map(m => ({
-        id:       m.id || m.email,
-        name:     m.name || m.email.split("@")[0],
-        email:    m.email,
-        role:     (m.role as UserRole) || "staff",
-        avatar:   (m as any).avatar
-                    ? (m as any).avatar
-                    : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
-        isOnline: (m as any).isOnline ?? false,
-        status:   (m as any).status || "Available",
-      }));
+    return (teamMembers || []).filter(m => m && m.email).map(m => ({
+      id:       m.id || m.email,
+      name:     m.name || m.email.split("@")[0],
+      email:    m.email,
+      role:     (m.role as UserRole) || "staff",
+      avatar:   (m as any).avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
+      isOnline: (m as any).isOnline ?? false,
+      status:   (m as any).status || "Available",
+    }));
   }, [teamMembers]);
 
   const currentUser: ChatUser = useMemo(() => ({
@@ -81,9 +77,7 @@ const ChatRoomInner: React.FC = () => {
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
     email:    appUser?.email || "me@roswalt.com",
     role:     (appUser?.role as UserRole) || "staff",
-    avatar:   (appUser as any)?.avatar
-                ? (appUser as any).avatar
-                : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || appUser?.email || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
+    avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || appUser?.email || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
     isOnline: true,
     status:   (appUser as any)?.status || "Available",
   }), [appUser]);
@@ -106,11 +100,20 @@ const ChatRoomInner: React.FC = () => {
   const dmListRef      = useRef<HTMLDivElement>(null);
 
   const isAdmin        = ["admin", "superadmin", "supremo"].includes(currentUser.role);
-  const activeMessages = useMemo(() => messages[dmTarget ? `dm_${dmTarget.id}` : activeChannel] || [], [messages, dmTarget, activeChannel]);
+  const activeMessages = useMemo(() => {
+    const ch = dmTarget ? getDMChannelId(currentUser.id, dmTarget.id) : activeChannel;
+    return messages[ch] || [];
+  }, [messages, dmTarget, activeChannel, currentUser.id]);
   const activeChName   = dmTarget ? dmTarget.name : `#${activeChannel}`;
   const activeCh       = channels.find((c: Channel) => c.id === activeChannel);
 
-  // Sync profileUser with appUser
+  // When dmTarget changes, join the shared DM channel
+  useEffect(() => {
+    if (!dmTarget) return;
+    const dmChannelId = getDMChannelId(currentUser.id, dmTarget.id);
+    setActiveChannel(dmChannelId);
+  }, [dmTarget, currentUser.id, setActiveChannel]);
+
   useEffect(() => {
     setProfileUser(prev => ({
       ...prev,
@@ -120,7 +123,6 @@ const ChatRoomInner: React.FC = () => {
     }));
   }, [appUser]);
 
-  // Load onboard flag from MongoDB
   useEffect(() => {
     if (!appUser?.id && !appUser?.email) return;
     const userId = appUser.id || appUser.email;
@@ -130,7 +132,6 @@ const ChatRoomInner: React.FC = () => {
       .catch(() => {});
   }, [appUser?.id, appUser?.email]);
 
-  // Save onboard completion to MongoDB
   const completeOnboard = useCallback(() => {
     setShowOnboard(false);
     const userId = appUser?.id || appUser?.email;
@@ -143,7 +144,6 @@ const ChatRoomInner: React.FC = () => {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
 
-  // Close DM dropdown on outside click
   useEffect(() => {
     if (!showDMList) return;
     const handle = (e: MouseEvent) => {
@@ -153,9 +153,8 @@ const ChatRoomInner: React.FC = () => {
     return () => document.removeEventListener("mousedown", handle);
   }, [showDMList]);
 
-  // Start in-app Jitsi call
   const startCall = useCallback((roomUrl?: string) => {
-    const room = roomUrl || `roswalt-smartcue-${activeChannel}-${Date.now()}`;
+    const room = roomUrl || `roswalt-smartcue-${activeChannel}`;
     const jitsiUrl = room.startsWith("http")
       ? (room.includes("meet.jit.si") ? room : `https://meet.jit.si/${encodeURIComponent(room.replace(/https?:\/\/[^/]+\//, ""))}`)
       : `https://meet.jit.si/${room}`;
@@ -166,7 +165,7 @@ const ChatRoomInner: React.FC = () => {
   const doSend = (override?: Partial<ChatMessage>) => {
     const text = inputRef.current?.innerText.trim() || inputText.trim();
     if (!text && !override?.gif && !override?.type) return;
-    const channelId = dmTarget ? `dm_${dmTarget.id}` : activeChannel;
+    const channelId = dmTarget ? getDMChannelId(currentUser.id, dmTarget.id) : activeChannel;
     sendMessage({ channelId, author: profileUser, type: "text", text, reactions: {}, ...override });
     if (inputRef.current) inputRef.current.innerText = "";
     setInputText("");
@@ -179,7 +178,7 @@ const ChatRoomInner: React.FC = () => {
     if (inputRef.current) { inputRef.current.focus(); document.execCommand("insertText", false, e); }
   };
   const sendMeeting = (title: string, link: string, _r: string[]) => {
-    const channelId = dmTarget ? `dm_${dmTarget.id}` : activeChannel;
+    const channelId = dmTarget ? getDMChannelId(currentUser.id, dmTarget.id) : activeChannel;
     sendMessage({ channelId, author: profileUser, type: "meeting", text: `📹 ${title}`, meeting: { title, link, createdBy: profileUser.name }, reactions: {} });
     showToast("Meeting link sent! 🔗", "success");
   };
@@ -245,9 +244,9 @@ const ChatRoomInner: React.FC = () => {
   };
 
   const css = `
-    ${FONT_LINK}
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    .sc-root { width: 100%; height: 100%; background: #0a0b0f; display: flex; align-items: center; justify-content: center; font-family: 'DM Sans', sans-serif; }
+    .sc-root { width: 100%; height: 100%; background: #0a0b0f; display: flex; align-items: center; justify-content: center; }
     .sc-card { width: 100%; max-width: 860px; height: 100%; display: flex; flex-direction: column; background: #0d0f18; border-left: 1px solid #1a1d2e; border-right: 1px solid #1a1d2e; }
     .msg-row:hover .msg-actions { opacity: 1 !important; }
     ::-webkit-scrollbar { width: 4px; }
@@ -295,10 +294,10 @@ const ChatRoomInner: React.FC = () => {
       <div className="sc-root">
         <div className="sc-card">
 
-          {/* ── TOP NAVBAR ── */}
+          {/* TOP NAVBAR */}
           <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
 
-            {/* Brand + actions row */}
+            {/* Brand + actions */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 8px", borderBottom: "1px solid #1a1d2e" }}>
               <img src={roswaltLogo} alt="Roswalt" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1 }}>
@@ -336,7 +335,7 @@ const ChatRoomInner: React.FC = () => {
 
                 <button className="hdr-btn" onClick={() => startCall()} title="Video Call">📹</button>
                 {isAdmin && <button className="hdr-btn" onClick={() => setShowMeeting(true)} title="Meeting Link">🔗</button>}
-                <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} title="Music" style={{ color: showMusic ? "#a78bfa" : "#5a5f7a" }}>🎵</button>
+                <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} style={{ color: showMusic ? "#a78bfa" : "#5a5f7a" }}>🎵</button>
 
                 {/* Profile pill */}
                 <div onClick={() => setShowProfile(true)} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", padding: "4px 8px", borderRadius: 9, border: "1px solid #1f2338", transition: "all 0.15s" }}
@@ -367,7 +366,7 @@ const ChatRoomInner: React.FC = () => {
               </div>
             )}
 
-            {/* DM header bar */}
+            {/* DM header */}
             {dmTarget && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
                 <button onClick={() => setDmTarget(null)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 18, padding: 0 }}>←</button>
@@ -439,15 +438,14 @@ const ChatRoomInner: React.FC = () => {
 
 export const ChatRoom: React.FC = () => {
   const { user: appUser } = useUser();
-  const avatarSeed = encodeURIComponent(appUser?.email || "me");
   const currentUser: ChatUser = {
     id:       appUser?.id || appUser?.email || "me",
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
     email:    appUser?.email || "me@roswalt.com",
     role:     (appUser?.role as UserRole) || "staff",
-    avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${avatarSeed}&backgroundColor=1a1d2e&textColor=a78bfa`,
+    avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
     isOnline: true,
-    status:   (appUser as any)?.status || "Available",
+    status:   "Available",
   };
   return (
     <ChatProvider currentUser={currentUser}>
