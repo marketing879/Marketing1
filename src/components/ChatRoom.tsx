@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "../contexts/UserContext";
-import { ChatProvider, useChatContext, SEED_USERS } from "../contexts/ChatContext";
+import { ChatProvider, useChatContext } from "../contexts/ChatContext";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 import { ChatMessage, ChatUser, UserRole } from "../types/chat";
 import { OnboardingOverlay } from "./OnboardingOverlay";
@@ -60,30 +60,36 @@ const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
   const { messages, channels, activeChannel, typingUser, setActiveChannel, sendMessage, toggleReaction } = useChatContext();
 
+  // ── Real users from UserContext — no mock/seed data ─────────────────────
   const realUsers: ChatUser[] = useMemo(() => {
-    const members = (teamMembers || []).filter(m => m && m.email);
-    if (members.length === 0) return SEED_USERS;
-    return members.map(m => ({
-      id:       m.id || m.email,
-      name:     m.name || m.email.split("@")[0],
-      email:    m.email,
-      role:     (m.role as UserRole) || "staff",
-      avatar:   (m as any).avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(m.email)}`,
-      isOnline: (m as any).isOnline ?? false,
-      status:   (m as any).status || "Available",
-    }));
+    return (teamMembers || [])
+      .filter(m => m && m.email)
+      .map(m => ({
+        id:       m.id || m.email,
+        name:     m.name || m.email.split("@")[0],
+        email:    m.email,
+        role:     (m.role as UserRole) || "staff",
+        // Use saved avatar from MongoDB; only fall back to dicebear if none stored
+        avatar:   (m as any).avatar
+                    ? (m as any).avatar
+                    : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
+        isOnline: (m as any).isOnline ?? false,
+        status:   (m as any).status || "Available",
+      }));
   }, [teamMembers]);
 
-  const avatarSeed = encodeURIComponent(appUser?.email || "me");
   const currentUser: ChatUser = useMemo(() => ({
     id:       appUser?.id || appUser?.email || "me",
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
     email:    appUser?.email || "me@roswalt.com",
     role:     (appUser?.role as UserRole) || "staff",
-    avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeed}`,
+    // Prefer saved avatar from MongoDB, fall back to initials avatar
+    avatar:   (appUser as any)?.avatar
+                ? (appUser as any).avatar
+                : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || appUser?.email || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
     isOnline: true,
     status:   (appUser as any)?.status || "Available",
-  }), [appUser, avatarSeed]);
+  }), [appUser]);
 
   const [showCall,    setShowCall]    = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
@@ -284,7 +290,7 @@ const ChatRoomInner: React.FC = () => {
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 8px", borderBottom: "1px solid #1a1d2e" }}>
               <img src={roswaltLogo} alt="Roswalt" style={{ width: 30, height: 30, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 13, color: "#c9a96e", letterSpacing: "0.04em" }}>SmartCue ChatRoom</div>
+                <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontWeight: 400, fontSize: 14, color: "#c9a96e", letterSpacing: "0.08em" }}>SmartCue ChatRoom</div>
                 <div style={{ fontSize: 9, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" }}>Roswalt Realty</div>
               </div>
 
