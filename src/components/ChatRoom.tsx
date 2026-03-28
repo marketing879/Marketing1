@@ -61,15 +61,17 @@ const ChatRoomInner: React.FC = () => {
   const { messages, channels, activeChannel, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread } = useChatContext();
 
   const realUsers: ChatUser[] = useMemo(() => {
-    return (teamMembers || []).filter(m => m && m.email).map(m => ({
-      id:       m.id || m.email,
-      name:     m.name || m.email.split("@")[0],
-      email:    m.email,
-      role:     (m.role as UserRole) || "staff",
-      avatar:   (m as any).avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
-      isOnline: (m as any).isOnline ?? false,
-      status:   (m as any).status || "Available",
-    }));
+    return (teamMembers || [])
+      .filter(m => m && m.email && m.id)
+      .map(m => ({
+        id:       m.id,
+        name:     m.name || m.email.split("@")[0],
+        email:    m.email,
+        role:     (m.role as UserRole) || "staff",
+        avatar:   (m as any).avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.name || m.email)}&backgroundColor=1a1d2e&textColor=a78bfa`,
+        isOnline: (m as any).isOnline ?? false,
+        status:   (m as any).status || "Available",
+      }));
   }, [teamMembers]);
 
   const currentUser: ChatUser = useMemo(() => ({

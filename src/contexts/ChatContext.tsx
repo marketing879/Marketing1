@@ -83,15 +83,18 @@ export const ChatProvider: React.FC<{
     CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [loadMessages]);
 
-  // Pre-load DM histories when teamMembers are available
+  // Pre-load DM histories — staggered to avoid 28 simultaneous API calls
   useEffect(() => {
     if (!currentUser?.id || teamMembers.length === 0) return;
-    teamMembers.forEach(member => {
-      if (member.id !== currentUser.id && member.email !== currentUser.email) {
-        const dmCh = getDMChannelId(currentUser.id, member.id);
-        loadMessages(dmCh);
-      }
-    });
+    let i = 0;
+    const members = teamMembers.filter(m => m?.id && m.id !== currentUser.id);
+    const interval = setInterval(() => {
+      if (i >= members.length) { clearInterval(interval); return; }
+      const dmCh = getDMChannelId(currentUser.id, members[i].id);
+      loadMessages(dmCh);
+      i++;
+    }, 150); // load one DM history every 150ms
+    return () => clearInterval(interval);
   }, [currentUser?.id, teamMembers.length, loadMessages]);
 
   // ── Socket.io ─────────────────────────────────────────────────────────────
@@ -213,17 +216,21 @@ export const ChatProvider: React.FC<{
     };
   }, [currentUser?.id]); // socket only reconnects if user identity changes
 
-  // Re-join DM rooms when teamMembers load — without recreating the socket
+  // Re-join DM rooms once teamMembers are loaded — runs only once per session
+  const dmRoomsJoinedRef = useRef(false);
   useEffect(() => {
     if (!currentUser?.id || teamMembers.length === 0) return;
+    if (dmRoomsJoinedRef.current) return; // already joined
     const socket = socketRef.current;
     if (!socket?.connected) return;
+    dmRoomsJoinedRef.current = true;
     teamMembers.forEach(member => {
-      if (member.id !== currentUser.id && member.email !== currentUser.email) {
+      if (member.id && member.id !== currentUser.id && member.email !== currentUser.email) {
         socket.emit("join_channel", getDMChannelId(currentUser.id, member.id));
       }
     });
-  }, [currentUser?.email, teamMembers.length]);
+    console.log("[Chat] Pre-joined", teamMembers.length, "DM rooms");
+  }, [currentUser?.id, teamMembers.length]);
 
   const setActiveChannel = useCallback((id: string) => {
     setActive(id);
