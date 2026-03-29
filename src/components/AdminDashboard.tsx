@@ -17,6 +17,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import { sendTaskWhatsApp } from "../services/WhatsAppService";
   import { greetUser, setElevenLabsVoice, announceVoice, speakText } from "../services/VoiceModule";
   import { uploadToCloudinary } from "../services/CloudinaryUpload";
+import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
 
   void Sparkles; void RotateCw; void Radio;
@@ -892,7 +893,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const [showAIPanel,     setShowAIPanel]     = useState(false);
     const [toastMsg,        setToastMsg]        = useState<string | null>(null);
     const [adminProfileImg, setAdminProfileImg] = useState<string | null>(null);
-    const [roswalLogo,      setRoswalLogo]      = useState<string | null>(null);
+    const [roswalLogo,      setRoswalLogo]      = useState<string | null>(roswaltLogoAsset);
     const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const profileInputRef = useRef<HTMLInputElement | null>(null);
     const logoInputRef = useRef<HTMLInputElement | null>(null);
@@ -1064,23 +1065,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     });
     const backgroundInputRef    = useRef<HTMLInputElement | null>(null);
     const backgroundVideoInputRef = useRef<HTMLInputElement | null>(null);
-
-    useEffect(() => {
-      const loadRoswalLogo = async () => {
-        try {
-          const response = await fetch("/logos/roswalt-logo-golden-8k.png");
-          if (response.ok) {
-            const blob = await response.blob();
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              if (typeof e.target?.result === "string") setRoswalLogo(e.target.result);
-            };
-            reader.readAsDataURL(blob);
-          }
-        } catch { /* no logo found */ }
-      };
-      loadRoswalLogo();
-    }, []);
 
   const greetedRef   = useRef(false);
   const flashVoiceRef = useRef(false);
