@@ -281,10 +281,7 @@ async function scoreWithAI(notes: string, files: string[], purpose?: string, lin
 
   // For videos: extract 6 frames to send as images
   let scoringImages: string[] = [];
-  if (isPreExtractedVideo) {
-    // Frames were already extracted at upload time — just clean the tags
-    scoringImages = files.filter(f => f.includes("#video-frame=")).map(f => cleanDataUrl(f));
-  } else if (isVideo) {
+  if (isVideo) {
     try { scoringImages = await extractVideoFrames(files[0], 6); }
     catch { scoringImages = []; }
   } else {
@@ -2214,34 +2211,13 @@ const StaffDashboard: React.FC = () => {
     catch { return "—"; }
   };
 
-  // ── Compress large images before storing ─────────────────────────────────
-  const compressImageFile = async (file: File): Promise<string> => {
-    const MAX_PX  = 1920;
-    const QUALITY = 0.85;
-    return new Promise(resolve => {
-      const img    = new Image();
-      const objUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(objUrl);
-        const ratio   = Math.min(MAX_PX / img.naturalWidth, MAX_PX / img.naturalHeight, 1);
-        const canvas  = document.createElement("canvas");
-        canvas.width  = Math.round(img.naturalWidth * ratio);
-        canvas.height = Math.round(img.naturalHeight * ratio);
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", QUALITY));
-      };
-      img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(""); };
-      img.src = objUrl;
-    });
-  };
-
   const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
     const MAX_WARN_MB  = 20;
     const MAX_BLOCK_MB = 300;
     let uploaded = 0;
 
-    Array.from(files).forEach(async (file) => {
+    Array.from(files).forEach((file) => {
       const isImage    = file.type.startsWith("image/");
       const isVideo    = file.type.startsWith("video/");
       const isDocument = file.type === "application/pdf" ||
@@ -2269,59 +2245,15 @@ const StaffDashboard: React.FC = () => {
         return;
       }
       if (sizeMB > MAX_WARN_MB) {
-        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — compressing for analysis.`);
+        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — large files may slow down analysis.`);
       }
 
-      // ── VIDEO: extract frames via blob URL — never read full video as base64 ──
-      if (isVideo) {
-        showSuccess(`⏳ Extracting frames from "${file.name}"…`);
-        const blobUrl = URL.createObjectURL(file);
-        try {
-          const frames = await extractVideoFrames(blobUrl, 6);
-          URL.revokeObjectURL(blobUrl);
-          if (frames.length === 0) {
-            showSuccess(`⚠ Could not extract frames from "${file.name}". Try a smaller file or different format.`);
-            return;
-          }
-          // Tag each frame so scoreWithAI knows they came from a video
-          const tagged = frames.map((frame, i) =>
-            frame + `#video-frame=${i + 1}&original=${encodeURIComponent(file.name)}&size=${file.size}`
-          );
-          setUploadedPhotos(prev => ({
-            ...prev,
-            [taskId]: [...(prev[taskId] || []), ...tagged],
-          }));
-          setFileTypeBadge({ type: "VIDEO", fmt: file.name.split(".").pop()?.toUpperCase() || "MP4" });
-          showSuccess(`✓ "${file.name}" — ${frames.length} frames extracted for SmartCue`);
-          speakText("Video frames extracted. Ready for SmartCue analysis.");
-          uploaded++;
-        } catch {
-          URL.revokeObjectURL(blobUrl);
-          showSuccess(`✕ Failed to extract frames from "${file.name}"`);
-        }
-        return;
-      }
-
-      // ── IMAGE: compress if > 4 MB to keep API payloads small ─────────────
-      if (isImage && file.size > 4 * 1024 * 1024) {
-        const compressed = await compressImageFile(file);
-        if (compressed) {
-          const tagged = compressed + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
-          setUploadedPhotos(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), tagged] }));
-          setFileTypeBadge(detectFileInfo(file));
-          showSuccess(`✓ "${file.name}" compressed & added`);
-          uploaded++;
-          return;
-        }
-      }
-
-      // ── DOCUMENT or small image: read normally ────────────────────────────
       const reader = new FileReader();
       reader.onload = (e) => {
         const url = e.target?.result as string;
+        // Embed file name as a query-param comment so we can display it later
         const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
         setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
-        setFileTypeBadge(detectFileInfo(file));
         if (isDocument) {
           setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
         }
@@ -2330,7 +2262,7 @@ const StaffDashboard: React.FC = () => {
       uploaded++;
     });
 
-    if (uploaded > 0) showSuccess(`✓ Processing files…`);
+    if (uploaded > 0) showSuccess(`✓ ${uploaded} file${uploaded > 1 ? "s" : ""} added`);
   };
 
   const removePhoto = (taskId: string, index: number) => {
@@ -2403,23 +2335,25 @@ const StaffDashboard: React.FC = () => {
   useEffect(() => {
     if (!assignedTasks.length || !contextTickets) return;
     assignedTasks.forEach(t => {
+      // A task is ONLY frozen when the doer has explicitly submitted their
+      // ticket to admin (status = "pending-admin").
+      // "open"           = auto-raised, not yet submitted → task is workable
+      // "admin-approved" = admin approved → task unfrozen
+      // "resolved"       = closed → task unfrozen
       const hasActiveTicket = contextTickets.some(
         tk => tk.taskId === t.id &&
-              (tk.status === "open" || tk.status === "pending-admin") &&
+              tk.status === "pending-admin" &&
               tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
       );
       const isAlreadyFrozen = (t as any).isFrozen === true;
       if (hasActiveTicket && !isAlreadyFrozen) {
         updateTask?.(t.id, { isFrozen: true } as any);
       }
-      // Unfreeze if all tickets for this task are resolved / approved
+      // Unfreeze as soon as there is NO pending-admin ticket.
+      // Covers: admin approved, resolved, or ticket still "open" (not yet submitted).
+      // Also auto-heals tasks incorrectly frozen by the old code.
       if (!hasActiveTicket && isAlreadyFrozen) {
-        const allResolved = contextTickets
-          .filter(tk => tk.taskId === t.id)
-          .every(tk => tk.status === "resolved" || tk.status === "admin-approved");
-        if (allResolved) {
-          updateTask?.(t.id, { isFrozen: false } as any);
-        }
+        updateTask?.(t.id, { isFrozen: false } as any);
       }
     });
   }, [assignedTasks, contextTickets]);
@@ -4365,36 +4299,54 @@ const TaskCard: React.FC<TaskCardProps> = ({
   return (
     <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : (task as any).isFrozen ? { borderColor: "rgba(176,106,243,0.35)", background: "rgba(176,106,243,0.03)" } : {}}>
       {/* ── Frozen Banner — shown when a pending-admin ticket is blocking this task ── */}
-      {(task as any).isFrozen && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(6,10,21,0.72)",
-          backdropFilter: "blur(4px)",
-          borderRadius: "inherit",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 10, padding: 20,
-          border: "1px solid rgba(176,106,243,0.3)",
-        }}>
-          <div style={{ fontSize: 28 }}>🔒</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
-            Task Frozen — Pending Admin Approval
-          </div>
-          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
-            An assistance ticket for this task has been submitted to your admin.
-            You cannot submit this task until the ticket is approved and the task is unfrozen.
-          </div>
+      {(task as any).isFrozen && (() => {
+        const assignerInfo  = getAssignerInfo((task as any).assignedBy);
+        const assignerName  = assignerInfo?.name ?? (task as any).assignedBy ?? "your admin";
+        const assignerRole  = assignerInfo?.role ?? "admin";
+        const rc = ROLE_COLOR[assignerRole] ?? ROLE_COLOR.admin;
+        return (
           <div style={{
-            padding: "6px 14px",
-            background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
-            borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
-            textTransform: "uppercase" as const, letterSpacing: "0.5px",
-            display: "flex", alignItems: "center", gap: 6,
+            position: "absolute", inset: 0, zIndex: 10,
+            background: "rgba(6,10,21,0.78)",
+            backdropFilter: "blur(4px)",
+            borderRadius: "inherit",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 10, padding: 20,
+            border: "1px solid rgba(176,106,243,0.3)",
           }}>
-            <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
-            Awaiting Admin Review
+            <div style={{ fontSize: 28 }}>🔒</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
+              Task Frozen — Pending Admin Approval
+            </div>
+            {/* Assigner chip */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "5px 12px", borderRadius: 7,
+              background: rc.bg, border: `1px solid ${rc.border}`,
+              fontSize: 11, color: rc.text, fontWeight: 600,
+            }}>
+              <Shield size={10} />
+              Assigned by <strong style={{ marginLeft: 3 }}>{assignerName}</strong>
+              <span style={{ opacity: 0.55, marginLeft: 3 }}>· {ROLE_LABEL[assignerRole] ?? assignerRole}</span>
+            </div>
+            <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
+              Your assistance ticket has been submitted to{" "}
+              <strong style={{ color: "#b06af3" }}>{assignerName}</strong> for review.
+              You cannot submit this task until the ticket is approved and the task is unfrozen.
+            </div>
+            <div style={{
+              padding: "6px 14px",
+              background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
+              borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
+              textTransform: "uppercase" as const, letterSpacing: "0.5px",
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
+              Awaiting {assignerName}&apos;s Review
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {delayed && (
         <div style={{
           position: "absolute", top: 10, right: 10,
@@ -4566,3 +4518,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
+
+
+
+
+
+
+
+
