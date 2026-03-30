@@ -2335,25 +2335,23 @@ const StaffDashboard: React.FC = () => {
   useEffect(() => {
     if (!assignedTasks.length || !contextTickets) return;
     assignedTasks.forEach(t => {
-      // A task is ONLY frozen when the doer has explicitly submitted their
-      // ticket to admin (status = "pending-admin").
-      // "open"           = auto-raised, not yet submitted → task is workable
-      // "admin-approved" = admin approved → task unfrozen
-      // "resolved"       = closed → task unfrozen
       const hasActiveTicket = contextTickets.some(
         tk => tk.taskId === t.id &&
-              tk.status === "pending-admin" &&
+              (tk.status === "open" || tk.status === "pending-admin") &&
               tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
       );
       const isAlreadyFrozen = (t as any).isFrozen === true;
       if (hasActiveTicket && !isAlreadyFrozen) {
         updateTask?.(t.id, { isFrozen: true } as any);
       }
-      // Unfreeze as soon as there is NO pending-admin ticket.
-      // Covers: admin approved, resolved, or ticket still "open" (not yet submitted).
-      // Also auto-heals tasks incorrectly frozen by the old code.
+      // Unfreeze if all tickets for this task are resolved / approved
       if (!hasActiveTicket && isAlreadyFrozen) {
-        updateTask?.(t.id, { isFrozen: false } as any);
+        const allResolved = contextTickets
+          .filter(tk => tk.taskId === t.id)
+          .every(tk => tk.status === "resolved" || tk.status === "admin-approved");
+        if (allResolved) {
+          updateTask?.(t.id, { isFrozen: false } as any);
+        }
       }
     });
   }, [assignedTasks, contextTickets]);
@@ -2821,7 +2819,7 @@ const StaffDashboard: React.FC = () => {
         .badge-purple { background: rgba(176,106,243,0.08);color: var(--cp); border-color: rgba(176,106,243,0.22); }
 
         .sd-assigner-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 500; margin-bottom: 8px; border: 1px solid; word-wrap: break-word; }
-        .sd-task-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .sd-task-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; }
         .sd-task-dates { font-size: 10px; color: var(--t3); display: flex; gap: 10px; font-variant-numeric: tabular-nums; }
         .sd-status-msg { font-size: 10px; font-weight: 700; }
 
@@ -4299,54 +4297,36 @@ const TaskCard: React.FC<TaskCardProps> = ({
   return (
     <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : (task as any).isFrozen ? { borderColor: "rgba(176,106,243,0.35)", background: "rgba(176,106,243,0.03)" } : {}}>
       {/* ── Frozen Banner — shown when a pending-admin ticket is blocking this task ── */}
-      {(task as any).isFrozen && (() => {
-        const assignerInfo  = getAssignerInfo((task as any).assignedBy);
-        const assignerName  = assignerInfo?.name ?? (task as any).assignedBy ?? "your admin";
-        const assignerRole  = assignerInfo?.role ?? "admin";
-        const rc = ROLE_COLOR[assignerRole] ?? ROLE_COLOR.admin;
-        return (
-          <div style={{
-            position: "absolute", inset: 0, zIndex: 10,
-            background: "rgba(6,10,21,0.78)",
-            backdropFilter: "blur(4px)",
-            borderRadius: "inherit",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            gap: 10, padding: 20,
-            border: "1px solid rgba(176,106,243,0.3)",
-          }}>
-            <div style={{ fontSize: 28 }}>🔒</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
-              Task Frozen — Pending Admin Approval
-            </div>
-            {/* Assigner chip */}
-            <div style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "5px 12px", borderRadius: 7,
-              background: rc.bg, border: `1px solid ${rc.border}`,
-              fontSize: 11, color: rc.text, fontWeight: 600,
-            }}>
-              <Shield size={10} />
-              Assigned by <strong style={{ marginLeft: 3 }}>{assignerName}</strong>
-              <span style={{ opacity: 0.55, marginLeft: 3 }}>· {ROLE_LABEL[assignerRole] ?? assignerRole}</span>
-            </div>
-            <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
-              Your assistance ticket has been submitted to{" "}
-              <strong style={{ color: "#b06af3" }}>{assignerName}</strong> for review.
-              You cannot submit this task until the ticket is approved and the task is unfrozen.
-            </div>
-            <div style={{
-              padding: "6px 14px",
-              background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
-              borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
-              textTransform: "uppercase" as const, letterSpacing: "0.5px",
-              display: "flex", alignItems: "center", gap: 6,
-            }}>
-              <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
-              Awaiting {assignerName}&apos;s Review
-            </div>
+      {(task as any).isFrozen && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 10,
+          background: "rgba(6,10,21,0.72)",
+          backdropFilter: "blur(4px)",
+          borderRadius: "inherit",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 10, padding: 20,
+          border: "1px solid rgba(176,106,243,0.3)",
+        }}>
+          <div style={{ fontSize: 28 }}>🔒</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
+            Task Frozen — Pending Admin Approval
           </div>
-        );
-      })()}
+          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
+            An assistance ticket for this task has been submitted to your admin.
+            You cannot submit this task until the ticket is approved and the task is unfrozen.
+          </div>
+          <div style={{
+            padding: "6px 14px",
+            background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
+            borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
+            textTransform: "uppercase" as const, letterSpacing: "0.5px",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
+            Awaiting Admin Review
+          </div>
+        </div>
+      )}
       {delayed && (
         <div style={{
           position: "absolute", top: 10, right: 10,
@@ -4368,11 +4348,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
         </div>
-        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
-          <button className="sd-btn-complete" onClick={onComplete}>
-            <Eye size={11} /> Submit
-          </button>
-        )}
       </div>
 
       {assigner && (
@@ -4504,25 +4479,29 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
-      <div className="sd-task-footer">
-        <div className="sd-task-dates">
-          <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
-          {task.createdAt && <span>Created: {new Date(task.createdAt).toLocaleDateString()}</span>}
-        </div>
-        {statusMsg && (
-          <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
+      <div className="sd-task-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+        {/* Submit button — full width at the bottom of every pending card */}
+        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
+          <button
+            className="sd-btn-complete"
+            onClick={onComplete}
+            style={{ width: "100%", justifyContent: "center", padding: "10px 16px", fontSize: 12 }}
+          >
+            <Eye size={13} /> Submit Task
+          </button>
         )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+          <div className="sd-task-dates">
+            <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+            {task.createdAt && <span>Created: {new Date(task.createdAt).toLocaleDateString()}</span>}
+          </div>
+          {statusMsg && task.approvalStatus !== "assigned" && (
+            <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 export default StaffDashboard;
-
-
-
-
-
-
-
-
