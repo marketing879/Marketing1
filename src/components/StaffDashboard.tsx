@@ -4297,36 +4297,54 @@ const TaskCard: React.FC<TaskCardProps> = ({
   return (
     <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : (task as any).isFrozen ? { borderColor: "rgba(176,106,243,0.35)", background: "rgba(176,106,243,0.03)" } : {}}>
       {/* ── Frozen Banner — shown when a pending-admin ticket is blocking this task ── */}
-      {(task as any).isFrozen && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(6,10,21,0.72)",
-          backdropFilter: "blur(4px)",
-          borderRadius: "inherit",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 10, padding: 20,
-          border: "1px solid rgba(176,106,243,0.3)",
-        }}>
-          <div style={{ fontSize: 28 }}>🔒</div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
-            Task Frozen — Pending Admin Approval
-          </div>
-          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
-            An assistance ticket for this task has been submitted to your admin.
-            You cannot submit this task until the ticket is approved and the task is unfrozen.
-          </div>
+      {(task as any).isFrozen && (() => {
+        const frozenAssigner = getAssignerInfo((task as any).assignedBy);
+        const frozenName     = frozenAssigner?.name ?? (task as any).assignedBy ?? "your admin";
+        const frozenRole     = frozenAssigner?.role ?? "admin";
+        const frozenRc       = ROLE_COLOR[frozenRole] ?? ROLE_COLOR.admin;
+        return (
           <div style={{
-            padding: "6px 14px",
-            background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
-            borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
-            textTransform: "uppercase" as const, letterSpacing: "0.5px",
-            display: "flex", alignItems: "center", gap: 6,
+            position: "absolute", inset: 0, zIndex: 10,
+            background: "rgba(6,10,21,0.78)",
+            backdropFilter: "blur(4px)",
+            borderRadius: "inherit",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 10, padding: 20,
+            border: "1px solid rgba(176,106,243,0.3)",
           }}>
-            <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
-            Awaiting Admin Review
+            <div style={{ fontSize: 28 }}>🔒</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
+              Task Frozen — Pending Admin Approval
+            </div>
+            {/* Assigner chip */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "5px 12px", borderRadius: 7,
+              background: frozenRc.bg, border: `1px solid ${frozenRc.border}`,
+              fontSize: 11, color: frozenRc.text, fontWeight: 600,
+            }}>
+              <Shield size={10} />
+              Assigned by <strong style={{ marginLeft: 3 }}>{frozenName}</strong>
+              <span style={{ opacity: 0.55, marginLeft: 3 }}>· {ROLE_LABEL[frozenRole] ?? frozenRole}</span>
+            </div>
+            <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
+              Your assistance ticket has been submitted to{" "}
+              <strong style={{ color: "#b06af3" }}>{frozenName}</strong> for review.
+              You cannot submit this task until the ticket is approved and the task is unfrozen.
+            </div>
+            <div style={{
+              padding: "6px 14px",
+              background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
+              borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
+              textTransform: "uppercase" as const, letterSpacing: "0.5px",
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
+              Awaiting {frozenName}&apos;s Review
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {delayed && (
         <div style={{
           position: "absolute", top: 10, right: 10,
