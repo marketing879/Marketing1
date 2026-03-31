@@ -180,6 +180,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     previousAssignee?: string;          // email of the doer who was cancelled
     reassignedAt?: string;              // ISO timestamp of reassignment
     handoverRequested?: boolean;        // admin has triggered handover voice call
+    voiceNote?: string;                  // base64 audio data URL recorded by admin
     // ── TAT Extension request ─────────────────────────────────────────────────
     tatExtensionRequest?: {
       requestedAt: string;
@@ -1008,6 +1009,14 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       title: "", description: "", priority: "medium", dueDate: "",
       assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "",
     });
+    // ── Voice Note recording state ─────────────────────────────────────────
+    const [voiceNoteBlob,   setVoiceNoteBlob]   = useState<Blob | null>(null);
+    const [voiceNoteUrl,    setVoiceNoteUrl]     = useState<string>("");
+    const [isRecording,     setIsRecording]      = useState(false);
+    const [recordingSeconds,setRecordingSeconds] = useState(0);
+    const mediaRecorderRef  = useRef<MediaRecorder | null>(null);
+    const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const chunksRef         = useRef<BlobPart[]>([]);
     const [showAssigningOverlay, setShowAssigningOverlay] = useState(false);
 
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -1773,6 +1782,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         projectId:      newTask.projectId,
         timeSlot:       newTask.timeSlot,
         purpose:        newTask.purpose,
+        voiceNote:      voiceNoteUrl || undefined,
         exactDeadline,
         history,
         createdAt:      now,
@@ -1813,6 +1823,11 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       }
 
       setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "" });
+      setVoiceNoteBlob(null);
+      setVoiceNoteUrl("");
+      setIsRecording(false);
+      setRecordingSeconds(0);
+      chunksRef.current = [];
     };  // ← this closing brace for handleCreateTask MUST be here
 
     // ── handleLogout ──────────────────────────────────────────────────────────
@@ -3233,6 +3248,125 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       <label className="g-label">Description *</label>
                       <textarea className="g-input" value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} placeholder="Detailed description…" style={{ minHeight: 90, resize: "vertical" as const }} />
                     </div>
+
+                    {/* ── Voice Note Recorder ───────────────────────────── */}
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className="g-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Radio size={11} color={isRecording ? "#ff3366" : "#c9a96e"} />
+                        Voice Note
+                        <span style={{ fontSize: 9, color: "#7e84a3", fontWeight: 400, textTransform: "none" as const, letterSpacing: 0 }}>(optional — attach a spoken brief for the doer)</span>
+                      </label>
+
+                      {/* Not recording, no note yet */}
+                      {!isRecording && !voiceNoteUrl && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                              chunksRef.current = [];
+                              const mr = new MediaRecorder(stream);
+                              mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+                              mr.onstop = () => {
+                                const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+                                setVoiceNoteBlob(blob);
+                                const reader = new FileReader();
+                                reader.onload = (ev) => setVoiceNoteUrl(ev.target?.result as string);
+                                reader.readAsDataURL(blob);
+                                stream.getTracks().forEach(t => t.stop());
+                                if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+                                setIsRecording(false);
+                                setRecordingSeconds(0);
+                              };
+                              mediaRecorderRef.current = mr;
+                              mr.start();
+                              setIsRecording(true);
+                              setRecordingSeconds(0);
+                              recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+                            } catch {
+                              toast("⚠ Microphone access denied. Please allow microphone in your browser.");
+                            }
+                          }}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            padding: "10px 18px", borderRadius: 9,
+                            background: "rgba(201,169,110,0.08)", border: "1px solid rgba(201,169,110,0.3)",
+                            color: "#c9a96e", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                            fontFamily: "inherit", letterSpacing: "0.4px",
+                            transition: "all 0.18s",
+                          }}
+                        >
+                          <Radio size={13} /> Start Voice Recording
+                        </button>
+                      )}
+
+                      {/* Recording in progress */}
+                      {isRecording && (
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "12px 16px", borderRadius: 9,
+                          background: "rgba(255,51,102,0.08)", border: "1px solid rgba(255,51,102,0.35)",
+                        }}>
+                          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff3366", boxShadow: "0 0 10px #ff3366", animation: "badgePulse 1s ease-in-out infinite", flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#ff3366", fontFamily: "'IBM Plex Mono',monospace" }}>
+                            REC {String(Math.floor(recordingSeconds / 60)).padStart(2,"0")}:{String(recordingSeconds % 60).padStart(2,"0")}
+                          </span>
+                          <span style={{ fontSize: 11, color: "#7e84a3", flex: 1 }}>Recording in progress…</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              mediaRecorderRef.current?.stop();
+                            }}
+                            style={{
+                              padding: "6px 14px", borderRadius: 7,
+                              background: "rgba(255,51,102,0.15)", border: "1px solid rgba(255,51,102,0.5)",
+                              color: "#ff3366", fontSize: 11, fontWeight: 800,
+                              cursor: "pointer", fontFamily: "inherit",
+                              textTransform: "uppercase" as const, letterSpacing: "0.5px",
+                            }}
+                          >
+                            ■ Stop
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Voice note recorded — preview + delete */}
+                      {voiceNoteUrl && !isRecording && (
+                        <div style={{
+                          padding: "12px 14px", borderRadius: 9,
+                          background: "rgba(201,169,110,0.06)", border: "1px solid rgba(201,169,110,0.3)",
+                          display: "flex", flexDirection: "column" as const, gap: 10,
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                              <Radio size={12} color="#c9a96e" />
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#c9a96e" }}>Voice Note Ready</span>
+                              <span style={{ fontSize: 10, color: "#7e84a3", fontFamily: "'IBM Plex Mono',monospace" }}>
+                                {voiceNoteBlob ? `${(voiceNoteBlob.size / 1024).toFixed(1)} KB` : ""}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => { setVoiceNoteUrl(""); setVoiceNoteBlob(null); chunksRef.current = []; }}
+                              style={{ background: "none", border: "none", color: "#ff3366", cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }}
+                              title="Delete voice note"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <audio
+                            src={voiceNoteUrl}
+                            controls
+                            style={{ width: "100%", height: 36, accentColor: "#c9a96e" }}
+                          />
+                          <div style={{ fontSize: 10, color: "#7e84a3", display: "flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ color: "#c9a96e" }}>✓</span>
+                            This voice note will be attached to the task and visible to the doer.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                   {selectedMember && (
                     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: selectedMember.role === "admin" ? G.goldDim : G.successDim, border: `1px solid ${selectedMember.role === "admin" ? G.goldBorder : G.successBorder}`, borderRadius: 10, marginBottom: 16 }}>

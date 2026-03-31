@@ -4381,6 +4381,28 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
+      {/* ── Voice Note Player — if admin attached a voice brief ── */}
+      {(task as any).voiceNote && (
+        <div style={{
+          margin: "6px 0 8px",
+          padding: "9px 12px", borderRadius: 9,
+          background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
+          display: "flex", flexDirection: "column", gap: 7,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11 }}>🎙️</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>
+              Voice Brief from Admin
+            </span>
+          </div>
+          <audio
+            src={(task as any).voiceNote}
+            controls
+            style={{ width: "100%", height: 32, accentColor: "#c9a96e" }}
+          />
+        </div>
+      )}
+
       <div className="sd-task-meta">
         <span className={`badge ${priorityCls}`}>{task.priority} priority</span>
         <span className={`badge ${approval.cls}`}>{approval.label}</span>
