@@ -2523,6 +2523,23 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                                 </div>
                               )}
                               <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10 }}>{task.description}</p>
+                              {/* ── Voice Note — if admin attached a voice brief ── */}
+                              {(task as any).voiceNote && (
+                                <div style={{
+                                  margin: "8px 0",
+                                  padding: "9px 12px", borderRadius: 9,
+                                  background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
+                                  display: "flex", flexDirection: "column" as const, gap: 7,
+                                }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <Radio size={10} color="#c9a96e" />
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>
+                                      Voice Brief
+                                    </span>
+                                  </div>
+                                  <audio src={(task as any).voiceNote} controls style={{ width: "100%", height: 32, accentColor: "#c9a96e" }} />
+                                </div>
+                              )}
                               {task.approvalStatus === "rejected" && task.adminComments && (
                                 <div style={{ padding: "10px 14px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 8, fontSize: 13, color: G.danger, marginBottom: 10 }}>↩ <strong>Rework reason:</strong> {task.adminComments}</div>
                               )}
@@ -3583,6 +3600,23 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                     {selectedTask.purpose && <span className="g-badge" style={{ background: "rgba(0,212,255,0.08)", color: G.cyan, border: `1px solid ${G.cyan}44` }}>{selectedTask.purpose}</span>}
                   </div>
 
+                  {/* ── Voice Note — admin's brief attached to this task ── */}
+                  {(selectedTask as any).voiceNote && (
+                    <div style={{
+                      marginBottom: 14, padding: "12px 14px", borderRadius: 10,
+                      background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.3)",
+                      display: "flex", flexDirection: "column" as const, gap: 8,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <Radio size={11} color="#c9a96e" />
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.7px" }}>
+                          Voice Brief (attached by assigner)
+                        </span>
+                      </div>
+                      <audio src={(selectedTask as any).voiceNote} controls style={{ width: "100%", height: 36, accentColor: "#c9a96e" }} />
+                    </div>
+                  )}
+
                   {/* ── AI Score Panel ── */}
                   {scoreData && (
                     <div style={{ padding: "16px 18px", background: "rgba(0,212,255,0.05)", border: `1px solid rgba(0,212,255,0.2)`, borderRadius: 12, marginBottom: 14 }}>
@@ -4134,6 +4168,21 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
             <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
               {task.description}
             </p>
+            {/* ── Voice Note player ── */}
+            {(task as any).voiceNote && (
+              <div style={{
+                margin: "0 0 10px",
+                padding: "8px 12px", borderRadius: 9,
+                background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
+                display: "flex", flexDirection: "column" as const, gap: 6,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Radio size={10} color="#c9a96e" />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>Voice Brief</span>
+                </div>
+                <audio src={(task as any).voiceNote} controls style={{ width: "100%", height: 32, accentColor: "#c9a96e" }} />
+              </div>
+            )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, color: isAdminAssignee ? G.gold : G.textSecondary }}>
                 {isAdminAssignee ? <Shield size={10} color={G.gold} /> : <User size={10} />}{staffName}
