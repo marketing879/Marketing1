@@ -1010,13 +1010,15 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "",
     });
     // ── Voice Note recording state ─────────────────────────────────────────
-    const [voiceNoteBlob,   setVoiceNoteBlob]   = useState<Blob | null>(null);
-    const [voiceNoteUrl,    setVoiceNoteUrl]     = useState<string>("");
-    const [isRecording,     setIsRecording]      = useState(false);
-    const [recordingSeconds,setRecordingSeconds] = useState(0);
-    const mediaRecorderRef  = useRef<MediaRecorder | null>(null);
-    const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const chunksRef         = useRef<BlobPart[]>([]);
+    const [voiceNoteBlob,      setVoiceNoteBlob]      = useState<Blob | null>(null);
+    const [voiceNoteUrl,       setVoiceNoteUrl]        = useState<string>(""); // Cloudinary URL after upload
+    const [voiceNoteLocalUrl,  setVoiceNoteLocalUrl]   = useState<string>(""); // local blob URL for preview
+    const [isRecording,        setIsRecording]          = useState(false);
+    const [isUploadingVoice,   setIsUploadingVoice]     = useState(false);
+    const [recordingSeconds,   setRecordingSeconds]     = useState(0);
+    const mediaRecorderRef     = useRef<MediaRecorder | null>(null);
+    const recordingTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+    const chunksRef            = useRef<BlobPart[]>([]);
     const [showAssigningOverlay, setShowAssigningOverlay] = useState(false);
 
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -1825,7 +1827,9 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "" });
       setVoiceNoteBlob(null);
       setVoiceNoteUrl("");
+      setVoiceNoteLocalUrl("");
       setIsRecording(false);
+      setIsUploadingVoice(false);
       setRecordingSeconds(0);
       chunksRef.current = [];
     };  // ← this closing brace for handleCreateTask MUST be here
@@ -3267,22 +3271,46 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                               chunksRef.current = [];
                               const mr = new MediaRecorder(stream);
                               mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-                              mr.onstop = () => {
-                                const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-                                setVoiceNoteBlob(blob);
-                                const reader = new FileReader();
-                                reader.onload = (ev) => setVoiceNoteUrl(ev.target?.result as string);
-                                reader.readAsDataURL(blob);
+                              mr.onstop = async () => {
                                 stream.getTracks().forEach(t => t.stop());
                                 if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
                                 setIsRecording(false);
                                 setRecordingSeconds(0);
+                                const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+                                setVoiceNoteBlob(blob);
+                                // Preview via local object URL
+                                const localUrl = URL.createObjectURL(blob);
+                                setVoiceNoteLocalUrl(localUrl);
+                                // Upload to Cloudinary so URL is small & accessible by doer
+                                setIsUploadingVoice(true);
+                                try {
+                                  const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: "audio/webm" });
+                                  const cdnUrl = await uploadToCloudinary(file, "roswalt/voice-notes");
+                                  setVoiceNoteUrl(cdnUrl);
+                                  toast("✓ Voice note uploaded");
+                                } catch {
+                                  toast("✕ Voice note upload failed — please re-record");
+                                  setVoiceNoteBlob(null);
+                                  setVoiceNoteLocalUrl("");
+                                } finally {
+                                  setIsUploadingVoice(false);
+                                }
                               };
                               mediaRecorderRef.current = mr;
                               mr.start();
                               setIsRecording(true);
                               setRecordingSeconds(0);
-                              recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+                              recordingTimerRef.current = setInterval(() => {
+                                setRecordingSeconds(s => {
+                                  const next = s + 1;
+                                  if (next >= 30) {
+                                    // Auto-stop at 30 seconds
+                                    mediaRecorderRef.current?.stop();
+                                    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+                                  }
+                                  return next;
+                                });
+                              }, 1000);
                             } catch {
                               toast("⚠ Microphone access denied. Please allow microphone in your browser.");
                             }
@@ -3309,9 +3337,27 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                         }}>
                           <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff3366", boxShadow: "0 0 10px #ff3366", animation: "badgePulse 1s ease-in-out infinite", flexShrink: 0 }} />
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#ff3366", fontFamily: "'IBM Plex Mono',monospace" }}>
-                            REC {String(Math.floor(recordingSeconds / 60)).padStart(2,"0")}:{String(recordingSeconds % 60).padStart(2,"0")}
+                            REC {String(recordingSeconds).padStart(2,"0")}s
                           </span>
-                          <span style={{ fontSize: 11, color: "#7e84a3", flex: 1 }}>Recording in progress…</span>
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, gap: 4 }}>
+                            <span style={{ fontSize: 11, color: recordingSeconds >= 25 ? "#ff9500" : "#7e84a3" }}>
+                              {recordingSeconds >= 25 ? `⚠ Auto-stops in ${30 - recordingSeconds}s` : "Recording in progress…"}
+                            </span>
+                            {/* Progress bar */}
+                            <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%",
+                                width: `${(recordingSeconds / 30) * 100}%`,
+                                background: recordingSeconds >= 25 ? "#ff9500" : "#ff3366",
+                                borderRadius: 2,
+                                transition: "width 1s linear",
+                                boxShadow: `0 0 6px ${recordingSeconds >= 25 ? "#ff9500" : "#ff3366"}`,
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 9, color: "#434763", fontFamily: "'IBM Plex Mono',monospace" }}>
+                              {30 - recordingSeconds}s remaining · max 30s
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
@@ -3330,8 +3376,20 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                         </div>
                       )}
 
-                      {/* Voice note recorded — preview + delete */}
-                      {voiceNoteUrl && !isRecording && (
+                      {/* Uploading spinner */}
+                      {isUploadingVoice && (
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "12px 16px", borderRadius: 9,
+                          background: "rgba(201,169,110,0.06)", border: "1px solid rgba(201,169,110,0.25)",
+                        }}>
+                          <Loader size={13} color="#c9a96e" style={{ animation: "sdSpin 0.9s linear infinite" }} />
+                          <span style={{ fontSize: 12, color: "#c9a96e", fontWeight: 600 }}>Uploading voice note…</span>
+                        </div>
+                      )}
+
+                      {/* Voice note recorded & uploaded — preview + delete */}
+                      {voiceNoteLocalUrl && !isRecording && !isUploadingVoice && (
                         <div style={{
                           padding: "12px 14px", borderRadius: 9,
                           background: "rgba(201,169,110,0.06)", border: "1px solid rgba(201,169,110,0.3)",
@@ -3341,13 +3399,19 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                               <Radio size={12} color="#c9a96e" />
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#c9a96e" }}>Voice Note Ready</span>
-                              <span style={{ fontSize: 10, color: "#7e84a3", fontFamily: "'IBM Plex Mono',monospace" }}>
-                                {voiceNoteBlob ? `${(voiceNoteBlob.size / 1024).toFixed(1)} KB` : ""}
-                              </span>
+                              {voiceNoteUrl
+                                ? <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(0,255,136,0.1)", border: "1px solid rgba(0,255,136,0.25)", color: "#00ff88", fontWeight: 700 }}>✓ UPLOADED</span>
+                                : <span style={{ fontSize: 9, color: "#ff9500" }}>uploading…</span>
+                              }
                             </div>
                             <button
                               type="button"
-                              onClick={() => { setVoiceNoteUrl(""); setVoiceNoteBlob(null); chunksRef.current = []; }}
+                              onClick={() => {
+                                setVoiceNoteUrl("");
+                                setVoiceNoteLocalUrl("");
+                                setVoiceNoteBlob(null);
+                                chunksRef.current = [];
+                              }}
                               style={{ background: "none", border: "none", color: "#ff3366", cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }}
                               title="Delete voice note"
                             >
@@ -3355,13 +3419,13 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                             </button>
                           </div>
                           <audio
-                            src={voiceNoteUrl}
+                            src={voiceNoteLocalUrl}
                             controls
                             style={{ width: "100%", height: 36, accentColor: "#c9a96e" }}
                           />
                           <div style={{ fontSize: 10, color: "#7e84a3", display: "flex", alignItems: "center", gap: 5 }}>
                             <span style={{ color: "#c9a96e" }}>✓</span>
-                            This voice note will be attached to the task and visible to the doer.
+                            Voice note uploaded to cloud — the doer will hear it on their task card.
                           </div>
                         </div>
                       )}
@@ -3388,7 +3452,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button className="g-btn-gold" onClick={handleCreateTask} style={{ flex: 1 }}><CheckCircle size={14} strokeWidth={2.5} />Assign Task</button>
+                    <button className="g-btn-gold" onClick={handleCreateTask} disabled={isUploadingVoice} style={{ flex: 1, opacity: isUploadingVoice ? 0.5 : 1 }}>{isUploadingVoice ? <><Loader size={14} style={{ animation: "sdSpin 0.9s linear infinite" }} /> Uploading Voice…</> : <><CheckCircle size={14} strokeWidth={2.5} />Assign Task</>}</button>
                     <button className="g-btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
                   </div>
                 </div>
