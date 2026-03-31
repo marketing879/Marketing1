@@ -3251,6 +3251,8 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                           <option value="RECORDING / SHOOTING VIDEOS">8. RECORDING / SHOOTING VIDEOS</option>
                           <option value="EVENT OR SITE BRANDING">9. EVENT OR SITE BRANDING</option>
                           <option value="AI SYSTEMS & AUTOMATION">10. AI SYSTEMS & AUTOMATION</option>
+                          <option value="MAKLER CREATIVES / VIDEOS">11. MAKLER CREATIVES / VIDEOS</option>
+                          <option value="CP CREATIVES / VIDEOS">12. CP CREATIVES / VIDEOS</option>
                         </optgroup>
                       </select>
                     </div>
