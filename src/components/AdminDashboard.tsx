@@ -181,6 +181,11 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     reassignedAt?: string;              // ISO timestamp of reassignment
     handoverRequested?: boolean;        // admin has triggered handover voice call
     voiceNote?: string;                  // base64 audio data URL recorded by admin
+    // ── Autopulse ──────────────────────────────────────────────────────────
+    isAutopulse?:          boolean;
+    autopulseCycleDays?:   number;
+    autopulseParentId?:    string;
+    autopulseGeneration?:  number;
     // ── TAT Extension request ─────────────────────────────────────────────────
     tatExtensionRequest?: {
       requestedAt: string;
@@ -1007,7 +1012,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
     const [newTask, setNewTask] = useState({
       title: "", description: "", priority: "medium", dueDate: "",
-      assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "",
+      assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "", isAutopulse: false, autopulseCycleDays: 7,
     });
     // ── Voice Note recording state ─────────────────────────────────────────
     const [voiceNoteBlob,      setVoiceNoteBlob]      = useState<Blob | null>(null);
@@ -1783,8 +1788,12 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         assignedBy:     user?.email ?? "",
         projectId:      newTask.projectId,
         timeSlot:       newTask.timeSlot,
-        purpose:        newTask.purpose,
-        voiceNote:      voiceNoteUrl || undefined,
+        purpose:             newTask.purpose,
+        voiceNote:           voiceNoteUrl || undefined,
+        isAutopulse:         (newTask as any).isAutopulse     || false,
+        autopulseCycleDays:  (newTask as any).autopulseCycleDays ?? 7,
+        autopulseParentId:   undefined,
+        autopulseGeneration: 0,
         exactDeadline,
         history,
         createdAt:      now,
@@ -1824,7 +1833,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         console.warn(`WhatsApp skipped: "${member.name}" (${member.email}) has no phone number.`);
       }
 
-      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "" });
+      setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "", isAutopulse: false, autopulseCycleDays: 7 } as any);
       setVoiceNoteBlob(null);
       setVoiceNoteUrl("");
       setVoiceNoteLocalUrl("");
@@ -2516,6 +2525,11 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                                 <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary }}>{task.title}</h3>
                                 <span className={priClass(task.priority)}><Flag size={9} />{task.priority.toUpperCase()}</span>
                                 <span className="g-badge" style={{ background: `${ac}18`, color: ac, border: `1px solid ${ac}33` }}>{APPROVAL_LABELS[task.approvalStatus] || task.approvalStatus}</span>
+                                {(task as any).isAutopulse && (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 4, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", fontSize: 8, fontWeight: 800, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+                                    <Zap size={7} /> AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
+                                  </span>
+                                )}
                               </div>
                               {task.assignedBy && (
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "4px 12px", borderRadius: 99, background: G.goldDim, border: `1px solid ${G.goldBorder}`, fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.gold }}>
@@ -3470,6 +3484,87 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       <Clock size={12} />Deadline: {new Date(computeExactDeadline(newTask.dueDate, newTask.timeSlot)).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   )}
+                  {/* ── Autopulse Toggle ─────────────────────────────────── */}
+                  <div style={{
+                    marginBottom: 16, padding: "14px 16px", borderRadius: 10,
+                    background: (newTask as any).isAutopulse ? "rgba(201,169,110,0.08)" : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${(newTask as any).isAutopulse ? "rgba(201,169,110,0.35)" : "rgba(255,255,255,0.08)"}`,
+                    transition: "all 0.2s",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                          background: (newTask as any).isAutopulse ? "rgba(201,169,110,0.15)" : "rgba(255,255,255,0.05)",
+                          border: `1px solid ${(newTask as any).isAutopulse ? "rgba(201,169,110,0.4)" : "rgba(255,255,255,0.1)"}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <Zap size={15} color={(newTask as any).isAutopulse ? "#c9a96e" : "#7e84a3"} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: (newTask as any).isAutopulse ? "#c9a96e" : G.textSecondary }}>
+                            Autopulse
+                          </div>
+                          <div style={{ fontSize: 10, color: G.textMuted }}>
+                            {(newTask as any).isAutopulse
+                              ? `Repeats every ${(newTask as any).autopulseCycleDays} days after admin approval`
+                              : "Enable to make this a recurring weekly task"}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Toggle pill */}
+                      <div
+                        onClick={() => setNewTask({ ...newTask, isAutopulse: !(newTask as any).isAutopulse } as any)}
+                        style={{
+                          width: 44, height: 24, borderRadius: 12, cursor: "pointer",
+                          background: (newTask as any).isAutopulse ? "#c9a96e" : "rgba(255,255,255,0.1)",
+                          position: "relative", transition: "background 0.2s", flexShrink: 0,
+                          border: `1px solid ${(newTask as any).isAutopulse ? "#c9a96e" : "rgba(255,255,255,0.15)"}`,
+                        }}
+                      >
+                        <div style={{
+                          position: "absolute", top: 2,
+                          left: (newTask as any).isAutopulse ? 22 : 2,
+                          width: 18, height: 18, borderRadius: "50%",
+                          background: "#fff",
+                          transition: "left 0.2s",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                        }} />
+                      </div>
+                    </div>
+
+                    {/* Cycle days input — shown only when Autopulse is ON */}
+                    {(newTask as any).isAutopulse && (
+                      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 11, color: G.textMuted, whiteSpace: "nowrap" as const }}>Repeat every</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={365}
+                          value={(newTask as any).autopulseCycleDays}
+                          onChange={(e) => setNewTask({ ...newTask, autopulseCycleDays: Math.max(1, parseInt(e.target.value) || 7) } as any)}
+                          style={{
+                            width: 64, padding: "5px 10px",
+                            background: "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(201,169,110,0.4)",
+                            borderRadius: 7, color: "#c9a96e",
+                            fontSize: 13, fontWeight: 700,
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            outline: "none", textAlign: "center" as const,
+                          }}
+                        />
+                        <span style={{ fontSize: 11, color: G.textMuted }}>days after approval</span>
+                        <div style={{
+                          marginLeft: "auto", fontSize: 10, padding: "3px 9px", borderRadius: 5,
+                          background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.25)",
+                          color: "#c9a96e", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700,
+                        }}>
+                          AUTOPULSE ON
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div style={{ display: "flex", gap: 10 }}>
                     <button className="g-btn-gold" onClick={handleCreateTask} disabled={isUploadingVoice} style={{ flex: 1, opacity: isUploadingVoice ? 0.5 : 1 }}>{isUploadingVoice ? <><Loader size={14} style={{ animation: "sdSpin 0.9s linear infinite" }} /> Uploading Voice…</> : <><CheckCircle size={14} strokeWidth={2.5} />Assign Task</>}</button>
                     <button className="g-btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -4166,6 +4261,17 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
               <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
               {isAdminAssignee && <span className="g-badge g-badge-gold"><Shield size={9} />ADMIN</span>}
               {hasPendingTatExt && <span className="tat-ext-badge"><Clock size={9} />EXT REQUESTED</span>}
+              {(task as any).isAutopulse && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "2px 7px", borderRadius: 4,
+                  background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)",
+                  fontSize: 8, fontWeight: 800, color: "#c9a96e",
+                  textTransform: "uppercase" as const, letterSpacing: "0.5px",
+                }}>
+                  <Zap size={7} /> AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
+                </span>
+              )}
             </div>
             <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
               {task.description}

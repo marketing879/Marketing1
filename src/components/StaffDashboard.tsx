@@ -4409,6 +4409,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {task.projectId && (
           <span className="badge badge-purple">{getProjectName(task.projectId)}</span>
         )}
+        {(task as any).isAutopulse && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 4, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", fontSize: 8, fontWeight: 800, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+            ⚡ AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
+          </span>
+        )}
       </div>
 
       {task.approvalStatus === "rejected" && task.adminComments && (
