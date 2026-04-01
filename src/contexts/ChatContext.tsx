@@ -6,8 +6,11 @@ type SocketInstance = ReturnType<typeof io>;
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
 // Shared DM room ID — same for both users regardless of who initiates
-const getDMChannelId = (idA: string, idB: string) =>
+export const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");
+
+// Personal notification channel for a user
+export const getNotifChannelId = (userId: string) => `notif_${userId}`;
 
 export const CHANNELS: Channel[] = [
   { id: "general",       name: "general",       description: "Team-wide chat",  type: "public", unread: 0 },
@@ -23,12 +26,15 @@ interface ChatContextValue {
   onlineUsers:      ChatUser[];
   typingUser:       string | null;
   unreadDMs:        Record<string, number>;
+  systemNotifs:     ChatMessage[];
+  unreadNotifs:     number;
   setActiveChannel: (id: string) => void;
   sendMessage:      (msg: Omit<ChatMessage, "id" | "createdAt">) => void;
   toggleReaction:   (msgId: string, emoji: string, userId: string) => void;
   addChannel:       (ch: Channel) => void;
   clearUnread:      (channelId: string) => void;
   clearDMUnread:    (channelId: string) => void;
+  clearNotifUnread: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -50,11 +56,25 @@ export const ChatProvider: React.FC<{
   const [onlineUsers,   setOnlineUsers] = useState<ChatUser[]>([]);
   const [typingUser,    setTypingUser]  = useState<string | null>(null);
   const [unreadDMs,     setUnreadDMs]   = useState<Record<string, number>>({});
-  const socketRef = useRef<SocketInstance | null>(null);
+  const [unreadNotifs,  setUnreadNotifs] = useState(0);
+
+  const socketRef      = useRef<SocketInstance | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeChRef    = useRef("general"); // track active channel for unread logic
+  const activeChRef    = useRef("general");
 
   useEffect(() => { activeChRef.current = activeChannel; }, [activeChannel]);
+
+  // ── Derive systemNotifs from messages state ───────────────────────────────
+  // All messages with type === "system_notification" across every loaded channel
+  const systemNotifs: ChatMessage[] = React.useMemo(() => {
+    const all: ChatMessage[] = [];
+    Object.values(messages).forEach(msgs => {
+      msgs.forEach(m => {
+        if ((m as any).type === "system_notification") all.push(m);
+      });
+    });
+    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [messages]);
 
   // ── Request notification permission ──────────────────────────────────────
   useEffect(() => {
@@ -83,7 +103,7 @@ export const ChatProvider: React.FC<{
     CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [loadMessages]);
 
-  // Pre-load DM histories — staggered to avoid 28 simultaneous API calls
+  // Pre-load DM histories — staggered to avoid simultaneous API calls
   useEffect(() => {
     if (!currentUser?.id || teamMembers.length === 0) return;
     let i = 0;
@@ -93,11 +113,19 @@ export const ChatProvider: React.FC<{
       const dmCh = getDMChannelId(currentUser.id, members[i].id);
       loadMessages(dmCh);
       i++;
-    }, 150); // load one DM history every 150ms
+    }, 150);
     return () => clearInterval(interval);
   }, [currentUser?.id, teamMembers.length, loadMessages]);
 
-  // Stable ref so socket handlers always see latest currentUser without reconnecting
+  // ── Pre-load personal notification channel ────────────────────────────────
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const notifCh = getNotifChannelId(currentUser.id);
+    loadMessages(notifCh);
+    // Also try by email as fallback key
+    if (currentUser.email) loadMessages(getNotifChannelId(currentUser.email));
+  }, [currentUser?.id, currentUser?.email, loadMessages]);
+
   const currentUserRef = useRef(currentUser);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
@@ -106,10 +134,9 @@ export const ChatProvider: React.FC<{
 
   const connectedIdRef = useRef<string | null>(null);
 
-  // ── Socket.io — connect ONCE, never reconnect unless user logs out ────────
+  // ── Socket.io connection ──────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
-    // Skip if already connected with same user id
     if (connectedIdRef.current === currentUser.id && socketRef.current?.connected) return;
     connectedIdRef.current = currentUser.id;
     console.log("[Chat] Connecting socket to", API);
@@ -128,12 +155,16 @@ export const ChatProvider: React.FC<{
       CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
       if (cu) {
         socket.emit("user_join", cu);
+        // Join personal notification channel — this is where SystemNotification posts
+        socket.emit("join_channel", getNotifChannelId(cu.id));
+        if (cu.email) socket.emit("join_channel", getNotifChannelId(cu.email));
+        // Join all DM rooms
         tm.forEach(member => {
           if (member.id && member.id !== cu.id && member.email !== cu.email) {
             socket.emit("join_channel", getDMChannelId(cu.id, member.id));
           }
         });
-        console.log("[Chat] Joined as:", cu.email, "| Pre-joined", tm.length, "DM rooms");
+        console.log("[Chat] Joined notif channel + DM rooms for:", cu.email);
       }
     });
 
@@ -159,12 +190,13 @@ export const ChatProvider: React.FC<{
         ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === cu?.id)
         : false;
 
-      // Desktop notification — custom style for system notifications
+      const isSystemNotif = (normalized as any).type === "system_notification";
+
+      // Desktop notification
       if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
         try {
-          const isSystemNotif = (normalized as any).type === "system_notification";
           const title = isSystemNotif
-            ? `🔔 SmartCue — ${(normalized as any).taskTitle || "Task Update"}`
+            ? `SmartCue — ${(normalized as any).taskTitle || "Task Update"}`
             : `${normalized.author?.name || "Someone"} · #${normalized.channelId}`;
           const body = (normalized.text || "").slice(0, 120);
           const n = new Notification(title, { body, icon: "/favicon.ico", tag: `chat-${normalized.id}` });
@@ -172,7 +204,12 @@ export const ChatProvider: React.FC<{
         } catch {}
       }
 
-      // Increment DM unread if it's a DM channel and not from me
+      // Increment unread badge for system notifications
+      if (!isFromMe && isSystemNotif) {
+        setUnreadNotifs(prev => prev + 1);
+      }
+
+      // Increment DM unread
       if (!isFromMe && normalized.channelId.startsWith("dm_") && normalized.channelId !== activeChRef.current) {
         setUnreadDMs(prev => ({ ...prev, [normalized.channelId]: (prev[normalized.channelId] || 0) + 1 }));
       }
@@ -228,13 +265,13 @@ export const ChatProvider: React.FC<{
       console.log("[Chat] Disconnecting socket");
       socket.disconnect();
     };
-  }, [currentUser?.id]); // socket only reconnects if user identity changes
+  }, [currentUser?.id]);
 
   // Re-join DM rooms once teamMembers are loaded — runs only once per session
   const dmRoomsJoinedRef = useRef(false);
   useEffect(() => {
     if (!currentUser?.id || teamMembers.length === 0) return;
-    if (dmRoomsJoinedRef.current) return; // already joined
+    if (dmRoomsJoinedRef.current) return;
     const socket = socketRef.current;
     if (!socket?.connected) return;
     dmRoomsJoinedRef.current = true;
@@ -249,7 +286,6 @@ export const ChatProvider: React.FC<{
   const setActiveChannel = useCallback((id: string) => {
     setActive(id);
     activeChRef.current = id;
-    // Only update unread for known public channels
     setChannels(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     socketRef.current?.emit("join_channel", id);
     loadMessages(id);
@@ -263,13 +299,11 @@ export const ChatProvider: React.FC<{
       createdAt: new Date().toISOString(),
     };
 
-    // 1. Optimistic local update
     setMessages(prev => ({
       ...prev,
       [msg.channelId]: [...(prev[msg.channelId] || []), full],
     }));
 
-    // 2. Socket broadcast — backend forwards to all other clients in the channel
     const payload = { ...full, authorId: full.author.id, authorName: full.author.name };
     if (socketRef.current?.connected) {
       socketRef.current.emit("send_message", payload);
@@ -278,7 +312,6 @@ export const ChatProvider: React.FC<{
       console.warn("[Chat] Socket NOT connected, message not broadcast");
     }
 
-    // 3. Persist to MongoDB via REST — backend schema requires flat authorId/authorName/authorRole
     try {
       const restPayload = {
         ...full,
@@ -288,7 +321,7 @@ export const ChatProvider: React.FC<{
         authorEmail:  full.author.email,
         authorAvatar: full.author.avatar,
       };
-      console.log("[Chat] POST /api/chat/messages →", msg.channelId, full.text?.slice(0, 40));
+      console.log("[Chat] POST /api/chat/messages ->", msg.channelId, full.text?.slice(0, 40));
       const res = await fetch(`${API}/api/chat/messages`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -355,8 +388,17 @@ export const ChatProvider: React.FC<{
     setChannels(prev => prev.map(c => c.id === channelId ? { ...c, unread: 0 } : c));
   }, []);
 
+  const clearNotifUnread = useCallback(() => {
+    setUnreadNotifs(0);
+  }, []);
+
   return (
-    <ChatContext.Provider value={{ messages, channels, activeChannel, onlineUsers, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, addChannel, clearUnread, clearDMUnread }}>
+    <ChatContext.Provider value={{
+      messages, channels, activeChannel, onlineUsers, typingUser,
+      unreadDMs, systemNotifs, unreadNotifs,
+      setActiveChannel, sendMessage, toggleReaction,
+      addChannel, clearUnread, clearDMUnread, clearNotifUnread,
+    }}>
       {children}
     </ChatContext.Provider>
   );
