@@ -1,7 +1,8 @@
 /**
  * SystemNotification.ts
  * Posts system notifications to the doer's personal notification channel.
- * Uses notifType field (not type) to avoid backend enum validation errors.
+ * Detection in ChatContext uses authorId === "system" + channelId starts with "notif_"
+ * since the backend strips unknown fields like isSystemNotif/notifType.
  */
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
@@ -23,28 +24,20 @@ const SYSTEM_AUTHOR = {
   id:     "system",
   name:   "SmartCue",
   email:  "system@smartcue.ai",
-  role:   "staff" as any,   // use a valid role enum value
+  role:   "staff" as any,
   avatar: "",
 };
 
 async function postMessage(channelId: string, payload: SystemDMPayload): Promise<void> {
+  // Encode notifType into the text so it survives backend field stripping
+  // Format: "[NOTIF:task_assigned] actual message text"
+  const textWithMeta = `[NOTIF:${payload.notifType}|${payload.taskId}|${payload.taskTitle}] ${payload.message}`;
+
   const body = {
     channelId,
-    text:         payload.message,
-    // DO NOT send "type" — backend enum rejects "system_notification"
-    // Store notification metadata in extra fields instead
-    notifType:    payload.notifType,          // custom field — backend ignores unknown fields
-    isSystemNotif: true,                      // flag for ChatRoom to detect
-    taskId:       payload.taskId,
-    taskTitle:    payload.taskTitle,
-    priority:     payload.priority   || "medium",
-    dueDate:      payload.dueDate    || "",
-    projectName:  payload.projectName || "",
-    adminEmail:   payload.adminEmail,
-    adminName:    payload.adminName,
-    doerEmail:    payload.doerEmail,
+    text:         textWithMeta,
     author:       SYSTEM_AUTHOR,
-    authorId:     SYSTEM_AUTHOR.id,
+    authorId:     SYSTEM_AUTHOR.id,      // "system" — this persists and is used for detection
     authorName:   SYSTEM_AUTHOR.name,
     authorRole:   SYSTEM_AUTHOR.role,
     authorEmail:  SYSTEM_AUTHOR.email,
@@ -78,14 +71,34 @@ async function postMessage(channelId: string, payload: SystemDMPayload): Promise
 export async function sendSystemDM(payload: SystemDMPayload): Promise<void> {
   if (!payload.doerEmail) return;
 
-  // Channel 1 — personal notification channel keyed by doer email
-  const notifChannel = `notif_${payload.doerEmail}`;
-  await postMessage(notifChannel, payload);
+  // Channel 1 — personal notification channel
+  await postMessage(`notif_${payload.doerEmail}`, payload);
 
   // Channel 2 — DM channel between admin and doer
   if (payload.adminEmail && payload.adminEmail !== payload.doerEmail) {
     const ids = [payload.adminEmail, payload.doerEmail].sort();
-    const dmChannel = `dm_${ids[0]}__${ids[1]}`;
-    await postMessage(dmChannel, payload);
+    await postMessage(`dm_${ids[0]}__${ids[1]}`, payload);
   }
+}
+
+/**
+ * Parse a system notification message back into structured data.
+ * Extracts notifType, taskId, taskTitle from the encoded text prefix.
+ */
+export function parseSystemNotif(text: string): {
+  notifType: string;
+  taskId: string;
+  taskTitle: string;
+  message: string;
+} {
+  const match = text.match(/^\[NOTIF:([^|]+)\|([^|]+)\|([^\]]+)\] (.+)$/s);
+  if (match) {
+    return {
+      notifType: match[1],
+      taskId:    match[2],
+      taskTitle: match[3],
+      message:   match[4],
+    };
+  }
+  return { notifType: "task_assigned", taskId: "", taskTitle: "", message: text };
 }
