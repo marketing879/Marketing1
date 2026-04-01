@@ -896,6 +896,19 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
     const [activeTab,       setActiveTab]       = useState("analytics");
     const [showCreateModal, setShowCreateModal] = useState(false);
+    // ── Voice module toggle — persisted so it survives refresh ───────────────
+    const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
+      try { return localStorage.getItem("ad_voice_enabled") !== "false"; } catch { return true; }
+    });
+    const toggleVoice = () => {
+      setVoiceEnabled(prev => {
+        const next = !prev;
+        try { localStorage.setItem("ad_voice_enabled", String(next)); } catch {}
+        return next;
+      });
+    };
+    // Wrapper — only speaks when voice is enabled
+    const speak = (text: string) => { if (voiceEnabled) speakText(text); };
     const [showAIPanel,     setShowAIPanel]     = useState(false);
     const [toastMsg,        setToastMsg]        = useState<string | null>(null);
     const [adminProfileImg, setAdminProfileImg] = useState<string | null>(null);
@@ -955,7 +968,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         attachments:  raiseTicketAttachments,
         targetTaskId: raiseTicketTask.id,
       });
-      speakText(
+      speak(
         raiseTicketType === "delete-request"
           ? `Delete request submitted for ${raiseTicketTask.title}. Awaiting superadmin approval.`
           : `Assistance ticket raised for ${raiseTicketTask.title}.`
@@ -1099,8 +1112,8 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
 
     setTimeout(async () => {
-      // 1. ElevenLabs time-of-day greeting
-      await greetUser(fullName);
+      // 1. ElevenLabs time-of-day greeting — only if voice is ON
+      if (voiceEnabled) await greetUser(fullName);
 
       // 2. Task-aware briefing summary
       const allTasks       = freshTasks as Task[];
@@ -1124,7 +1137,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       if (parts.length === 0)
         parts.push("Your team is fully on track. No immediate action required.");
 
-      await speakText(parts.join(" "));
+      await speak(parts.join(" "));
     }, 800);
 
     setTimeout(() => setShowFlashPanel(true), 1400);
@@ -1143,7 +1156,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         const parts: string[] = [];
         if (reviewNow > 0) parts.push(`${reviewNow} task${reviewNow !== 1 ? "s are" : " is"} waiting for approval in the Review tab.`);
         if (pendingTickets.length > 0) parts.push(`${pendingTickets.length} assistance ticket${pendingTickets.length !== 1 ? "s" : ""} need your review.`);
-        await speakText(parts.join(" "));
+        await speak(parts.join(" "));
       }, 2200);
       if (pendingTickets.length === 0) return;
     } else { return; }
@@ -1168,7 +1181,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     }
 
     setTimeout(async () => {
-      await speakText(script);
+      await speak(script);
     }, 3500);
   }, [showFlashPanel]);
 
@@ -1537,8 +1550,17 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       });
     }
     setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
-    speakText("Task approved and forwarded to Superadmin for final sign-off.");
-    toast("✓ Approved — forwarded to Superadmin.");
+    const cycleDays = (updatedTask as any).autopulseCycleDays ?? 7;
+    if ((updatedTask as any).isAutopulse) {
+      speak(
+        `Task approved and forwarded to Superadmin. ` +
+        `As this is an Autopulse task, a new instance will be automatically assigned to ${getName(updatedTask.assignedTo)} in ${cycleDays} days.`
+      );
+      toast(`✓ Approved — next Autopulse cycle scheduled in ${cycleDays} days.`);
+    } else {
+      speak("Task approved and forwarded to Superadmin for final sign-off.");
+      toast("✓ Approved — forwarded to Superadmin.");
+    }
   };
 
     // ── handleRework ──────────────────────────────────────────────────────────
@@ -1562,7 +1584,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(selectedTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
       setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
-      speakText("Task sent back for rework. The staff member has been notified.");
+      speak("Task sent back for rework. The staff member has been notified.");
       toast("↩ Sent back for rework.");
     };
 
@@ -1607,7 +1629,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // ── Voice: handover callout to the ORIGINAL doer ──────────────────────
       const adminName = (user as { name?: string }).name ?? user?.email ?? "Your admin";
       const taskTitle = reassignTask.title;
-      speakText(
+      speak(
         `Attention ${previousName}. ${adminName} has reassigned the task "${taskTitle}" to ${newName}. ` +
         `Please hand over all your completed creatives, drafts, and working files for this task to ${newName} immediately. ` +
         `Your assignment for this task has been cancelled. Coordinate with ${newName} to ensure a smooth handover.`
@@ -1689,7 +1711,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
 
-      speakText(
+      speak(
         `TAT extension approved for ${doerName} on the task "${tatExtTask.title}". ` +
         `New deadline is ${new Date(ext.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })} at ${ext.requestedNewTimeSlot}. ` +
         `${tatExtResponse ? tatExtResponse : "Please ensure timely delivery."}`
@@ -1730,7 +1752,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
 
-      speakText(
+      speak(
         `TAT extension request for "${tatExtTask.title}" has been denied. ` +
         `${doerName} has been notified. Reason: ${tatExtResponse}. ` +
         `Note: If the deadline is not met, the task will be frozen automatically.`
@@ -1772,7 +1794,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // ── Close modal, show overlay, speak "please wait" ──
       setShowCreateModal(false);
       setShowAssigningOverlay(true);
-      speakText("Please wait. The task is getting assigned.");
+      speak("Please wait. The task is getting assigned.");
 
       const assigneeName = allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo;
 
@@ -1806,7 +1828,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // Wait 2s for backend to confirm, then play success voice and hide overlay
       setTimeout(() => {
         console.log("✅ Task assigned:", newTaskObj.id, "->", assigneeName);
-        speakText(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
+        speak(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
         setTimeout(() => setShowAssigningOverlay(false), 3500);
       }, 2000);
 
@@ -1865,7 +1887,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         const typeLabel = newest?.ticketType === "delete-request"
           ? "delete request"
           : newest?.ticketType?.replace("-", " ") ?? "assistance ticket";
-        speakText(`Attention. You have a new ${typeLabel} from ${newest?.raisedBy ?? "a team member"} regarding ${newest?.taskTitle ?? "a task"}. Please review at your earliest.`);
+        speak(`Attention. You have a new ${typeLabel} from ${newest?.raisedBy ?? "a team member"} regarding ${newest?.taskTitle ?? "a task"}. Please review at your earliest.`);
       }
       prevTicketCountRef.current = curr;
     }, [pendingAssistanceTickets.length]);
@@ -1886,7 +1908,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
           const due = task.dueDate
             ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
             : "no deadline set";
-          speakText(
+          speak(
             `Attention. You have been assigned a new task by ${from}. ` +
             `Task: ${task.title}. Priority: ${task.priority ?? "medium"}. Due by ${due}.`
           );
@@ -1902,7 +1924,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       const score = (selectedTask as any).scoreData;
       const doerName = getName(selectedTask.assignedTo);
       if (score) {
-        speakText(
+        speak(
           `Reviewing task: ${selectedTask.title}, assigned to ${doerName}. ` +
           `AI Score: ${score.percentScore} out of 100. Grade: ${score.grade}. ` +
           `${score.verdict || ""} ` +
@@ -1910,7 +1932,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
           `Please review the attachments and score report before approving.`
         );
       } else {
-        speakText(`Reviewing task: ${selectedTask.title}, assigned to ${doerName}. No AI score available. Please review the submission.`);
+        speak(`Reviewing task: ${selectedTask.title}, assigned to ${doerName}. No AI score available. Please review the submission.`);
       }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showReviewModal, selectedTask?.id]);
@@ -1923,6 +1945,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       { id: "mytasks",    label: "My Tasks",   icon: User        },
       { id: "progress",   label: "Progress",   icon: Activity    },
       { id: "taskmap",    label: "Task Map",   icon: GitBranch   },
+      { id: "autopulse",  label: "Autopulse",  icon: Zap         },
     ];
 
     const statCards = [
@@ -2053,12 +2076,50 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       <tab.icon size={12} />{tab.label}
                       {tab.id === "review"   && tasksToReview.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{tasksToReview.length}</span>}
                       {tab.id === "tickets"  && pendingAssistanceTickets.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#ff9500", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pendingAssistanceTickets.length}</span>}
+                      {tab.id === "autopulse" && allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#c9a96e", borderRadius: "50%", fontSize: 9, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length}</span>}
                       {tab.id === "mytasks"  && myPendingTasks.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{myPendingTasks.length}</span>}
                     </button>
                   ))}
                 </div>
                 <button className="g-btn-gold" onClick={() => setShowCreateModal(true)}><Plus size={14} strokeWidth={2.5} />New Task</button>
                 <button className="g-btn-ghost" onClick={() => setShowAIPanel(!showAIPanel)} style={{ padding: "9px 13px", borderColor: showAIPanel ? `${G.cyan}55` : undefined }}><MessageSquare size={16} color={showAIPanel ? G.cyan : undefined} /></button>
+                {/* ── Voice Module Toggle ── */}
+                <button
+                  onClick={toggleVoice}
+                  title={voiceEnabled ? "Voice ON — click to disable ElevenLabs" : "Voice OFF — click to enable"}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7,
+                    padding: "7px 13px", borderRadius: 9, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${voiceEnabled ? "rgba(201,169,110,0.4)" : "rgba(255,255,255,0.1)"}`,
+                    background: voiceEnabled ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.04)",
+                    color: voiceEnabled ? "#c9a96e" : "#7e84a3",
+                    transition: "all 0.2s",
+                    letterSpacing: "0.3px",
+                    textTransform: "uppercase" as const,
+                  }}
+                >
+                  {/* Mic icon — inline SVG so no extra import needed */}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    {voiceEnabled ? (
+                      <>
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8"  y1="23" x2="16" y2="23"/>
+                      </>
+                    ) : (
+                      <>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8"  y1="23" x2="16" y2="23"/>
+                      </>
+                    )}
+                  </svg>
+                  {voiceEnabled ? "Voice ON" : "Voice OFF"}
+                </button>
                 <button className="g-btn-ghost" onClick={handleLogout} style={{ padding: "9px 13px" }}><LogOut size={16} /></button>
               </div>
             </header>
@@ -2626,6 +2687,13 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                         onDelete={() => requestDeleteTask(task)}
                         onReassign={() => { setReassignTask(task); setReassignTo(""); setReassignReason(""); setShowReassignModal(true); }}
                         onReviewTatExt={task.tatExtensionRequest?.status === "pending" ? () => { setTatExtTask(task); setTatExtResponse(""); setShowTatExtModal(true); } : undefined}
+                        onToggleAutopulse={(task as any).isAutopulse ? () => {
+                          const isPaused = (task as any).autopulsePaused;
+                          const updated = { ...task, autopulsePaused: !isPaused };
+                          updateTask(task.id, updated as never);
+                          syncTaskToBackend(updated as Task);
+                          toast(isPaused ? "⚡ Autopulse resumed" : "⏸ Autopulse paused");
+                        } : undefined}
                       />
                     ))}
                   </div>
@@ -2838,6 +2906,154 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
             )}
 
             {/* ══ TASK MAP TAB ══ */}
+            {activeTab === "autopulse" && (() => {
+              const autopulseTasks = allTasksCombined.filter((t: Task) => (t as any).isAutopulse);
+              const activePulse    = autopulseTasks.filter(t => !(t as any).autopulsePaused);
+              const pausedPulse    = autopulseTasks.filter(t => (t as any).autopulsePaused);
+              const parentTasks    = autopulseTasks.filter(t => !(t as any).autopulseParentId);
+              const recurredTasks  = autopulseTasks.filter(t => (t as any).autopulseGeneration > 0);
+
+              return (
+                <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
+                    <div>
+                      <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
+                        <Zap size={22} color="#c9a96e" style={{ display: "inline", marginRight: 10, verticalAlign: "middle" }} />
+                        <em style={{ color: "#c9a96e" }}>Autopulse</em> Tasks
+                      </h2>
+                      <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                        Recurring task engine — auto-reassigns after admin approval
+                      </p>
+                    </div>
+                    <button className="g-btn-gold" onClick={() => { setShowCreateModal(true); }}
+                      style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <Zap size={13} /> New Autopulse Task
+                    </button>
+                  </div>
+
+                  {/* Stats row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
+                    {[
+                      { label: "Total Autopulse",  value: autopulseTasks.length,  color: "#c9a96e",  sub: "All recurring tasks" },
+                      { label: "Active Cycles",     value: activePulse.length,     color: G.success,  sub: "Currently running" },
+                      { label: "Paused",            value: pausedPulse.length,     color: G.textMuted,sub: "Admin paused" },
+                      { label: "Recurrences Fired", value: recurredTasks.length,   color: G.cyan,     sub: `${parentTasks.length} original task${parentTasks.length !== 1 ? "s" : ""}` },
+                    ].map(s => (
+                      <div key={s.label} style={{ padding: "18px 20px", background: "rgba(8,14,32,0.65)", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
+                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
+                        <div style={{ fontSize: 11, color: G.textMuted }}>{s.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Empty state */}
+                  {autopulseTasks.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "80px 24px", background: "rgba(8,14,32,0.65)", border: "1px dashed rgba(201,169,110,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                      <Zap size={40} color="rgba(201,169,110,0.25)" />
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Autopulse Tasks Yet</div>
+                      <div style={{ fontSize: 13, color: G.textMuted, marginBottom: 20 }}>Create a task and toggle Autopulse ON to start a recurring cycle.</div>
+                      <button className="g-btn-gold" onClick={() => setShowCreateModal(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <Zap size={14} /> Create First Autopulse Task
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {autopulseTasks.map((task: Task, idx: number) => {
+                        const ap          = task as any;
+                        const isPaused    = !!ap.autopulsePaused;
+                        const generation  = ap.autopulseGeneration ?? 0;
+                        const cycleDays   = ap.autopulseCycleDays ?? 7;
+                        const nextDue     = ap.autopulseScheduledFor;
+                        const ac          = APPROVAL_COLORS[task.approvalStatus] || G.textMuted;
+                        return (
+                          <div key={task.id} className="g-card fade-up" style={{
+                            animationDelay: `${idx * 40}ms`, padding: "20px 24px",
+                            borderColor: isPaused ? "rgba(255,255,255,0.06)" : "rgba(201,169,110,0.2)",
+                            opacity: isPaused ? 0.7 : 1,
+                          }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                              {/* Left: icon + chain info */}
+                              <div style={{ width: 40, height: 40, borderRadius: 10, background: isPaused ? "rgba(255,255,255,0.04)" : "rgba(201,169,110,0.1)", border: `1px solid ${isPaused ? "rgba(255,255,255,0.08)" : "rgba(201,169,110,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <Zap size={18} color={isPaused ? G.textMuted : "#c9a96e"} />
+                              </div>
+                              {/* Center: task details */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                                  <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary, margin: 0 }}>{task.title}</h3>
+                                  <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
+                                  <span className="g-badge" style={{ background: `${ac}18`, color: ac, border: `1px solid ${ac}33` }}>{APPROVAL_LABELS[task.approvalStatus] || task.approvalStatus}</span>
+                                  {isPaused
+                                    ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "rgba(126,132,163,0.1)", border: "1px solid rgba(126,132,163,0.25)", fontSize: 9, fontWeight: 800, color: G.textMuted }}>⏸ PAUSED</span>
+                                    : <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", fontSize: 9, fontWeight: 800, color: "#c9a96e" }}><Zap size={8} /> AUTOPULSE {generation > 0 ? `#${generation}` : "ACTIVE"}</span>
+                                  }
+                                </div>
+                                <p style={{ fontSize: 12, color: G.textSecondary, lineHeight: 1.5, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
+                                  {task.description}
+                                </p>
+                                {/* Metadata row */}
+                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                    <User size={10} />{getName(task.assignedTo)}
+                                  </span>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                    <Calendar size={10} />Due: {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  </span>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#c9a96e" }}>
+                                    <Zap size={9} />Every {cycleDays} days
+                                  </span>
+                                  {generation > 0 && (
+                                    <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan }}>
+                                      <GitBranch size={9} />Generation #{generation}
+                                    </span>
+                                  )}
+                                  {nextDue && !isPaused && (
+                                    <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.amber }}>
+                                      <Clock size={9} />Next: {new Date(nextDue).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Right: actions */}
+                              <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
+                                {/* Pause / Resume */}
+                                <button
+                                  onClick={() => {
+                                    const updated = { ...task, autopulsePaused: !isPaused };
+                                    updateTask(task.id, updated as never);
+                                    syncTaskToBackend(updated as Task);
+                                    toast(isPaused ? "⚡ Autopulse resumed" : "⏸ Autopulse paused");
+                                  }}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 6,
+                                    padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                                    cursor: "pointer", fontFamily: "inherit",
+                                    background: isPaused ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.04)",
+                                    border: `1px solid ${isPaused ? "rgba(201,169,110,0.3)" : "rgba(255,255,255,0.1)"}`,
+                                    color: isPaused ? "#c9a96e" : G.textMuted,
+                                  }}
+                                >
+                                  {isPaused ? <><Zap size={11} /> Resume</> : <>⏸ Pause</>}
+                                </button>
+                                {/* Review if in-review */}
+                                {task.approvalStatus === "in-review" && (
+                                  <button className="g-btn-gold" onClick={() => { setSelectedTask(task); setShowReviewModal(true); }}
+                                    style={{ padding: "8px 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                                    <Eye size={11} /> Review
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })()}
+
             {activeTab === "taskmap" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.purple }}>Map</em></h2>
@@ -2996,7 +3212,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       onClick={() => {
                         if (!ticketReviewNote.trim()) return;
                         rejectAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
-                        speakText(`Assistance ticket rejected for ${selectedTicket.taskTitle}. The staff member has been notified.`);
+                        speak(`Assistance ticket rejected for ${selectedTicket.taskTitle}. The staff member has been notified.`);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
                         toast("✗ Ticket rejected — doer notified");
@@ -3020,7 +3236,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                         if (!ticketReviewNote.trim()) return;
                         approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
                         const linkedTaskId = selectedTicket.taskId;
-                        speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
+                        speak(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
                         toast("✓ Ticket approved — task unfrozen · Doer notified");
@@ -3695,7 +3911,39 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                     {selectedTask.tatBreached && <span className="tat-badge"><AlertTriangle size={9} />TAT BREACH</span>}
                     {selectedTask.timeSlot && <span className="g-badge g-badge-muted"><Clock size={9} />{selectedTask.timeSlot}</span>}
                     {selectedTask.purpose && <span className="g-badge" style={{ background: "rgba(0,212,255,0.08)", color: G.cyan, border: `1px solid ${G.cyan}44` }}>{selectedTask.purpose}</span>}
+                    {(selectedTask as any).isAutopulse && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 5, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.35)", fontSize: 9, fontWeight: 800, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+                        <Zap size={9} /> AUTOPULSE {(selectedTask as any).autopulseGeneration > 0 ? `#${(selectedTask as any).autopulseGeneration}` : "ACTIVE"}
+                      </span>
+                    )}
                   </div>
+
+                  {/* ── Autopulse info banner — shown when approving a recurring task ── */}
+                  {(selectedTask as any).isAutopulse && (
+                    <div style={{
+                      marginBottom: 14, padding: "12px 14px", borderRadius: 10,
+                      background: "rgba(201,169,110,0.06)", border: "1px solid rgba(201,169,110,0.28)",
+                      display: "flex", alignItems: "flex-start", gap: 10,
+                    }}>
+                      <Zap size={14} color="#c9a96e" style={{ flexShrink: 0, marginTop: 1 }} />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#c9a96e", marginBottom: 3 }}>
+                          Autopulse Task — Approving will schedule the next cycle
+                        </div>
+                        <div style={{ fontSize: 11, color: G.textMuted, lineHeight: 1.6 }}>
+                          This is a recurring task (every <strong style={{ color: "#c9a96e" }}>{(selectedTask as any).autopulseCycleDays ?? 7} days</strong>).
+                          Once you approve, a fresh instance will be automatically assigned to{" "}
+                          <strong style={{ color: G.textSecondary }}>{getName(selectedTask.assignedTo)}</strong> in{" "}
+                          <strong style={{ color: "#c9a96e" }}>{(selectedTask as any).autopulseCycleDays ?? 7} days</strong>.
+                          {(selectedTask as any).autopulseGeneration > 0 && (
+                            <span style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 3, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.2)", fontSize: 9, color: "#c9a96e", fontWeight: 700 }}>
+                              Generation #{(selectedTask as any).autopulseGeneration}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Voice Note — admin's brief attached to this task ── */}
                   {(selectedTask as any).voiceNote && (
@@ -4213,10 +4461,11 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     onDelete: () => void;
     onReassign: () => void;
     onReviewTatExt?: () => void;
+    onToggleAutopulse?: () => void;
     getNameFn: (e: string) => string;
   }
 
-  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete, onReassign, onReviewTatExt, getNameFn }) => {
+  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete, onReassign, onReviewTatExt, onToggleAutopulse, getNameFn }) => {
     const [hovered, setHovered] = React.useState(false);
     const hasPendingTatExt = task.tatExtensionRequest?.status === "pending";
     return (
@@ -4309,6 +4558,25 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 2, flexDirection: "column" as const }}>
             <div style={{ display: "flex", gap: 8 }}>
+              {/* Pause / Resume Autopulse */}
+              {(task as any).isAutopulse && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleAutopulse?.();
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "9px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    cursor: "pointer", border: "1px solid rgba(201,169,110,0.3)",
+                    background: "rgba(201,169,110,0.07)", color: "#c9a96e",
+                    fontFamily: "inherit", whiteSpace: "nowrap" as const,
+                  }}
+                  title={(task as any).autopulsePaused ? "Resume Autopulse" : "Pause Autopulse"}
+                >
+                  {(task as any).autopulsePaused ? <><Zap size={11} />Resume</> : <>⏸ Pause</>}
+                </button>
+              )}
               <button onClick={onReview}
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: hovered ? `linear-gradient(135deg,${G.cyan},#60efff)` : "rgba(255,255,255,0.05)", color: hovered ? "#001a26" : G.textSecondary, border: `1px solid ${hovered ? G.cyan : "rgba(255,255,255,0.10)"}`, borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap" as const, boxShadow: hovered ? `0 0 20px ${G.cyan}55` : "none" }}>
                 <Eye size={12} />Review<ChevronRight size={11} />
