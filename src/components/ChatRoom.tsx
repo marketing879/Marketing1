@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "../contexts/UserContext";
 import { ChatProvider, useChatContext } from "../contexts/ChatContext";
-const roswaltLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23c9a96e'/%3E%3Ctext x='50' y='60' font-size='40' font-weight='bold' text-anchor='middle' fill='%23000'%3ER%3C/text%3E%3C/svg%3E";
+const roswaltLogoAsset = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_placeholder.png";
 import { ChatMessage, ChatUser, UserRole, Channel } from "../types/chat";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { EmojiPicker } from "./EmojiPicker";
@@ -306,7 +306,7 @@ const ChatRoomInner: React.FC = () => {
 
             {/* Brand + actions */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #1a1d2e" }}>
-              <img src={roswaltLogo} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
+              <img src={roswaltLogoAsset} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 13, color: "#c9a96e", letterSpacing: "0.08em", whiteSpace: "nowrap" as const }}>SmartCue ChatRoom</div>
                 <div style={{ fontSize: 8, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
@@ -573,7 +573,7 @@ const ChatRoomInner: React.FC = () => {
           <div style={{ flex: 1, overflowY: "auto" as const, padding: "12px 8px 6px", display: "flex", flexDirection: "column" as const, gap: 1 }}>
             {activeMessages.length === 0 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: "#3a3f5c", gap: 10 }}>
-                <img src={roswaltLogo} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.15 }} />
+                <img src={roswaltLogoAsset} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.15 }} />
                 <div style={{ fontSize: 13 }}>No messages yet — start the conversation!</div>
               </div>
             ) : (
