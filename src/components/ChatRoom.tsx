@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "../contexts/UserContext";
 import { ChatProvider, useChatContext } from "../contexts/ChatContext";
-const roswaltLogoAsset = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_placeholder.png";
+const roswaltLogo = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_placeholder.png";
 import { ChatMessage, ChatUser, UserRole, Channel } from "../types/chat";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { EmojiPicker } from "./EmojiPicker";
@@ -306,7 +306,7 @@ const ChatRoomInner: React.FC = () => {
 
             {/* Brand + actions */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #1a1d2e" }}>
-              <img src={roswaltLogoAsset} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
+              <img src={roswaltLogo} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 13, color: "#c9a96e", letterSpacing: "0.08em", whiteSpace: "nowrap" as const }}>SmartCue ChatRoom</div>
                 <div style={{ fontSize: 8, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
@@ -573,7 +573,7 @@ const ChatRoomInner: React.FC = () => {
           <div style={{ flex: 1, overflowY: "auto" as const, padding: "12px 8px 6px", display: "flex", flexDirection: "column" as const, gap: 1 }}>
             {activeMessages.length === 0 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", color: "#3a3f5c", gap: 10 }}>
-                <img src={roswaltLogoAsset} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.15 }} />
+                <img src={roswaltLogo} alt="" style={{ width: 48, height: 48, objectFit: "contain", opacity: 0.15 }} />
                 <div style={{ fontSize: 13 }}>No messages yet — start the conversation!</div>
               </div>
             ) : (
