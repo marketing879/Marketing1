@@ -1,104 +1,108 @@
-/**
- * SystemNotification.ts
- * Posts system notifications to the doer's personal notification channel.
- * Detection in ChatContext uses authorId === "system" + channelId starts with "notif_"
- * since the backend strips unknown fields like isSystemNotif/notifType.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// SystemNotification.ts
+// Sends programmatic DM notifications from admin → doer via the chatroom.
+// Replaces WhatsApp — all notifications now route through SmartCue ChatRoom.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
-export interface SystemDMPayload {
-  adminEmail:   string;
-  adminName:    string;
-  doerEmail:    string;
-  taskId:       string;
-  taskTitle:    string;
-  message:      string;
-  notifType:    "task_assigned" | "task_approved" | "task_reassigned" | "task_cancelled" | "task_reminder";
-  priority?:    string;
-  dueDate?:     string;
+// Identical formula to ChatContext_final — both ends must produce the same id
+const getDMChannelId = (idA: string, idB: string) =>
+  "dm_" + [idA, idB].sort().join("__");
+
+export type SystemNotifType =
+  | "task_assigned"
+  | "task_approved"
+  | "task_rework"
+  | "task_reassigned"
+  | "task_cancelled"
+  | "task_reminder"
+  | "autopulse_created";
+
+export interface SystemNotificationPayload {
+  adminEmail:  string;
+  adminName:   string;
+  doerEmail:   string;
+  taskId:      string;
+  taskTitle:   string;
+  message:     string;           // human-readable body shown in the notification
+  notifType:   SystemNotifType;
+  priority?:   string;
+  dueDate?:    string;
   projectName?: string;
 }
 
-const SYSTEM_AUTHOR = {
-  id:     "system",
-  name:   "SmartCue",
-  email:  "system@smartcue.ai",
-  role:   "staff" as any,
-  avatar: "",
-};
+/**
+ * Posts a system notification as a DM from admin → doer.
+ * Stored in MongoDB, broadcast live via socket — doer sees it in ChatRoom.
+ * Non-blocking: failures are logged but never throw.
+ */
+export async function sendSystemDM(payload: SystemNotificationPayload): Promise<void> {
+  const {
+    adminEmail, adminName, doerEmail,
+    taskId, taskTitle, message, notifType,
+    priority, dueDate, projectName,
+  } = payload;
 
-async function postMessage(channelId: string, payload: SystemDMPayload): Promise<void> {
-  // Encode notifType into the text so it survives backend field stripping
-  // Format: "[NOTIF:task_assigned] actual message text"
-  const textWithMeta = `[NOTIF:${payload.notifType}|${payload.taskId}|${payload.taskTitle}] ${payload.message}`;
+  // Post to DOER's personal notification channel so it appears in their 🔔 panel
+  const channelId = `notif_${doerEmail}`;
+  // Also post a copy to ADMIN's notif channel so admin can see what was sent
+  const adminChannelId = `notif_${adminEmail}`;
 
-  const body = {
-    channelId,
-    text:         textWithMeta,
-    author:       SYSTEM_AUTHOR,
-    authorId:     SYSTEM_AUTHOR.id,      // "system" — this persists and is used for detection
-    authorName:   SYSTEM_AUTHOR.name,
-    authorRole:   SYSTEM_AUTHOR.role,
-    authorEmail:  SYSTEM_AUTHOR.email,
-    authorAvatar: SYSTEM_AUTHOR.avatar,
-    reactions:    {},
-    createdAt:    new Date().toISOString(),
+  const chatMsg = {
+    id:           `sysnotif_${taskId}_${Date.now()}`,
+    channelId,   // doer's notif channel
+    // Flat fields required by backend chatMessageSchema
+    authorId:     adminEmail,
+    authorName:   adminName,
+    authorRole:   "admin",
+    authorEmail:  adminEmail,
+    authorAvatar: "",
+    // Nested author object for ChatRoom renderer
+    author: {
+      id:     adminEmail,
+      name:   adminName,
+      role:   "admin",
+      email:  adminEmail,
+      avatar: "",
+    },
+    type:        "system_notification",
+    text:        message,
+    // Extra metadata — ChatRoom uses these to render rich notification cards
+    notifType,
+    taskId,
+    taskTitle,
+    priority:    priority    || "medium",
+    dueDate:     dueDate     || "",
+    projectName: projectName || "",
+    reactions:   {},
+    readBy:      [],
+    createdAt:   new Date().toISOString(),
   };
 
   try {
     const res = await fetch(`${API}/api/chat/messages`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(body),
+      body:    JSON.stringify(chatMsg),
     });
     if (!res.ok) {
-      console.warn(`[SystemNotif] POST to ${channelId} failed:`, res.status, await res.text());
+      console.warn(`[SystemNotification] POST failed ${res.status} for task ${taskId}`);
     } else {
-      console.log(`[SystemNotif] Posted to ${channelId}:`, payload.notifType);
+      console.log(`[SystemNotification] ✓ Notif sent to ${doerEmail} — ${notifType} · ${taskTitle}`);
+    // Also post copy to admin's notif channel so admin sees sent notifications
+    if (adminEmail && adminEmail !== doerEmail) {
+      const adminMsg = { ...chatMsg, id: chatMsg.id + "_admin", channelId: adminChannelId };
+      try {
+        await fetch(`${API}/api/chat/messages`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(adminMsg),
+        });
+      } catch {}
+    }
     }
   } catch (e) {
-    console.error(`[SystemNotif] Network error posting to ${channelId}:`, e);
+    console.warn("[SystemNotification] Network error — notification not delivered:", e);
   }
-}
-
-/**
- * Send a system notification to the doer.
- * Posts to TWO channels:
- *  1. notif_<doerEmail>  — personal notification channel (shows in bell panel)
- *  2. DM channel         — also appears in their DM thread with the admin
- */
-export async function sendSystemDM(payload: SystemDMPayload): Promise<void> {
-  if (!payload.doerEmail) return;
-
-  // Channel 1 — personal notification channel
-  await postMessage(`notif_${payload.doerEmail}`, payload);
-
-  // Channel 2 — DM channel between admin and doer
-  if (payload.adminEmail && payload.adminEmail !== payload.doerEmail) {
-    const ids = [payload.adminEmail, payload.doerEmail].sort();
-    await postMessage(`dm_${ids[0]}__${ids[1]}`, payload);
-  }
-}
-
-/**
- * Parse a system notification message back into structured data.
- * Extracts notifType, taskId, taskTitle from the encoded text prefix.
- */
-export function parseSystemNotif(text: string): {
-  notifType: string;
-  taskId: string;
-  taskTitle: string;
-  message: string;
-} {
-  const match = text.match(/^\[NOTIF:([^|]+)\|([^|]+)\|([^\]]+)\] (.+)$/s);
-  if (match) {
-    return {
-      notifType: match[1],
-      taskId:    match[2],
-      taskTitle: match[3],
-      message:   match[4],
-    };
-  }
-  return { notifType: "task_assigned", taskId: "", taskTitle: "", message: text };
 }

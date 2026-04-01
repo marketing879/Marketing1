@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "../contexts/UserContext";
 import { ChatProvider, useChatContext } from "../contexts/ChatContext";
-import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
+const roswaltLogo = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_placeholder.png";
 import { ChatMessage, ChatUser, UserRole, Channel } from "../types/chat";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { EmojiPicker } from "./EmojiPicker";
@@ -59,7 +59,7 @@ const getDMChannelId = (idA: string, idB: string) =>
 
 const ChatRoomInner: React.FC = () => {
   const { user: appUser, loginAsUser, teamMembers } = useUser();
-  const { messages, channels, activeChannel, typingUser, unreadDMs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread } = useChatContext();
+  const { messages, channels, activeChannel, typingUser, unreadDMs, systemNotifs, unreadNotifs, setActiveChannel, sendMessage, toggleReaction, clearDMUnread, clearNotifUnread } = useChatContext();
 
   const realUsers: ChatUser[] = useMemo(() => {
     return (teamMembers || [])
@@ -96,41 +96,13 @@ const ChatRoomInner: React.FC = () => {
   const [showNotifs,       setShowNotifs]       = useState(false);
   const [smartAssistTicket,setSmartAssistTicket]= useState<SmartAssistTicket | null>(null);
 
-  // Collect all system_notification messages from every DM channel for this user
-  const systemNotifications = useMemo(() => {
-    const all: (ChatMessage & { notifType?: string; taskId?: string; taskTitle?: string; projectName?: string })[] = [];
-    const myEmail   = currentUser.email?.toLowerCase() || "";
-    const myId      = currentUser.id || "";
-    const adminCh   = myEmail ? `notif_admin_${myEmail}` : "";
-    Object.entries(messages).forEach(([channelId, chMsgs]) => {
-      // Include messages from:
-      // 1. Any DM channel that includes this user's email or id
-      // 2. Personal admin notification channel (TAT breach alerts)
-      const isMine = channelId === adminCh ||
-        (myEmail && channelId.includes(myEmail)) ||
-        (myId    && channelId.includes(myId));
-      if (!isMine) return;
-      chMsgs.forEach(m => {
-        if ((m as any).type === "system_notification") {
-          all.push(m as any);
-        }
-      });
-    });
-    // Deduplicate by id
-    const seen = new Set<string>();
-    const deduped = all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
-    return deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [messages, currentUser.id, currentUser.email]);
+  // System notifications come directly from ChatContext (already filtered + deduped)
+  const systemNotifications = systemNotifs as (ChatMessage & { notifType?: string; taskId?: string; taskTitle?: string; projectName?: string; delayDuration?: string; reminderCount?: number })[];
 
-  const unreadNotifCount = useMemo(() => {
-    const key = "smartcue_notif_read_" + currentUser.email;
-    const lastRead = localStorage.getItem(key) || "0";
-    return systemNotifications.filter(n => new Date(n.createdAt).getTime() > parseInt(lastRead)).length;
-  }, [systemNotifications, currentUser.email]);
+  const unreadNotifCount = unreadNotifs;
 
   const markNotifsRead = () => {
-    const key = "smartcue_notif_read_" + currentUser.email;
-    localStorage.setItem(key, String(Date.now()));
+    clearNotifUnread();
   };
   const [profileUser, setProfileUser] = useState<ChatUser>(currentUser);
   const [inputText,   setInputText]   = useState("");
