@@ -53,6 +53,7 @@ const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Dat
 const esc = (s: string) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const linkify = (t: string) => t.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#a78bfa">$1</a>');
 
+// Shared DM room — sort both IDs so A→B and B→A use the same channel
 const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");
 
@@ -84,53 +85,41 @@ const ChatRoomInner: React.FC = () => {
     status:   (appUser as any)?.status || "Available",
   }), [appUser]);
 
-  const [showCall,         setShowCall]         = useState(false);
-  const [callRoomUrl,      setCallRoomUrl]       = useState<string | null>(null);
-  const [showOnboard,      setShowOnboard]       = useState(false);
-  const [showProfile,      setShowProfile]       = useState(false);
-  const [showMeeting,      setShowMeeting]       = useState(false);
-  const [showPicker,       setShowPicker]        = useState(false);
-  const [showDMList,       setShowDMList]        = useState(false);
-  const [showMusic,        setShowMusic]         = useState(false);
-  const [showNotifs,       setShowNotifs]        = useState(false);
-  const [smartAssistTicket,setSmartAssistTicket] = useState<SmartAssistTicket | null>(null);
+  const [showCall,    setShowCall]    = useState(false);
+  const [callRoomUrl, setCallRoomUrl] = useState<string | null>(null);
+  const [showOnboard, setShowOnboard] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showMeeting, setShowMeeting] = useState(false);
+  const [showPicker,  setShowPicker]  = useState(false);
+  const [showDMList,       setShowDMList]       = useState(false);
+  const [showMusic,        setShowMusic]        = useState(false);
+  const [showNotifs,       setShowNotifs]       = useState(false);
+  const [smartAssistTicket,setSmartAssistTicket]= useState<SmartAssistTicket | null>(null);
 
-  // ── System notifications ──────────────────────────────────────────────────
-  // Detected by: authorId === "system" AND channelId starts with "notif_" for this user.
-  // Backend strips custom fields so metadata is encoded in text:
-  //   [NOTIF:task_assigned|taskId|Task Title] actual message text
+  // Collect all system_notification messages from every DM channel for this user
   const systemNotifications = useMemo(() => {
-    const all: (ChatMessage & {
-      parsedNotifType?: string;
-      parsedTaskId?:    string;
-      parsedTaskTitle?: string;
-      displayText?:     string;
-    })[] = [];
-    Object.values(messages).forEach(chMsgs => {
+    const all: (ChatMessage & { notifType?: string; taskId?: string; taskTitle?: string; projectName?: string })[] = [];
+    const myEmail   = currentUser.email?.toLowerCase() || "";
+    const myId      = currentUser.id || "";
+    const adminCh   = myEmail ? `notif_admin_${myEmail}` : "";
+    Object.entries(messages).forEach(([channelId, chMsgs]) => {
+      // Include messages from:
+      // 1. Any DM channel that includes this user's email or id
+      // 2. Personal admin notification channel (TAT breach alerts)
+      const isMine = channelId === adminCh ||
+        (myEmail && channelId.includes(myEmail)) ||
+        (myId    && channelId.includes(myId));
+      if (!isMine) return;
       chMsgs.forEach(m => {
-        const isSystem  = (m as any).authorId === "system" || m.author?.id === "system";
-        const isMyNotif = m.channelId?.startsWith("notif_") && (
-          m.channelId.includes(currentUser.email) ||
-          (currentUser.id && currentUser.id !== "me" && m.channelId.includes(currentUser.id))
-        );
-        if (!isSystem || !isMyNotif) return;
-        const parsed = { ...m } as any;
-        const match = (m.text || "").match(/^\[NOTIF:([^|]+)\|([^|]+)\|([^\]]+)\] (.+)$/s);
-        if (match) {
-          parsed.parsedNotifType = match[1];
-          parsed.parsedTaskId    = match[2];
-          parsed.parsedTaskTitle = match[3];
-          parsed.displayText     = match[4];
-        } else {
-          parsed.parsedNotifType = "task_assigned";
-          parsed.parsedTaskId    = "";
-          parsed.parsedTaskTitle = "";
-          parsed.displayText     = m.text || "";
+        if ((m as any).type === "system_notification") {
+          all.push(m as any);
         }
-        all.push(parsed);
       });
     });
-    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Deduplicate by id
+    const seen = new Set<string>();
+    const deduped = all.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
+    return deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [messages, currentUser.id, currentUser.email]);
 
   const unreadNotifCount = useMemo(() => {
@@ -140,9 +129,9 @@ const ChatRoomInner: React.FC = () => {
   }, [systemNotifications, currentUser.email]);
 
   const markNotifsRead = () => {
-    localStorage.setItem("smartcue_notif_read_" + currentUser.email, String(Date.now()));
+    const key = "smartcue_notif_read_" + currentUser.email;
+    localStorage.setItem(key, String(Date.now()));
   };
-
   const [profileUser, setProfileUser] = useState<ChatUser>(currentUser);
   const [inputText,   setInputText]   = useState("");
   const [dmTarget,    setDmTarget]    = useState<ChatUser | null>(null);
@@ -155,14 +144,10 @@ const ChatRoomInner: React.FC = () => {
   const activeMessages = useMemo(() => {
     if (!currentUser.id || currentUser.id === "me") return messages[activeChannel] || [];
     const ch = dmTarget ? getDMChannelId(currentUser.id, dmTarget.id) : activeChannel;
-    return (messages[ch] || []).filter(m => {
-      // Filter out system notifications from the chat feed
-      const isSystem = (m as any).authorId === "system" || m.author?.id === "system";
-      return !isSystem;
-    });
+    return messages[ch] || [];
   }, [messages, dmTarget, activeChannel, currentUser.id]);
-
   const activeChName = dmTarget ? `${dmTarget.name.split(" ")[0]}` : `#${activeChannel}`;
+  const activeCh       = channels.find((c: Channel) => c.id === activeChannel);
 
   useEffect(() => {
     setProfileUser(prev => ({
@@ -224,16 +209,17 @@ const ChatRoomInner: React.FC = () => {
   const onShareMusic = (text: string) => sendMessage({ channelId: activeChannel, author: profileUser, type: "text", text, reactions: {} });
 
   const renderMsg = (msg: ChatMessage, prevMsg: ChatMessage | null) => {
+    // Reconstruct author from flat fields if nested author object is missing
     const author = msg.author || {
-      id:       (msg as any).authorId    || "unknown",
-      name:     (msg as any).authorName  || "Unknown",
-      email:    (msg as any).authorEmail || "",
-      role:     (msg as any).authorRole  || "staff",
-      avatar:   (msg as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=unknown&backgroundColor=1a1d2e&textColor=a78bfa`,
+      id:     (msg as any).authorId    || "unknown",
+      name:   (msg as any).authorName  || "Unknown",
+      email:  (msg as any).authorEmail || "",
+      role:   (msg as any).authorRole  || "staff",
+      avatar: (msg as any).authorAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=unknown&backgroundColor=1a1d2e&textColor=a78bfa`,
       isOnline: false,
-      status:   "Available",
+      status: "Available",
     };
-    if (!author.id) return null;
+    if (!author.id) return null; // skip fully broken messages
     const showDate = !prevMsg || !sameDay(prevMsg.createdAt, msg.createdAt);
     const isMine   = author.id === currentUser.id || author.email === currentUser.email;
     const reactions = Object.entries(msg.reactions || {}).filter(([, u]) => (u as string[]).length > 0);
@@ -267,7 +253,7 @@ const ChatRoomInner: React.FC = () => {
                 <button onClick={() => startCall(msg.meeting!.link)} style={{ background: "#7c6af7", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Join</button>
               </div>
             )}
-            {(msg.type === "text" || msg.type === "voice" || (!msg.type && msg.text)) && (
+            {(msg.type === "text" || msg.type === "voice" || (!msg.type && msg.text)) && (msg as any).type !== "system_notification" && (
               <div style={{ fontSize: 14, lineHeight: 1.65, color: "#d0d0e8", wordBreak: "break-word" as const }} dangerouslySetInnerHTML={{ __html: linkify(esc(msg.text || "")) }} />
             )}
             {reactions.length > 0 && (
@@ -298,22 +284,30 @@ const ChatRoomInner: React.FC = () => {
     .sc-root { width: 100%; height: 100%; display: flex; align-items: stretch; justify-content: center; background: #0a0b0f; }
     .sc-card { width: 100%; max-width: 860px; height: 100%; display: flex; flex-direction: column; background: #0d0f18; border-left: 1px solid #1a1d2e; border-right: 1px solid #1a1d2e; overflow: hidden; position: relative; }
     .msg-row:hover .msg-actions { opacity: 1 !important; }
-    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #252840; border-radius: 2px; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #252840; border-radius: 2px; }
     .ch-tab { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all 0.15s; background: none; color: #5a5f7a; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .ch-tab:hover { background: #1a1d2e; color: #e0e0f0; } .ch-tab.active { background: rgba(124,106,247,0.15); color: #a78bfa; }
+    .ch-tab:hover { background: #1a1d2e; color: #e0e0f0; }
+    .ch-tab.active { background: rgba(124,106,247,0.15); color: #a78bfa; }
     .hdr-btn { background: none; border: 1px solid #1f2338; border-radius: 8px; color: #5a5f7a; padding: 5px 9px; cursor: pointer; font-size: 14px; transition: all 0.15s; }
     .hdr-btn:hover { background: #1e2230; color: #f0f0f6; border-color: #7c6af7; }
     .input-box:empty::before { content: attr(data-placeholder); color: #3a3f5c; pointer-events: none; }
+    .dm-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 8px; transition: background 0.15s; }
+    .dm-item:hover { background: #1a1d2e; }
     @keyframes toastIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
     @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
     .typing-dot { width:5px;height:5px;border-radius:50%;background:#5a5f7a;animation:typingBounce 1.2s infinite; }
-    .typing-dot:nth-child(2){animation-delay:.2s} .typing-dot:nth-child(3){animation-delay:.4s}
+    .typing-dot:nth-child(2){animation-delay:.2s}
+    .typing-dot:nth-child(3){animation-delay:.4s}
   `;
 
   return (
     <>
       <style>{css}</style>
+
       {showOnboard && <OnboardingOverlay role={currentUser.role} userName={currentUser.name} onFinish={completeOnboard} />}
+
       {showProfile && (
         <ProfileModal user={profileUser}
           onSave={(updates: Partial<ChatUser>) => {
@@ -323,7 +317,9 @@ const ChatRoomInner: React.FC = () => {
           onClose={() => setShowProfile(false)}
         />
       )}
+
       {showMeeting && <MeetingModal currentUser={profileUser} allUsers={realUsers} onSend={sendMeeting} onClose={() => setShowMeeting(false)} />}
+
       {toast && (
         <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9000, background: "#181b27", border: `1px solid ${toast.type === "success" ? "#34d399" : toast.type === "error" ? "#f87171" : "#7c6af7"}`, borderRadius: 12, padding: "12px 18px", fontSize: 13, color: "#f0f0f6", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", animation: "toastIn 0.3s ease", maxWidth: 320 }}>
           {toast.msg}
@@ -332,25 +328,34 @@ const ChatRoomInner: React.FC = () => {
 
       <div className="sc-root">
         <div className="sc-card">
+
           {/* TOP NAVBAR */}
           <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
+
+            {/* Brand + actions */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #1a1d2e" }}>
               <img src={roswaltLogo} alt="Roswalt" style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(201,169,110,0.5))" }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "Impact, 'Arial Narrow', sans-serif", fontSize: 13, color: "#c9a96e", letterSpacing: "0.08em", whiteSpace: "nowrap" as const }}>SmartCue ChatRoom</div>
                 <div style={{ fontSize: 8, color: "#3a3f5c", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Roswalt Realty</div>
               </div>
+
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                {/* 🔔 Notifications */}
+                {/* Notifications button */}
                 <div style={{ position: "relative" }}>
-                  <button className="hdr-btn" onClick={() => { setShowNotifs(p => !p); setShowDMList(false); if (!showNotifs) markNotifsRead(); }} title="System Notifications"
-                    style={{ position: "relative", fontSize: 12, padding: "4px 8px", color: showNotifs ? "#c9a96e" : undefined, borderColor: showNotifs ? "rgba(201,169,110,0.4)" : undefined }}>
+                  <button
+                    className="hdr-btn"
+                    onClick={() => { setShowNotifs(p => !p); setShowDMList(false); if (!showNotifs) markNotifsRead(); }}
+                    title="System Notifications"
+                    style={{ position: "relative", fontSize: 12, padding: "4px 8px", color: showNotifs ? "#c9a96e" : undefined, borderColor: showNotifs ? "rgba(201,169,110,0.4)" : undefined }}
+                  >
                     🔔
                     {unreadNotifCount > 0 && (
                       <span style={{ position: "absolute", top: -4, right: -4, background: "#c9a96e", color: "#000", fontSize: 8, fontWeight: 800, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{unreadNotifCount}</span>
                     )}
                   </button>
                 </div>
+
                 {/* DM button */}
                 <div style={{ position: "relative" }}>
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative", fontSize: 12, padding: "4px 8px" }}>
@@ -358,17 +363,22 @@ const ChatRoomInner: React.FC = () => {
                     {(() => {
                       if (!currentUser.id || currentUser.id === "me" || realUsers.length === 0) return null;
                       const total = realUsers.filter(u => u.id !== currentUser.id && u.email !== currentUser.email).reduce((sum, u) => sum + (unreadDMs[getDMChannelId(currentUser.id, u.id)] || 0), 0);
-                      return total > 0 ? <span style={{ position: "absolute", top: -4, right: -4, background: "#ef4444", color: "#fff", fontSize: 8, fontWeight: 800, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{total}</span> : null;
+                      return total > 0 ? (
+                        <span style={{ position: "absolute", top: -4, right: -4, background: "#ef4444", color: "#fff", fontSize: 8, fontWeight: 800, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{total}</span>
+                      ) : null;
                     })()}
                   </button>
                 </div>
+
                 <button className="hdr-btn" onClick={() => startCall()} title="Video Call" style={{ padding: "4px 7px" }}>📹</button>
                 {isAdmin && <button className="hdr-btn" onClick={() => setShowMeeting(true)} title="Meeting Link" style={{ padding: "4px 7px" }}>🔗</button>}
                 <button className="hdr-btn" onClick={() => setShowMusic(p => !p)} style={{ color: showMusic ? "#a78bfa" : "#5a5f7a", padding: "4px 7px" }}>🎵</button>
+
                 {/* Profile pill */}
                 <div onClick={() => setShowProfile(true)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 7px", borderRadius: 9, border: "1px solid #1f2338", transition: "all 0.15s", flexShrink: 0 }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#1e2230")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
                   <div style={{ position: "relative", flexShrink: 0 }}>
                     <img src={profileUser.avatar} alt="me" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "2px solid #7c6af7", display: "block" }} />
                     <div style={{ position: "absolute", bottom: -1, right: -1, width: 7, height: 7, background: "#34d399", borderRadius: "50%", border: "1.5px solid #111319" }} />
@@ -380,6 +390,7 @@ const ChatRoomInner: React.FC = () => {
                 </div>
               </div>
             </div>
+
             {/* Channel tabs */}
             {!dmTarget && (
               <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "4px 10px", overflowX: "auto" as const, scrollbarWidth: "none" as const }}>
@@ -391,6 +402,7 @@ const ChatRoomInner: React.FC = () => {
                 ))}
               </div>
             )}
+
             {/* DM header */}
             {dmTarget && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
@@ -402,10 +414,11 @@ const ChatRoomInner: React.FC = () => {
             )}
           </div>
 
-          {/* ── System Notifications Panel ── */}
+          {/* ── System Notifications Panel ──────────────────────────────── */}
           {showNotifs && (
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex", borderRadius: 16, overflow: "hidden" }}>
               <div style={{ width: 320, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+                {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>🔔 System Notifications</div>
@@ -413,6 +426,8 @@ const ChatRoomInner: React.FC = () => {
                   </div>
                   <button onClick={() => setShowNotifs(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 20, padding: 0, lineHeight: 1 }}>×</button>
                 </div>
+
+                {/* Notification list */}
                 <div style={{ flex: 1, overflowY: "auto" as const, padding: 8 }}>
                   {systemNotifications.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "40px 20px", color: "#3a3f5c", fontSize: 12 }}>
@@ -422,36 +437,89 @@ const ChatRoomInner: React.FC = () => {
                   ) : (
                     systemNotifications.map(notif => {
                       const n = notif as any;
-                      const notifType: string  = n.parsedNotifType || "task_assigned";
-                      const taskTitle: string  = n.parsedTaskTitle || "Task Notification";
-                      const displayText: string = n.displayText || notif.text || "";
-                      const icons: Record<string,string> = { task_assigned:"📋", task_approved:"✅", task_rework:"↩", task_reassigned:"🔄", task_cancelled:"⚠️", task_reminder:"⏰", autopulse_created:"⚡" };
-                      const colors: Record<string,string> = { task_assigned:"rgba(124,106,247,0.15)", task_approved:"rgba(52,211,153,0.1)", task_rework:"rgba(248,113,113,0.1)", task_reassigned:"rgba(251,191,36,0.1)", task_cancelled:"rgba(248,113,113,0.1)", task_reminder:"rgba(251,191,36,0.1)", autopulse_created:"rgba(201,169,110,0.1)" };
-                      const borders: Record<string,string> = { task_assigned:"rgba(124,106,247,0.3)", task_approved:"rgba(52,211,153,0.3)", task_rework:"rgba(248,113,113,0.3)", task_reassigned:"rgba(251,191,36,0.3)", task_cancelled:"rgba(248,113,113,0.3)", task_reminder:"rgba(251,191,36,0.3)", autopulse_created:"rgba(201,169,110,0.3)" };
+                      const notifType: string = n.notifType || "task_assigned";
+                      const icons: Record<string, string> = {
+                        task_assigned:    "📋",
+                        task_approved:    "✅",
+                        task_rework:      "↩",
+                        task_reassigned:  "🔄",
+                        task_cancelled:   "⚠️",
+                        task_reminder:    "⏰",
+                        autopulse_created:"⚡",
+                      };
+                      const colors: Record<string, string> = {
+                        task_assigned:    "rgba(124,106,247,0.15)",
+                        task_approved:    "rgba(52,211,153,0.1)",
+                        task_rework:      "rgba(248,113,113,0.1)",
+                        task_reassigned:  "rgba(251,191,36,0.1)",
+                        task_cancelled:   "rgba(248,113,113,0.1)",
+                        task_reminder:    "rgba(251,191,36,0.1)",
+                        autopulse_created:"rgba(201,169,110,0.1)",
+                      };
+                      const borders: Record<string, string> = {
+                        task_assigned:    "rgba(124,106,247,0.3)",
+                        task_approved:    "rgba(52,211,153,0.3)",
+                        task_rework:      "rgba(248,113,113,0.3)",
+                        task_reassigned:  "rgba(251,191,36,0.3)",
+                        task_cancelled:   "rgba(248,113,113,0.3)",
+                        task_reminder:    "rgba(251,191,36,0.3)",
+                        autopulse_created:"rgba(201,169,110,0.3)",
+                      };
                       const isRecent = Date.now() - new Date(notif.createdAt).getTime() < 5 * 60 * 1000;
                       return (
-                        <div key={notif.id}
+                        <div
+                          key={notif.id}
                           onClick={() => {
-                            if (notifType === "task_reminder" && n.parsedTaskId) {
-                              setSmartAssistTicket({ id: n.parsedTaskId, taskId: n.parsedTaskId, taskTitle, assignedTo: currentUser.email, assignedToName: currentUser.name, assignedBy: "", assignedByName: "", delayDuration: "Overdue", originalDeadline: "", timeSlot: "", reminderCount: 1, status: "open" });
+                            // ── Open SmartAssist if it's a TAT/reminder ────
+                            if (notifType === "task_reminder" && n.taskId) {
+                              setSmartAssistTicket({
+                                id:               `sa_${n.taskId}`,
+                                taskId:           n.taskId,
+                                taskTitle:        n.taskTitle || notif.text,
+                                assignedTo:       currentUser.email,
+                                assignedToName:   currentUser.name,
+                                assignedBy:       n.authorEmail || "",
+                                assignedByName:   n.authorName  || "Admin",
+                                delayDuration:    n.delayDuration || "Overdue",
+                                originalDeadline: n.dueDate || "",
+                                timeSlot:         n.timeSlot || "",
+                                reminderCount:    n.reminderCount || 1,
+                                status:           "open",
+                              });
                             }
                             setShowNotifs(false);
                           }}
-                          style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 6, cursor: "pointer", background: colors[notifType] || "rgba(255,255,255,0.03)", border: `1px solid ${borders[notifType] || "rgba(255,255,255,0.07)"}`, transition: "opacity 0.15s", position: "relative" as const }}
+                          style={{
+                            padding: "12px 14px", borderRadius: 10, marginBottom: 6, cursor: "pointer",
+                            background: colors[notifType] || "rgba(255,255,255,0.03)",
+                            border: `1px solid ${borders[notifType] || "rgba(255,255,255,0.07)"}`,
+                            transition: "opacity 0.15s",
+                            position: "relative" as const,
+                          }}
                           onMouseEnter={e => (e.currentTarget.style.opacity = "0.8")}
                           onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
                         >
-                          {isRecent && <div style={{ position: "absolute", top: 8, right: 8, width: 7, height: 7, borderRadius: "50%", background: "#c9a96e" }} />}
+                          {isRecent && (
+                            <div style={{ position: "absolute", top: 8, right: 8, width: 7, height: 7, borderRadius: "50%", background: "#c9a96e" }} />
+                          )}
                           <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                             <span style={{ fontSize: 20, flexShrink: 0 }}>{icons[notifType] || "📌"}</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0f0", marginBottom: 3, lineHeight: 1.3 }}>{taskTitle}</div>
-                              <div style={{ fontSize: 11, color: "#8a8fa8", lineHeight: 1.5, marginBottom: 5 }}>{displayText}</div>
-                              <div style={{ fontSize: 9, color: "#3a3f5c", fontFamily: "monospace" }}>
-                                {new Date(notif.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0f0", marginBottom: 3, lineHeight: 1.3 }}>
+                                {n.taskTitle || "Task Notification"}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#8a8fa8", lineHeight: 1.5, marginBottom: 5 }}>
+                                {notif.text}
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, fontSize: 9, color: "#3a3f5c", fontFamily: "monospace" }}>
+                                <span>{new Date(notif.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                {n.projectName && <span>· {n.projectName}</span>}
+                                {n.dueDate && <span>· Due {new Date(n.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
                               </div>
                               {notifType === "task_reminder" && (
-                                <div style={{ marginTop: 6, fontSize: 10, color: "#f59e0b", fontWeight: 700 }}>⏰ Tap to open Smart Assist →</div>
+                                <div style={{ marginTop: 6, fontSize: 10, color: "#f59e0b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                                  ⏰ Tap to open Smart Assist →
+                                </div>
                               )}
                             </div>
                           </div>
@@ -461,31 +529,36 @@ const ChatRoomInner: React.FC = () => {
                   )}
                 </div>
               </div>
+              {/* Dimmed backdrop — click to close */}
               <div style={{ flex: 1, background: "rgba(0,0,0,0.5)", cursor: "pointer" }} onClick={() => setShowNotifs(false)} />
             </div>
           )}
 
-          {/* DM Panel */}
+          {/* DM People Panel — contained inside the chat card */}
           {showDMList && (
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex", borderRadius: 16, overflow: "hidden" }}>
               <div style={{ width: 280, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+                {/* Panel header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>Direct Messages</div>
                   <button onClick={() => setShowDMList(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 20, padding: 0, lineHeight: 1 }}>×</button>
                 </div>
+                {/* User list */}
                 <div style={{ flex: 1, overflowY: "auto" as const, padding: "8px" }}>
                   {realUsers.filter(u => u.id !== currentUser.id && u.email !== currentUser.email).map((u: ChatUser) => {
-                    const dmCh   = currentUser.id && currentUser.id !== "me" ? getDMChannelId(currentUser.id, u.id) : "";
-                    const unread = dmCh ? (unreadDMs[dmCh] || 0) : 0;
-                    const dmMsgs = dmCh ? (messages[dmCh] || []).filter(m => !((m as any).authorId === "system" || m.author?.id === "system")) : [];
+                    const dmCh    = currentUser.id && currentUser.id !== "me" ? getDMChannelId(currentUser.id, u.id) : "";
+                    const unread  = dmCh ? (unreadDMs[dmCh] || 0) : 0;
+                    const dmMsgs  = dmCh ? (messages[dmCh] || []) : [];
                     const lastMsg = dmMsgs[dmMsgs.length - 1];
                     const isActive = dmTarget?.id === u.id;
                     return (
                       <div key={u.id} onClick={() => {
-                          setShowDMList(false); setDmTarget(u);
+                          setShowDMList(false);
+                          setDmTarget(u);
                           if (currentUser.id && currentUser.id !== "me") {
-                            const ch = getDMChannelId(currentUser.id, u.id);
-                            setActiveChannel(ch); clearDMUnread(ch);
+                            const dmCh = getDMChannelId(currentUser.id, u.id);
+                            setActiveChannel(dmCh);
+                            clearDMUnread(dmCh);
                           }
                         }}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", marginBottom: 2, background: isActive ? "rgba(124,106,247,0.15)" : unread > 0 ? "rgba(124,106,247,0.06)" : "transparent", transition: "background 0.15s" }}
@@ -502,7 +575,9 @@ const ChatRoomInner: React.FC = () => {
                             {unread > 0 && <span style={{ background: "#7c6af7", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 10, padding: "1px 7px", flexShrink: 0 }}>{unread}</span>}
                           </div>
                           <div style={{ fontSize: 11, color: unread > 0 ? "#a78bfa" : "#3a3f5c", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                            {lastMsg ? `${(lastMsg.author?.id || (lastMsg as any).authorId) === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 30) || "Attachment"}` : u.role}
+                            {lastMsg
+                              ? `${(lastMsg.author?.id || (lastMsg as any).authorId) === currentUser.id ? "You: " : ""}${lastMsg.text?.slice(0, 30) || "Attachment"}`
+                              : u.role}
                           </div>
                         </div>
                       </div>
@@ -510,10 +585,12 @@ const ChatRoomInner: React.FC = () => {
                   })}
                 </div>
               </div>
+              {/* Dimmed rest — click to close */}
               <div style={{ flex: 1, background: "rgba(0,0,0,0.5)", cursor: "pointer" }} onClick={() => setShowDMList(false)} />
             </div>
           )}
 
+          {/* Music panel */}
           {showMusic && (
             <div style={{ background: "#111319", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
               <YoutubePanel onShareToChat={onShareMusic} />
@@ -559,14 +636,79 @@ const ChatRoomInner: React.FC = () => {
         </div>
       </div>
 
+      {/* SmartAssist modal — triggered by tapping a reminder notification */}
       {smartAssistTicket && (
-        <SmartAssistModal ticket={smartAssistTicket} isDoer={true}
+        <SmartAssistModal
+          ticket={smartAssistTicket}
+          isDoer={true}
           onClose={() => setSmartAssistTicket(null)}
-          onSubmit={(_payload) => { showToast(`✓ Revised timeline submitted for "${smartAssistTicket.taskTitle}"`, "success"); setSmartAssistTicket(null); }}
+          onSubmit={async (payload) => {
+            const ticket = smartAssistTicket!;
+            const API = "https://adaptable-patience-production-45da.up.railway.app";
+
+            // ── 1. PATCH the task with revised date on backend ────────────
+            try {
+              await fetch(`${API}/api/tasks/${ticket.taskId}`, {
+                method:  "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  smartAssist: {
+                    revisedDate:      payload.revisedDate,
+                    revisedTimeSlot:  payload.revisedTimeSlot,
+                    delayReason:      payload.delayReason,
+                    status:           "awaiting-completion",
+                  },
+                }),
+              });
+            } catch (e) {
+              console.warn("[SmartAssist] Could not patch task:", e);
+            }
+
+            // ── 2. Send confirmation DM back to admin ─────────────────────
+            if (ticket.assignedBy && currentUser.id) {
+              const dmChannelId = "dm_" + [currentUser.email, ticket.assignedBy].sort().join("__");
+              try {
+                await fetch(`${API}/api/chat/messages`, {
+                  method:  "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    id:          `sa_reply_${ticket.taskId}_${Date.now()}`,
+                    channelId:   dmChannelId,
+                    authorId:    currentUser.id,
+                    authorName:  currentUser.name,
+                    authorRole:  currentUser.role,
+                    authorEmail: currentUser.email,
+                    authorAvatar:currentUser.avatar,
+                    author: {
+                      id: currentUser.id, name: currentUser.name,
+                      role: currentUser.role, email: currentUser.email,
+                      avatar: currentUser.avatar,
+                    },
+                    type:        "system_notification",
+                    notifType:   "task_reminder",
+                    text:        `📅 Revised timeline submitted for "${ticket.taskTitle}". New deadline: ${new Date(payload.revisedDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} (${payload.revisedTimeSlot}). Reason: ${payload.delayReason}`,
+                    taskId:      ticket.taskId,
+                    taskTitle:   ticket.taskTitle,
+                    reactions:   {},
+                    readBy:      [],
+                    createdAt:   new Date().toISOString(),
+                  }),
+                });
+              } catch (e) {
+                console.warn("[SmartAssist] Could not send confirmation DM:", e);
+              }
+            }
+
+            showToast(`✓ Revised timeline submitted for "${ticket.taskTitle}"`, "success");
+            setSmartAssistTicket(null);
+          }}
         />
       )}
+
       {showCall && (
-        <VideoCallPanel channel={activeChannel} currentUser={profileUser}
+        <VideoCallPanel
+          channel={activeChannel}
+          currentUser={profileUser}
           participants={realUsers.filter((u: ChatUser) => u.isOnline).slice(0, 4)}
           roomUrl={callRoomUrl || undefined}
           onEnd={() => { setShowCall(false); setCallRoomUrl(null); showToast("Call ended", "info"); }}
@@ -578,13 +720,15 @@ const ChatRoomInner: React.FC = () => {
 
 export const ChatRoom: React.FC = () => {
   const { user: appUser, teamMembers: rawMembers } = useUser();
+
   const currentUser: ChatUser = useMemo(() => ({
     id:       appUser?.id || appUser?.email || "me",
     name:     appUser?.name || appUser?.email?.split("@")[0] || "You",
     email:    appUser?.email || "me@roswalt.com",
     role:     (appUser?.role as UserRole) || "staff",
     avatar:   (appUser as any)?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(appUser?.name || "me")}&backgroundColor=1a1d2e&textColor=a78bfa`,
-    isOnline: true, status: "Available",
+    isOnline: true,
+    status:   "Available",
   }), [appUser?.id, appUser?.email, appUser?.name, (appUser as any)?.avatar, appUser?.role]);
 
   const teamMembers: ChatUser[] = useMemo(() => (rawMembers || []).filter(m => m && m.email).map(m => ({

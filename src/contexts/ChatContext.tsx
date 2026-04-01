@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { ChatMessage, ChatUser, Channel } from "../types/chat";
-import { io } from "socket.io-client";
+import io from "socket.io-client";
+
 type SocketInstance = ReturnType<typeof io>;
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
@@ -9,7 +10,7 @@ const API = "https://adaptable-patience-production-45da.up.railway.app";
 export const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");
 
-// Personal notification channel for a user
+// Personal notification channel for a user (TAT breach alerts, system DMs)
 export const getNotifChannelId = (userId: string) => `notif_${userId}`;
 
 export const CHANNELS: Channel[] = [
@@ -65,15 +66,25 @@ export const ChatProvider: React.FC<{
   useEffect(() => { activeChRef.current = activeChannel; }, [activeChannel]);
 
   // ── Derive systemNotifs from messages state ───────────────────────────────
-  // All messages with type === "system_notification" across every loaded channel
   const systemNotifs: ChatMessage[] = React.useMemo(() => {
     const all: ChatMessage[] = [];
     Object.values(messages).forEach(msgs => {
       msgs.forEach(m => {
-        if (m.channelId?.startsWith("notif_") || m.author?.id === "system" || (m as any).authorId === "system") all.push(m);
+        if (
+          m.channelId?.startsWith("notif_") ||
+          m.author?.id === "system" ||
+          (m as any).authorId === "system" ||
+          (m as any).type === "system_notification"
+        ) {
+          all.push(m);
+        }
       });
     });
-    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Deduplicate by id
+    const seen = new Set<string>();
+    return all
+      .filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [messages]);
 
   // ── Request notification permission ──────────────────────────────────────
@@ -120,9 +131,7 @@ export const ChatProvider: React.FC<{
   // ── Pre-load personal notification channel ────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
-    const notifCh = getNotifChannelId(currentUser.id);
-    loadMessages(notifCh);
-    // Also try by email as fallback key
+    loadMessages(getNotifChannelId(currentUser.id));
     if (currentUser.email) loadMessages(getNotifChannelId(currentUser.email));
   }, [currentUser?.id, currentUser?.email, loadMessages]);
 
@@ -134,7 +143,7 @@ export const ChatProvider: React.FC<{
 
   const connectedIdRef = useRef<string | null>(null);
 
-  // ── Socket.io connection ──────────────────────────────────────────────────
+  // ── Socket.io — connect ONCE, never reconnect unless user identity changes ─
   useEffect(() => {
     if (!currentUser?.id) return;
     if (connectedIdRef.current === currentUser.id && socketRef.current?.connected) return;
@@ -142,7 +151,7 @@ export const ChatProvider: React.FC<{
     console.log("[Chat] Connecting socket to", API);
     const socket = io(API, {
       transports:           ["websocket", "polling"],
-      withCredentials:      true,
+      reconnection:         true,
       reconnectionAttempts: 10,
       reconnectionDelay:    2000,
     });
@@ -155,7 +164,7 @@ export const ChatProvider: React.FC<{
       CHANNELS.forEach(ch => socket.emit("join_channel", ch.id));
       if (cu) {
         socket.emit("user_join", cu);
-        // Join personal notification channel — this is where SystemNotification posts
+        // Join personal notification channels (by id and email)
         socket.emit("join_channel", getNotifChannelId(cu.id));
         if (cu.email) socket.emit("join_channel", getNotifChannelId(cu.email));
         // Join all DM rooms
@@ -164,7 +173,7 @@ export const ChatProvider: React.FC<{
             socket.emit("join_channel", getDMChannelId(cu.id, member.id));
           }
         });
-        console.log("[Chat] Joined notif channel + DM rooms for:", cu.email);
+        console.log("[Chat] Joined as:", cu.email, "| Pre-joined notif + DM rooms");
       }
     });
 
@@ -190,7 +199,11 @@ export const ChatProvider: React.FC<{
         ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === cu?.id)
         : false;
 
-      const isSystemNotif = normalized.channelId?.startsWith("notif_") || normalized.author?.id === "system" || (normalized as any).authorId === "system";
+      const isSystemNotif =
+        normalized.channelId?.startsWith("notif_") ||
+        normalized.author?.id === "system" ||
+        (normalized as any).authorId === "system" ||
+        (normalized as any).type === "system_notification";
 
       // Desktop notification
       if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
