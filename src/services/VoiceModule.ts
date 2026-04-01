@@ -22,9 +22,6 @@ const API_BASE =
   process.env.REACT_APP_API_URL ||
   "https://adaptable-patience-production-45da.up.railway.app";
 
-// FIX 1 ── Auth secret read from env at module load.
-// Add REACT_APP_TTS_SECRET=<your-backend-shared-secret> to your .env file.
-// The backend middleware must accept: Authorization: Bearer <secret>
 const TTS_SECRET = process.env.REACT_APP_TTS_SECRET ?? "";
 
 if (!TTS_SECRET && typeof window !== "undefined") {
@@ -34,11 +31,7 @@ if (!TTS_SECRET && typeof window !== "undefined") {
   );
 }
 
-// ── Default voice — used immediately; overrideable via setElevenLabsVoice() ──
 const DEFAULT_VOICE_ID = "ThT5KcBeYPX3keUQqHPh";
-
-// FIX 2 ── Initialise to the default so no call ever fires with null voiceId.
-// setElevenLabsVoice() can still override this at any time.
 let _selectedVoice: string = DEFAULT_VOICE_ID;
 
 export function setElevenLabsVoice(voiceId: string): void {
@@ -65,7 +58,6 @@ function getGreetingWord(): string {
   return map[getTimeOfDay()];
 }
 
-// ── Login greeting scripts ────────────────────────────────────────────────────
 const LOGIN_SCRIPTS = [
   "{greeting}, {name}. Welcome to your Roswalt SmartCue dashboard. You are all set.",
   "{greeting}, {name}. Good to have you back. Your dashboard is ready.",
@@ -75,7 +67,6 @@ const LOGIN_SCRIPTS = [
 
 let _loginScriptIndex = -1;
 
-/** Returns Promise<void> — resolves when greeting audio fully finishes. */
 export function greetUser(fullName?: string): Promise<void> {
   let idx = Math.floor(Math.random() * LOGIN_SCRIPTS.length);
   if (LOGIN_SCRIPTS.length > 1 && idx === _loginScriptIndex) {
@@ -92,7 +83,6 @@ export function greetUser(fullName?: string): Promise<void> {
   return _speak(text);
 }
 
-// ── Task & auth event scripts ─────────────────────────────────────────────────
 const VOICE_SCRIPTS: Record<VoiceEvent, string[]> = {
   task_assigned: [
     "New task assigned. Your team member has been notified.",
@@ -149,36 +139,85 @@ let _lastIndex: Partial<Record<VoiceEvent, number>> = {};
 function getScript(event: VoiceEvent): string {
   const scripts = VOICE_SCRIPTS[event];
   const lastIdx = _lastIndex[event] ?? -1;
-
   let idx = Math.floor(Math.random() * scripts.length);
   if (scripts.length > 1 && idx === lastIdx) {
     idx = (idx + 1) % scripts.length;
   }
-
   _lastIndex[event] = idx;
   return scripts[idx];
 }
 
-// ── FIX 3: Speak queue ────────────────────────────────────────────────────────
-// Prevents concurrent Audio instances from overlapping. Each call is serialised
-// behind the previous one, so rapid successive announcements play in order.
+// ─────────────────────────────────────────────────────────────────────────────
+// GLOBAL VOICE TOGGLE
+// One flag controls ALL voice output (speakText, announceVoice, greetUser).
+// Call setGlobalVoiceEnabled(false) from any dashboard to silence everything.
+// Call loadGlobalVoiceEnabled(email) on login to restore the user's preference.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VOICE_API_BASE =
+  process.env.REACT_APP_API_URL ||
+  "https://adaptable-patience-production-45da.up.railway.app";
+
+const LS_VOICE_KEY = "smartcue_voice_enabled";
+
+// Module-level flag — checked inside _speak() before every TTS call
+let _voiceEnabled: boolean = (() => {
+  try { return localStorage.getItem(LS_VOICE_KEY) !== "false"; } catch { return true; }
+})();
+
+/** Set voice on/off. Saves to localStorage immediately + MongoDB in background. */
+export function setGlobalVoiceEnabled(enabled: boolean, email?: string): void {
+  _voiceEnabled = enabled;
+  try { localStorage.setItem(LS_VOICE_KEY, String(enabled)); } catch {}
+  if (email) {
+    fetch(`${VOICE_API_BASE}/api/users/${encodeURIComponent(email.toLowerCase())}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voiceEnabled: enabled }),
+    }).catch(err => console.warn("[VoiceModule] Could not save voice preference:", err));
+  }
+  console.log(`[VoiceModule] Voice ${enabled ? "ON ✓" : "OFF ✗"}`);
+}
+
+/** Call on login — loads preference from MongoDB, falls back to localStorage. */
+export async function loadGlobalVoiceEnabled(email: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${VOICE_API_BASE}/api/users/${encodeURIComponent(email.toLowerCase())}`);
+    if (res.ok) {
+      const user = await res.json();
+      if (typeof user.voiceEnabled === "boolean") {
+        _voiceEnabled = user.voiceEnabled;
+        try { localStorage.setItem(LS_VOICE_KEY, String(user.voiceEnabled)); } catch {}
+        return user.voiceEnabled;
+      }
+    }
+  } catch {}
+  // Fallback: localStorage
+  try {
+    const stored = localStorage.getItem(LS_VOICE_KEY);
+    _voiceEnabled = stored !== "false";
+  } catch {}
+  return _voiceEnabled;
+}
+
+/** Read current state without fetching. */
+export function getGlobalVoiceEnabled(): boolean {
+  return _voiceEnabled;
+}
+
 let _speakQueue: Promise<void> = Promise.resolve();
 
-// ── Backend TTS Call ──────────────────────────────────────────────────────────
 async function _speakWithBackend(text: string): Promise<void> {
+  // ── Global voice gate — no API call made when voice is OFF ──────────────
+  if (!_voiceEnabled) return;
   try {
     const response = await fetch(`${API_BASE}/api/tts`, {
       method:  "POST",
       headers: {
         "Content-Type":  "application/json",
-        // FIX 1 ── Send the shared secret so the backend accepts the request
         ...(TTS_SECRET ? { "Authorization": `Bearer ${TTS_SECRET}` } : {}),
       },
-      body: JSON.stringify({
-        text,
-        // FIX 2 ── _selectedVoice is never null; always resolves to a valid ID
-        voiceId: _selectedVoice,
-      }),
+      body: JSON.stringify({ text, voiceId: _selectedVoice }),
     });
 
     if (!response.ok) {
@@ -196,41 +235,23 @@ async function _speakWithBackend(text: string): Promise<void> {
       audio.play().catch(() => resolve());
     });
   } catch (err) {
-    // Always resolve — login/gate logic must never hang on network errors
     console.error("[VoiceModule] TTS error:", err);
   }
 }
 
-// ── Main Speak Controller ─────────────────────────────────────────────────────
 function _speak(text: string): Promise<void> {
-  // Chain onto the existing queue so calls never overlap
   _speakQueue = _speakQueue.then(() => _speakWithBackend(text));
   return _speakQueue;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
-/**
- * Fire a named voice event via ElevenLabs.
- * Returns Promise<void> that resolves when the audio has FULLY finished.
- * Await this in auth flows to gate navigation on speech completion.
- *
- *   await announceVoice("Access_Granted");
- *   setVoiceAccessGranted(true); // ← fires AFTER audio ends
- */
 export function announceVoice(event: VoiceEvent): Promise<void> {
   return _speak(getScript(event));
 }
 
-/**
- * Speak arbitrary text via ElevenLabs.
- * Returns Promise<void> that resolves when audio finishes.
- */
 export function speakText(text: string): Promise<void> {
   return _speak(text);
 }
 
-// ── Debug Helper ──────────────────────────────────────────────────────────────
 export function logVoiceStatus(): void {
   console.log("🎤 Voice Module Status:");
   console.log("  Backend API:    ", API_BASE);
@@ -238,10 +259,7 @@ export function logVoiceStatus(): void {
   console.log("  Auth secret set:", !!TTS_SECRET);
 }
 
-// ── Init (runs once on module load) ──────────────────────────────────────────
 if (typeof window !== "undefined") {
   console.log("🎤 Voice Module loaded (Backend ElevenLabs Only)");
-  // logVoiceStatus is called AFTER all module-level initialisers have run,
-  // so _selectedVoice will correctly show DEFAULT_VOICE_ID instead of null.
   logVoiceStatus();
 }

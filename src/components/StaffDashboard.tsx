@@ -4,7 +4,7 @@ import { useUser, Task, AssistanceTicket, TicketType } from "../contexts/UserCon
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
-import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
+import { greetUser, setElevenLabsVoice, speakText, loadGlobalVoiceEnabled } from "../services/VoiceModule";
 import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
@@ -1780,6 +1780,12 @@ const StaffDashboard: React.FC = () => {
   });
   const profileInputRef = useRef<HTMLInputElement>(null);
   const greetedRef = useRef(false);
+
+  // Voice preference loaded from MongoDB — gate lives inside VoiceModule
+  useEffect(() => {
+    if (!user?.email) return;
+    loadGlobalVoiceEnabled(user.email); // sets module-level flag, no state needed
+  }, [user?.email]);
 
   useEffect(() => {
     if (greetedRef.current) return;
@@ -4410,8 +4416,16 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <span className="badge badge-purple">{getProjectName(task.projectId)}</span>
         )}
         {(task as any).isAutopulse && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 4, background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)", fontSize: 8, fontWeight: 800, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
-            ⚡ AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 3,
+            padding: "2px 6px", borderRadius: 4,
+            background: (task as any).autopulsePaused ? "rgba(126,132,163,0.1)" : "rgba(201,169,110,0.1)",
+            border: `1px solid ${(task as any).autopulsePaused ? "rgba(126,132,163,0.3)" : "rgba(201,169,110,0.3)"}`,
+            fontSize: 8, fontWeight: 800,
+            color: (task as any).autopulsePaused ? "#7e84a3" : "#c9a96e",
+            textTransform: "uppercase" as const, letterSpacing: "0.5px"
+          }}>
+            {(task as any).autopulsePaused ? "⏸ PAUSED" : `⚡ AUTOPULSE${(task as any).autopulseGeneration > 0 ? ` #${(task as any).autopulseGeneration}` : ""}`}
           </span>
         )}
       </div>

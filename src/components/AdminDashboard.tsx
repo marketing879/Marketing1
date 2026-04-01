@@ -15,7 +15,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import SmartAssistModal from "./Smartassistmodal";
   import ProgressTracker from "./Progresstracker";
   import { sendTaskWhatsApp } from "../services/WhatsAppService";
-  import { greetUser, setElevenLabsVoice, announceVoice, speakText } from "../services/VoiceModule";
+  import { greetUser, setElevenLabsVoice, announceVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
   import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
@@ -896,19 +896,22 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
     const [activeTab,       setActiveTab]       = useState("analytics");
     const [showCreateModal, setShowCreateModal] = useState(false);
-    // ── Voice module toggle — persisted so it survives refresh ───────────────
-    const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
-      try { return localStorage.getItem("ad_voice_enabled") !== "false"; } catch { return true; }
-    });
+    // ── Voice module toggle — gate lives in VoiceModule itself ─────────────
+    const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getGlobalVoiceEnabled());
+
+    // Load user preference from MongoDB on login
+    useEffect(() => {
+      if (!user?.email) return;
+      loadGlobalVoiceEnabled(user.email).then(setVoiceEnabled);
+    }, [user?.email]);
+
     const toggleVoice = () => {
       setVoiceEnabled(prev => {
         const next = !prev;
-        try { localStorage.setItem("ad_voice_enabled", String(next)); } catch {}
+        setGlobalVoiceEnabled(next, user?.email); // saves to MongoDB + localStorage
         return next;
       });
     };
-    // Wrapper — only speaks when voice is enabled
-    const speak = (text: string) => { if (voiceEnabled) speakText(text); };
     const [showAIPanel,     setShowAIPanel]     = useState(false);
     const [toastMsg,        setToastMsg]        = useState<string | null>(null);
     const [adminProfileImg, setAdminProfileImg] = useState<string | null>(null);
@@ -968,7 +971,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         attachments:  raiseTicketAttachments,
         targetTaskId: raiseTicketTask.id,
       });
-      speak(
+      speakText(
         raiseTicketType === "delete-request"
           ? `Delete request submitted for ${raiseTicketTask.title}. Awaiting superadmin approval.`
           : `Assistance ticket raised for ${raiseTicketTask.title}.`
@@ -1113,7 +1116,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
     setTimeout(async () => {
       // 1. ElevenLabs time-of-day greeting — only if voice is ON
-      if (voiceEnabled) await greetUser(fullName);
+      await greetUser(fullName);
 
       // 2. Task-aware briefing summary
       const allTasks       = freshTasks as Task[];
@@ -1137,7 +1140,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       if (parts.length === 0)
         parts.push("Your team is fully on track. No immediate action required.");
 
-      await speak(parts.join(" "));
+      await speakText(parts.join(" "));
     }, 800);
 
     setTimeout(() => setShowFlashPanel(true), 1400);
@@ -1156,7 +1159,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         const parts: string[] = [];
         if (reviewNow > 0) parts.push(`${reviewNow} task${reviewNow !== 1 ? "s are" : " is"} waiting for approval in the Review tab.`);
         if (pendingTickets.length > 0) parts.push(`${pendingTickets.length} assistance ticket${pendingTickets.length !== 1 ? "s" : ""} need your review.`);
-        await speak(parts.join(" "));
+        await speakText(parts.join(" "));
       }, 2200);
       if (pendingTickets.length === 0) return;
     } else { return; }
@@ -1181,7 +1184,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     }
 
     setTimeout(async () => {
-      await speak(script);
+      await speakText(script);
     }, 3500);
   }, [showFlashPanel]);
 
@@ -1552,13 +1555,13 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
     const cycleDays = (updatedTask as any).autopulseCycleDays ?? 7;
     if ((updatedTask as any).isAutopulse) {
-      speak(
+      speakText(
         `Task approved and forwarded to Superadmin. ` +
         `As this is an Autopulse task, a new instance will be automatically assigned to ${getName(updatedTask.assignedTo)} in ${cycleDays} days.`
       );
       toast(`✓ Approved — next Autopulse cycle scheduled in ${cycleDays} days.`);
     } else {
-      speak("Task approved and forwarded to Superadmin for final sign-off.");
+      speakText("Task approved and forwarded to Superadmin for final sign-off.");
       toast("✓ Approved — forwarded to Superadmin.");
     }
   };
@@ -1584,7 +1587,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(selectedTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
       setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
-      speak("Task sent back for rework. The staff member has been notified.");
+      speakText("Task sent back for rework. The staff member has been notified.");
       toast("↩ Sent back for rework.");
     };
 
@@ -1629,7 +1632,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // ── Voice: handover callout to the ORIGINAL doer ──────────────────────
       const adminName = (user as { name?: string }).name ?? user?.email ?? "Your admin";
       const taskTitle = reassignTask.title;
-      speak(
+      speakText(
         `Attention ${previousName}. ${adminName} has reassigned the task "${taskTitle}" to ${newName}. ` +
         `Please hand over all your completed creatives, drafts, and working files for this task to ${newName} immediately. ` +
         `Your assignment for this task has been cancelled. Coordinate with ${newName} to ensure a smooth handover.`
@@ -1711,7 +1714,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
 
-      speak(
+      speakText(
         `TAT extension approved for ${doerName} on the task "${tatExtTask.title}". ` +
         `New deadline is ${new Date(ext.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })} at ${ext.requestedNewTimeSlot}. ` +
         `${tatExtResponse ? tatExtResponse : "Please ensure timely delivery."}`
@@ -1752,7 +1755,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
 
-      speak(
+      speakText(
         `TAT extension request for "${tatExtTask.title}" has been denied. ` +
         `${doerName} has been notified. Reason: ${tatExtResponse}. ` +
         `Note: If the deadline is not met, the task will be frozen automatically.`
@@ -1794,7 +1797,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // ── Close modal, show overlay, speak "please wait" ──
       setShowCreateModal(false);
       setShowAssigningOverlay(true);
-      speak("Please wait. The task is getting assigned.");
+      speakText("Please wait. The task is getting assigned.");
 
       const assigneeName = allMembers.find(m => m.email === newTask.assignedTo)?.name || newTask.assignedTo;
 
@@ -1828,7 +1831,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       // Wait 2s for backend to confirm, then play success voice and hide overlay
       setTimeout(() => {
         console.log("✅ Task assigned:", newTaskObj.id, "->", assigneeName);
-        speak(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
+        speakText(`Task successfully assigned. ${newTask.title} has been assigned to ${assigneeName}. They will be notified immediately.`);
         setTimeout(() => setShowAssigningOverlay(false), 3500);
       }, 2000);
 
@@ -1887,7 +1890,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         const typeLabel = newest?.ticketType === "delete-request"
           ? "delete request"
           : newest?.ticketType?.replace("-", " ") ?? "assistance ticket";
-        speak(`Attention. You have a new ${typeLabel} from ${newest?.raisedBy ?? "a team member"} regarding ${newest?.taskTitle ?? "a task"}. Please review at your earliest.`);
+        speakText(`Attention. You have a new ${typeLabel} from ${newest?.raisedBy ?? "a team member"} regarding ${newest?.taskTitle ?? "a task"}. Please review at your earliest.`);
       }
       prevTicketCountRef.current = curr;
     }, [pendingAssistanceTickets.length]);
@@ -1908,7 +1911,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
           const due = task.dueDate
             ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
             : "no deadline set";
-          speak(
+          speakText(
             `Attention. You have been assigned a new task by ${from}. ` +
             `Task: ${task.title}. Priority: ${task.priority ?? "medium"}. Due by ${due}.`
           );
@@ -1924,7 +1927,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       const score = (selectedTask as any).scoreData;
       const doerName = getName(selectedTask.assignedTo);
       if (score) {
-        speak(
+        speakText(
           `Reviewing task: ${selectedTask.title}, assigned to ${doerName}. ` +
           `AI Score: ${score.percentScore} out of 100. Grade: ${score.grade}. ` +
           `${score.verdict || ""} ` +
@@ -1932,7 +1935,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
           `Please review the attachments and score report before approving.`
         );
       } else {
-        speak(`Reviewing task: ${selectedTask.title}, assigned to ${doerName}. No AI score available. Please review the submission.`);
+        speakText(`Reviewing task: ${selectedTask.title}, assigned to ${doerName}. No AI score available. Please review the submission.`);
       }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showReviewModal, selectedTask?.id]);
@@ -3212,7 +3215,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       onClick={() => {
                         if (!ticketReviewNote.trim()) return;
                         rejectAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
-                        speak(`Assistance ticket rejected for ${selectedTicket.taskTitle}. The staff member has been notified.`);
+                        speakText(`Assistance ticket rejected for ${selectedTicket.taskTitle}. The staff member has been notified.`);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
                         toast("✗ Ticket rejected — doer notified");
@@ -3236,7 +3239,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                         if (!ticketReviewNote.trim()) return;
                         approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
                         const linkedTaskId = selectedTicket.taskId;
-                        speak(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
+                        speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
                         toast("✓ Ticket approved — task unfrozen · Doer notified");
