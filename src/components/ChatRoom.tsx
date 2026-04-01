@@ -9,6 +9,7 @@ import { YoutubePanel } from "./YoutubePanel";
 import { VideoCallPanel } from "./VideoCallPanel";
 import { ProfileModal } from "./ProfileModal";
 import { MeetingModal } from "./MeetingModal";
+import SmartAssistModal, { SmartAssistTicket } from "./Smartassistmodal";
 
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
   staff:      { bg: "rgba(110,231,183,0.12)", color: "#6ee7b7" },
@@ -90,8 +91,38 @@ const ChatRoomInner: React.FC = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showMeeting, setShowMeeting] = useState(false);
   const [showPicker,  setShowPicker]  = useState(false);
-  const [showDMList,  setShowDMList]  = useState(false);
-  const [showMusic,   setShowMusic]   = useState(false);
+  const [showDMList,       setShowDMList]       = useState(false);
+  const [showMusic,        setShowMusic]        = useState(false);
+  const [showNotifs,       setShowNotifs]       = useState(false);
+  const [smartAssistTicket,setSmartAssistTicket]= useState<SmartAssistTicket | null>(null);
+
+  // Collect all system_notification messages from every DM channel for this user
+  const systemNotifications = useMemo(() => {
+    const all: (ChatMessage & { notifType?: string; taskId?: string; taskTitle?: string; projectName?: string })[] = [];
+    Object.values(messages).forEach(chMsgs => {
+      chMsgs.forEach(m => {
+        if ((m as any).type === "system_notification" && (
+          (m as any).authorEmail === currentUser.email ||
+          m.channelId?.includes(currentUser.id) ||
+          m.channelId?.includes(currentUser.email)
+        )) {
+          all.push(m as any);
+        }
+      });
+    });
+    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [messages, currentUser.id, currentUser.email]);
+
+  const unreadNotifCount = useMemo(() => {
+    const key = "smartcue_notif_read_" + currentUser.email;
+    const lastRead = localStorage.getItem(key) || "0";
+    return systemNotifications.filter(n => new Date(n.createdAt).getTime() > parseInt(lastRead)).length;
+  }, [systemNotifications, currentUser.email]);
+
+  const markNotifsRead = () => {
+    const key = "smartcue_notif_read_" + currentUser.email;
+    localStorage.setItem(key, String(Date.now()));
+  };
   const [profileUser, setProfileUser] = useState<ChatUser>(currentUser);
   const [inputText,   setInputText]   = useState("");
   const [dmTarget,    setDmTarget]    = useState<ChatUser | null>(null);
@@ -213,7 +244,7 @@ const ChatRoomInner: React.FC = () => {
                 <button onClick={() => startCall(msg.meeting!.link)} style={{ background: "#7c6af7", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Join</button>
               </div>
             )}
-            {(msg.type === "text" || msg.type === "voice" || (!msg.type && msg.text)) && (
+            {(msg.type === "text" || msg.type === "voice" || (!msg.type && msg.text)) && (msg as any).type !== "system_notification" && (
               <div style={{ fontSize: 14, lineHeight: 1.65, color: "#d0d0e8", wordBreak: "break-word" as const }} dangerouslySetInnerHTML={{ __html: linkify(esc(msg.text || "")) }} />
             )}
             {reactions.length > 0 && (
@@ -301,6 +332,21 @@ const ChatRoomInner: React.FC = () => {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                {/* Notifications button */}
+                <div style={{ position: "relative" }}>
+                  <button
+                    className="hdr-btn"
+                    onClick={() => { setShowNotifs(p => !p); setShowDMList(false); if (!showNotifs) markNotifsRead(); }}
+                    title="System Notifications"
+                    style={{ position: "relative", fontSize: 12, padding: "4px 8px", color: showNotifs ? "#c9a96e" : undefined, borderColor: showNotifs ? "rgba(201,169,110,0.4)" : undefined }}
+                  >
+                    🔔
+                    {unreadNotifCount > 0 && (
+                      <span style={{ position: "absolute", top: -4, right: -4, background: "#c9a96e", color: "#000", fontSize: 8, fontWeight: 800, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #111319" }}>{unreadNotifCount}</span>
+                    )}
+                  </button>
+                </div>
+
                 {/* DM button */}
                 <div style={{ position: "relative" }}>
                   <button className="hdr-btn" onClick={() => setShowDMList(p => !p)} title="Direct Messages" style={{ position: "relative", fontSize: 12, padding: "4px 8px" }}>
@@ -358,6 +404,126 @@ const ChatRoomInner: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* ── System Notifications Panel ──────────────────────────────── */}
+          {showNotifs && (
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: "flex", borderRadius: 16, overflow: "hidden" }}>
+              <div style={{ width: 320, background: "#111319", borderRight: "1px solid #1a1d2e", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid #1a1d2e", flexShrink: 0 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>🔔 System Notifications</div>
+                    <div style={{ fontSize: 10, color: "#3a3f5c", marginTop: 2 }}>{systemNotifications.length} notification{systemNotifications.length !== 1 ? "s" : ""} — task events &amp; reminders</div>
+                  </div>
+                  <button onClick={() => setShowNotifs(false)} style={{ background: "none", border: "none", color: "#5a5f7a", cursor: "pointer", fontSize: 20, padding: 0, lineHeight: 1 }}>×</button>
+                </div>
+
+                {/* Notification list */}
+                <div style={{ flex: 1, overflowY: "auto" as const, padding: 8 }}>
+                  {systemNotifications.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "40px 20px", color: "#3a3f5c", fontSize: 12 }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
+                      No notifications yet.<br/>Task events will appear here.
+                    </div>
+                  ) : (
+                    systemNotifications.map(notif => {
+                      const n = notif as any;
+                      const notifType: string = n.notifType || "task_assigned";
+                      const icons: Record<string, string> = {
+                        task_assigned:    "📋",
+                        task_approved:    "✅",
+                        task_rework:      "↩",
+                        task_reassigned:  "🔄",
+                        task_cancelled:   "⚠️",
+                        task_reminder:    "⏰",
+                        autopulse_created:"⚡",
+                      };
+                      const colors: Record<string, string> = {
+                        task_assigned:    "rgba(124,106,247,0.15)",
+                        task_approved:    "rgba(52,211,153,0.1)",
+                        task_rework:      "rgba(248,113,113,0.1)",
+                        task_reassigned:  "rgba(251,191,36,0.1)",
+                        task_cancelled:   "rgba(248,113,113,0.1)",
+                        task_reminder:    "rgba(251,191,36,0.1)",
+                        autopulse_created:"rgba(201,169,110,0.1)",
+                      };
+                      const borders: Record<string, string> = {
+                        task_assigned:    "rgba(124,106,247,0.3)",
+                        task_approved:    "rgba(52,211,153,0.3)",
+                        task_rework:      "rgba(248,113,113,0.3)",
+                        task_reassigned:  "rgba(251,191,36,0.3)",
+                        task_cancelled:   "rgba(248,113,113,0.3)",
+                        task_reminder:    "rgba(251,191,36,0.3)",
+                        autopulse_created:"rgba(201,169,110,0.3)",
+                      };
+                      const isRecent = Date.now() - new Date(notif.createdAt).getTime() < 5 * 60 * 1000;
+                      return (
+                        <div
+                          key={notif.id}
+                          onClick={() => {
+                            // ── Open SmartAssist if it's a TAT/reminder ────
+                            if (notifType === "task_reminder" && n.taskId) {
+                              setSmartAssistTicket({
+                                id:               n.taskId,
+                                taskId:           n.taskId,
+                                taskTitle:        n.taskTitle || notif.text,
+                                assignedTo:       currentUser.email,
+                                assignedToName:   currentUser.name,
+                                assignedBy:       n.authorEmail || "",
+                                assignedByName:   n.authorName  || "",
+                                delayDuration:    "Overdue",
+                                originalDeadline: n.dueDate || "",
+                                timeSlot:         "",
+                                reminderCount:    1,
+                                status:           "open",
+                              });
+                            }
+                            setShowNotifs(false);
+                          }}
+                          style={{
+                            padding: "12px 14px", borderRadius: 10, marginBottom: 6, cursor: "pointer",
+                            background: colors[notifType] || "rgba(255,255,255,0.03)",
+                            border: `1px solid ${borders[notifType] || "rgba(255,255,255,0.07)"}`,
+                            transition: "opacity 0.15s",
+                            position: "relative" as const,
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = "0.8")}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+                        >
+                          {isRecent && (
+                            <div style={{ position: "absolute", top: 8, right: 8, width: 7, height: 7, borderRadius: "50%", background: "#c9a96e" }} />
+                          )}
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>{icons[notifType] || "📌"}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#e0e0f0", marginBottom: 3, lineHeight: 1.3 }}>
+                                {n.taskTitle || "Task Notification"}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#8a8fa8", lineHeight: 1.5, marginBottom: 5 }}>
+                                {notif.text}
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, fontSize: 9, color: "#3a3f5c", fontFamily: "monospace" }}>
+                                <span>{new Date(notif.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                {n.projectName && <span>· {n.projectName}</span>}
+                                {n.dueDate && <span>· Due {new Date(n.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
+                              </div>
+                              {notifType === "task_reminder" && (
+                                <div style={{ marginTop: 6, fontSize: 10, color: "#f59e0b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                                  ⏰ Tap to open Smart Assist →
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+              {/* Dimmed backdrop — click to close */}
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.5)", cursor: "pointer" }} onClick={() => setShowNotifs(false)} />
+            </div>
+          )}
 
           {/* DM People Panel — contained inside the chat card */}
           {showDMList && (
@@ -460,6 +626,19 @@ const ChatRoomInner: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* SmartAssist modal — triggered by tapping a reminder notification */}
+      {smartAssistTicket && (
+        <SmartAssistModal
+          ticket={smartAssistTicket}
+          isDoer={true}
+          onClose={() => setSmartAssistTicket(null)}
+          onSubmit={(payload) => {
+            showToast(`✓ Revised timeline submitted for "${smartAssistTicket.taskTitle}"`, "success");
+            setSmartAssistTicket(null);
+          }}
+        />
+      )}
 
       {showCall && (
         <VideoCallPanel

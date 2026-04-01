@@ -14,7 +14,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import HistoryTimeline from "./Historytimeline";
   import SmartAssistModal from "./Smartassistmodal";
   import ProgressTracker from "./Progresstracker";
-  import { sendTaskWhatsApp } from "../services/WhatsAppService";
+  import { sendSystemDM }     from "../services/SystemNotification";
   import { greetUser, setElevenLabsVoice, announceVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
   import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
@@ -1538,20 +1538,18 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     updateTask(selectedTask.id, updatedTask as never);
     syncTaskToBackend(updatedTask);
 
-    const assignee = allMembers.find((m) => m.email === selectedTask.assignedTo);
-    if (assignee?.phone) {
-      sendTaskWhatsApp({
-        recipientPhone:  assignee.phone,
-        taskTitle:       selectedTask.title,
-        taskDescription: `✅ Your task has been APPROVED by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}. ${reviewComments ? "Notes: " + reviewComments : ""}`,
-        priority:        selectedTask.priority,
-        dueDate:         selectedTask.dueDate,
-        timeSlot:        selectedTask.timeSlot ?? "",
-        assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
-        projectName:     activeProjects.find((p) => p.id === selectedTask.projectId)?.name ?? "—",
-        taskId:          selectedTask.id,
-      });
-    }
+    sendSystemDM({
+      adminEmail:  user?.email ?? "",
+      adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+      doerEmail:   selectedTask.assignedTo,
+      taskId:      selectedTask.id,
+      taskTitle:   selectedTask.title,
+      message:     `✅ Your task "${selectedTask.title}" has been APPROVED by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}.${reviewComments ? " Notes: " + reviewComments : " Great work — awaiting Superadmin sign-off."}`,
+      notifType:   "task_approved",
+      priority:    selectedTask.priority,
+      dueDate:     selectedTask.dueDate,
+      projectName: activeProjects.find((p) => p.id === selectedTask.projectId)?.name ?? "",
+    });
     setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
     const cycleDays = (updatedTask as any).autopulseCycleDays ?? 7;
     if ((updatedTask as any).isAutopulse) {
@@ -1638,41 +1636,34 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         `Your assignment for this task has been cancelled. Coordinate with ${newName} to ensure a smooth handover.`
       );
 
-      // ── WhatsApp to new doer ──────────────────────────────────────────────
-      const newMember = allMembers.find(m => m.email === reassignTo);
-      if (newMember?.phone) {
-        try {
-          sendTaskWhatsApp({
-            recipientPhone:  newMember.phone,
-            taskTitle,
-            taskDescription: `🔄 This task has been REASSIGNED to you from ${previousName}. ${reassignReason ? "Reason: " + reassignReason + ". " : ""}Please coordinate with ${previousName} for handover of any existing creatives.`,
-            priority:        reassignTask.priority,
-            dueDate:         reassignTask.dueDate,
-            timeSlot:        reassignTask.timeSlot ?? "",
-            assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
-            projectName:     activeProjects.find(p => p.id === reassignTask.projectId)?.name ?? "—",
-            taskId:          reassignTask.id,
-          });
-        } catch { /* WhatsApp failure is non-blocking */ }
-      }
+      // ── Chatroom DM to new doer ───────────────────────────────────────────
+      const projectName = activeProjects.find(p => p.id === reassignTask.projectId)?.name ?? "";
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName,
+        doerEmail:   reassignTo,
+        taskId:      reassignTask.id,
+        taskTitle,
+        message:     `🔄 Task REASSIGNED to you: "${taskTitle}". ${reassignReason ? "Reason: " + reassignReason + ". " : ""}Please coordinate with ${previousName} for handover of all existing creatives and files.`,
+        notifType:   "task_reassigned",
+        priority:    reassignTask.priority,
+        dueDate:     reassignTask.dueDate,
+        projectName,
+      });
 
-      // ── WhatsApp to original doer (cancellation notice) ──────────────────
-      const prevMember = allMembers.find(m => m.email === previousAssignee);
-      if (prevMember?.phone) {
-        try {
-          sendTaskWhatsApp({
-            recipientPhone:  prevMember.phone,
-            taskTitle,
-            taskDescription: `⚠️ Your assignment for this task has been CANCELLED and reassigned to ${newName}. Please hand over all your work-in-progress creatives and files to ${newName} immediately.`,
-            priority:        reassignTask.priority,
-            dueDate:         reassignTask.dueDate,
-            timeSlot:        reassignTask.timeSlot ?? "",
-            assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
-            projectName:     activeProjects.find(p => p.id === reassignTask.projectId)?.name ?? "—",
-            taskId:          reassignTask.id,
-          });
-        } catch { /* WhatsApp failure is non-blocking */ }
-      }
+      // ── Chatroom DM to original doer (cancellation notice) ───────────────
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName,
+        doerEmail:   previousAssignee,
+        taskId:      reassignTask.id,
+        taskTitle,
+        message:     `⚠️ Your assignment for "${taskTitle}" has been CANCELLED and reassigned to ${newName}. Please hand over all work-in-progress creatives and files to ${newName} immediately.`,
+        notifType:   "task_cancelled",
+        priority:    reassignTask.priority,
+        dueDate:     reassignTask.dueDate,
+        projectName,
+      });
 
       setShowReassignModal(false);
       setReassignTask(null);
@@ -1835,28 +1826,22 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         setTimeout(() => setShowAssigningOverlay(false), 3500);
       }, 2000);
 
-      if (member.phone) {
-        try {
-          sendTaskWhatsApp({
-            recipientPhone:  member.phone,
-            taskTitle:       newTask.title,
-            taskDescription: newTask.description,
-            priority:        newTask.priority as "high" | "medium" | "low",
-            dueDate:         newTask.dueDate,
-            timeSlot:        newTask.timeSlot,
-            assignedByName:  (user as { name?: string }).name ?? user?.email ?? "Admin",
-            projectName:     activeProjects.find((p) => p.id === newTask.projectId)?.name ?? "—",
-            taskId,
-          });
-          toast(`✓ Task assigned to ${member.name} — WhatsApp sent to ${member.phone}`);
-        } catch (err) {
-          console.error("WhatsApp send failed:", err);
-          toast(`✓ Task assigned to ${member.name} — ⚠ WhatsApp failed`);
-        }
-      } else {
-        toast(`✓ Task assigned to ${member.name} — ⚠ No phone on file (WhatsApp skipped)`);
-        console.warn(`WhatsApp skipped: "${member.name}" (${member.email}) has no phone number.`);
-      }
+      // ── Chatroom DM notification to doer ────────────────────────────────
+      const dueLabel   = newTask.dueDate ? ` · Due ${new Date(newTask.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "";
+      const prjLabel   = activeProjects.find((p) => p.id === newTask.projectId)?.name ?? "";
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+        doerEmail:   newTask.assignedTo,
+        taskId,
+        taskTitle:   newTask.title,
+        message:     `📋 New task assigned to you: "${newTask.title}"${dueLabel}. Priority: ${newTask.priority.toUpperCase()}. ${newTask.description ? newTask.description.slice(0, 120) + "…" : ""}`,
+        notifType:   "task_assigned",
+        priority:    newTask.priority,
+        dueDate:     newTask.dueDate,
+        projectName: prjLabel,
+      });
+      toast(`✓ Task assigned to ${member.name} — Chatroom notification sent`);
 
       setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "", projectId: "", timeSlot: "18:00", purpose: "", isAutopulse: false, autopulseCycleDays: 7 } as any);
       setVoiceNoteBlob(null);
@@ -4206,7 +4191,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                   <div style={{ padding: "12px 14px", background: "rgba(191,95,255,0.06)", border: "1px solid rgba(191,95,255,0.25)", borderRadius: 10, display: "flex", gap: 10 }}>
                     <span style={{ fontSize: 16, flexShrink: 0 }}>🔄</span>
                     <div style={{ fontSize: 11, color: "rgba(191,95,255,0.85)", lineHeight: 1.7 }}>
-                      <strong style={{ color: G.purple }}>A voice handover notice will be sent to the current doer</strong> instructing them to hand over all completed creatives and working files to the new assignee. Both parties will also receive WhatsApp notifications.
+                      <strong style={{ color: G.purple }}>A voice handover notice will be sent to the current doer</strong> instructing them to hand over all completed creatives and working files to the new assignee. Both parties will receive a Chatroom notification.
                     </div>
                   </div>
 

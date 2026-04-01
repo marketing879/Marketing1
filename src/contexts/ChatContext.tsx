@@ -159,14 +159,15 @@ export const ChatProvider: React.FC<{
         ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === cu?.id)
         : false;
 
-      // Desktop notification
+      // Desktop notification — custom style for system notifications
       if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
         try {
-          const n = new Notification(`${normalized.author?.name || "Someone"} · #${normalized.channelId}`, {
-            body:   normalized.type === "text" ? (normalized.text || "").slice(0, 100) : "New message",
-            icon:   "/favicon.ico",
-            tag:    `chat-${normalized.id}`,
-          });
+          const isSystemNotif = (normalized as any).type === "system_notification";
+          const title = isSystemNotif
+            ? `🔔 SmartCue — ${(normalized as any).taskTitle || "Task Update"}`
+            : `${normalized.author?.name || "Someone"} · #${normalized.channelId}`;
+          const body = (normalized.text || "").slice(0, 120);
+          const n = new Notification(title, { body, icon: "/favicon.ico", tag: `chat-${normalized.id}` });
           n.onclick = () => { window.focus(); n.close(); };
         } catch {}
       }
