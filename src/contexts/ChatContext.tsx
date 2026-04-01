@@ -70,7 +70,7 @@ export const ChatProvider: React.FC<{
     const all: ChatMessage[] = [];
     Object.values(messages).forEach(msgs => {
       msgs.forEach(m => {
-        if ((m as any).type === "system_notification") all.push(m);
+        if ((m as any).isSystemNotif === true || (m as any).notifType) all.push(m);
       });
     });
     return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -190,7 +190,7 @@ export const ChatProvider: React.FC<{
         ? (normalized.author?.email?.toLowerCase() === myEmail || normalized.author?.id === cu?.id)
         : false;
 
-      const isSystemNotif = (normalized as any).type === "system_notification";
+      const isSystemNotif = (normalized as any).isSystemNotif === true || !!(normalized as any).notifType;
 
       // Desktop notification
       if (!isFromMe && "Notification" in window && Notification.permission === "granted") {
