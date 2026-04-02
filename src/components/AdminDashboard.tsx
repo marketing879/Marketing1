@@ -1091,9 +1091,32 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [historyTask,      setHistoryTask]      = useState<Task | null>(null);
 
-    const [showReviewModal, setShowReviewModal] = useState(false);
-    const [selectedTask,    setSelectedTask]    = useState<Task | null>(null);
-    const [reviewComments,  setReviewComments]  = useState("");
+    const [showReviewModal,   setShowReviewModal]   = useState(false);
+    const [selectedTask,      setSelectedTask]      = useState<Task | null>(null);
+    const [reviewComments,    setReviewComments]    = useState("");
+    const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
+
+    // ── Fetch full task detail from backend before opening review modal ────────
+    // The polled /api/tasks list may return partial data. We always fetch the
+    // individual task record so attachments, completionNotes, and scoreData
+    // are guaranteed to be present.
+    const openReviewModal = async (task: Task): Promise<void> => {
+      setSelectedTask(task);        // show modal immediately with what we have
+      setShowReviewModal(true);
+      setReviewTaskLoading(true);
+      try {
+        const res = await fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`);
+        if (res.ok) {
+          const full = await res.json();
+          const fullTask: Task = { ...task, ...full, id: full.id || String(full._id) };
+          setSelectedTask(fullTask);
+        }
+      } catch (err) {
+        console.warn("[ReviewModal] Could not fetch full task detail:", err);
+      } finally {
+        setReviewTaskLoading(false);
+      }
+    };
 
     // ── Assistance Ticket review state ────────────────────────────────────────
     const [selectedTicket,     setSelectedTicket]     = useState<import("../contexts/UserContext").AssistanceTicket | null>(null);
@@ -1215,10 +1238,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     }, 3500);
   }, [showFlashPanel]);
 
-    // Only tasks THIS admin assigned — not other admins' tasks
     const tasksToReview = (freshTasks as Task[]).filter(t =>
-      t.approvalStatus === "in-review" &&
-      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+      t.approvalStatus === "in-review"
     );
     // My Tasks tab = tasks where THIS admin is the doer (assigned TO them by someone else)
     // Tasks they assigned OUT are tracked via tasksToReview / "Assigned by Me" card — not here
@@ -2801,7 +2822,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         staffName={getName(task.assignedTo)}
                         isAdminAssignee={isAdminEmail(task.assignedTo)}
                         getNameFn={getName}
-                        onReview={() => { setSelectedTask(task); setShowReviewModal(true); }}
+                        onReview={() => { openReviewModal(task); }}
                         onViewHistory={() => { setHistoryTask(task); setShowHistoryModal(true); }}
                         onDelete={() => requestDeleteTask(task)}
                         onReassign={() => { setReassignTask(task); setReassignTo(""); setReassignReason(""); setShowReassignModal(true); }}
@@ -3157,7 +3178,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 </button>
                                 {/* Review if in-review */}
                                 {task.approvalStatus === "in-review" && (
-                                  <button className="g-btn-gold" onClick={() => { setSelectedTask(task); setShowReviewModal(true); }}
+                                  <button className="g-btn-gold" onClick={() => { openReviewModal(task); }}
                                     style={{ padding: "8px 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
                                     <Eye size={11} /> Review
                                   </button>
@@ -3303,7 +3324,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.purple }}>Map</em></h2>
                 <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Parent-child forwarding tree with full context</p>
-                <ForwardedTaskTree tasks={allTasksCombined} getNameFn={getName} isAdminFn={isAdminEmail} onSelectTask={(task: Task) => { setSelectedTask(task); setShowReviewModal(true); }} />
+                <ForwardedTaskTree tasks={allTasksCombined} getNameFn={getName} isAdminFn={isAdminEmail} onSelectTask={(task: Task) => { openReviewModal(task); }} />
               </section>
             )}
           </div>
@@ -3724,7 +3745,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               onSelectTask={(task) => {
                 setShowTaskListModal(false);
                 const isReviewable = (["in-review","admin-approved"] as string[]).includes(task.approvalStatus);
-                if (isReviewable) { setSelectedTask(task); setShowReviewModal(true); }
+                if (isReviewable) { openReviewModal(task); }
                 else { setHistoryTask(task); setShowHistoryModal(true); }
               }}
             />
@@ -4247,6 +4268,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); } }}>
               <div className="g-modal g-modal-wide" style={{ maxHeight: "90vh" }}>
                 <ModalHeader title={`Review: ${selectedTask.title}`} sub="Approve to forward to Superadmin, or send back for rework" onClose={() => { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); }} accent={G.gold} />
+                {/* ── Loading shimmer while fetching full task detail ── */}
+                {reviewTaskLoading && (
+                  <div style={{ padding: "10px 28px", display: "flex", alignItems: "center", gap: 10, background: "rgba(0,212,255,0.05)", borderBottom: "1px solid rgba(0,212,255,0.12)" }}>
+                    <Loader size={12} color={G.cyan} style={{ animation: "spin 1s linear infinite" }} />
+                    <span style={{ fontSize: 11, color: G.cyan, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.08em" }}>
+                      Fetching full submission data…
+                    </span>
+                  </div>
+                )}
                 <div style={{ padding: "24px 28px 28px" }}>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
                     <span className={priClass(selectedTask.priority)}><Flag size={9} />{selectedTask.priority?.toUpperCase()}</span>
