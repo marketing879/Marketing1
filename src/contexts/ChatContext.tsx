@@ -6,6 +6,28 @@ type SocketInstance = ReturnType<typeof io>;
 
 const API = "https://adaptable-patience-production-45da.up.railway.app";
 
+// ── Notification sound — plays a soft chime when a system notification arrives ─
+const playNotifSound = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Two-tone chime: high note then slightly lower
+    const tones = [880, 660];
+    tones.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.18);
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.18);
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.35);
+      osc.start(ctx.currentTime + i * 0.18);
+      osc.stop(ctx.currentTime + i * 0.18 + 0.35);
+    });
+  } catch {}
+};
+
 // Shared DM room ID — same for both users regardless of who initiates
 export const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");
@@ -217,9 +239,10 @@ export const ChatProvider: React.FC<{
         } catch {}
       }
 
-      // Increment unread badge for system notifications
+      // Increment unread badge + play sound for system notifications
       if (!isFromMe && isSystemNotif) {
         setUnreadNotifs(prev => prev + 1);
+        playNotifSound();
       }
 
       // Increment DM unread
