@@ -1215,8 +1215,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     }, 3500);
   }, [showFlashPanel]);
 
+    // Only tasks THIS admin assigned — not other admins' tasks
     const tasksToReview = (freshTasks as Task[]).filter(t =>
-      t.approvalStatus === "in-review"
+      t.approvalStatus === "in-review" &&
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
     // My Tasks tab = tasks where THIS admin is the doer (assigned TO them by someone else)
     // Tasks they assigned OUT are tracked via tasksToReview / "Assigned by Me" card — not here
