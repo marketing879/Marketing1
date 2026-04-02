@@ -1425,28 +1425,49 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
               <div style={{ padding: "0 18px 18px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                 <div style={{ paddingTop: 14 }}>
 
-                  {/* Staff explanation note */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
-                      Your Explanation / Notes
+                  {/* Staff explanation — REQUIRED before ticket can be submitted */}
+                  {ticket.ticketType !== "reschedule-request" && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
+                        Your Explanation <span style={{ color: "#ff3366" }}>*</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "rgba(255,51,102,0.7)", marginBottom: 8 }}>
+                        Required — this ticket cannot be submitted to admin without an explanation.
+                      </div>
+                      <textarea
+                        value={staffNotes[ticket.id] !== undefined ? staffNotes[ticket.id] : ticket.staffNote}
+                        onChange={e => setStaffNotes(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                        placeholder="Explain why this task is delayed and your plan to complete it…"
+                        disabled={ticket.status === "pending-admin" || ticket.status === "admin-approved" || ticket.status === "resolved"}
+                        style={{
+                          width: "100%", padding: "10px 12px",
+                          background: ticket.status === "open" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${ticket.status === "open" && !(staffNotes[ticket.id] ?? ticket.staffNote)?.trim() ? "rgba(255,51,102,0.4)" : "rgba(255,255,255,0.08)"}`,
+                          borderRadius: 9, color: "#eef0ff", fontSize: 12,
+                          fontFamily: "inherit", resize: "vertical", outline: "none",
+                          minHeight: 90, lineHeight: 1.5,
+                          opacity: ticket.status !== "open" ? 0.6 : 1,
+                          cursor: ticket.status !== "open" ? "not-allowed" : "text",
+                        }}
+                      />
+                      {ticket.status === "open" && !(staffNotes[ticket.id] ?? ticket.staffNote)?.trim() && (
+                        <div style={{ fontSize: 10, color: "#ff3366", marginTop: 4 }}>
+                          ⚠ Please write your explanation before submitting
+                        </div>
+                      )}
                     </div>
-                    <textarea
-                      value={staffNotes[ticket.id] !== undefined ? staffNotes[ticket.id] : ticket.staffNote}
-                      onChange={e => setStaffNotes(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                      placeholder="Explain why this task was delayed and your plan to resolve it…"
-                      disabled={ticket.status === "pending-admin" || ticket.status === "admin-approved" || ticket.status === "resolved"}
-                      style={{
-                        width: "100%", padding: "10px 12px",
-                        background: ticket.status === "open" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 9, color: "#eef0ff", fontSize: 12,
-                        fontFamily: "inherit", resize: "vertical", outline: "none",
-                        minHeight: 80, lineHeight: 1.5,
-                        opacity: ticket.status !== "open" ? 0.6 : 1,
-                        cursor: ticket.status !== "open" ? "not-allowed" : "text",
-                      }}
-                    />
-                  </div>
+                  )}
+                  {/* Reschedule info */}
+                  {ticket.ticketType === "reschedule-request" && ticket.status === "pending-admin" && (
+                    <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.18)", borderRadius: 9 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "#00d4ff", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 4 }}>
+                        📅 Reschedule Request
+                      </div>
+                      <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.5 }}>
+                        Proposed new date: {(ticket as any).staffNote?.replace("Proposed date: ", "") || "See admin panel"}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Action buttons */}
                   {ticket.status === "open" && (
@@ -1470,9 +1491,20 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
                         💾 Save Note
                       </button>
 
-                      {/* Submit to admin */}
+                      {/* Submit to admin — blocked if no explanation */}
                       <button
-                        onClick={() => onSubmitToAdmin(ticket.id)}
+                        onClick={() => {
+                          const note = staffNotes[ticket.id] ?? ticket.staffNote;
+                          if (!note?.trim() && ticket.ticketType !== "reschedule-request") {
+                            showSuccess("⚠ Please write your explanation before submitting to admin.");
+                            return;
+                          }
+                          // Save the note first if changed
+                          if (note?.trim() && note !== ticket.staffNote) {
+                            onUpdateTicket(ticket.id, { staffNote: note });
+                          }
+                          onSubmitToAdmin(ticket.id);
+                        }}
                         style={{
                           flex: 2, padding: "9px",
                           background: "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,107,53,0.15))",
@@ -2148,22 +2180,23 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!selectedTask || !pendingSubmitTask) return;
     // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
     // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
-    updateTask?.(selectedTask.id, {
+    const taskPayload: any = {
       title:           selectedTask.title,
       description:     selectedTask.description,
-      status:          "completed" as any,
+      status:          "completed",
       priority:        selectedTask.priority,
       dueDate:         selectedTask.dueDate,
       assignedTo:      selectedTask.assignedTo,
+      assignedBy:      (selectedTask as any).assignedBy,
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
       attachments:     uploadedPhotos[selectedTask.id] || [],
       submittedLinks:  taskLinks[selectedTask.id] || [],
-      approvalStatus:  "in-review" as any,
+      approvalStatus:  "in-review",
       completedAt:     new Date().toISOString(),
       scoreData:       aiScoreResult ? {
         percentScore:  aiScoreResult.percentScore,
@@ -2176,7 +2209,19 @@ const StaffDashboard: React.FC = () => {
         categories:    aiScoreResult.categories,
         submittedAt:   new Date().toISOString(),
       } : undefined,
-    } as any);
+    };
+
+    // 1. Update local state
+    updateTask?.(selectedTask.id, taskPayload as any);
+
+    // 2. ── Persist to backend — ensures admin sees score, attachments, notes ──
+    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks/${selectedTask.id}`, {
+      method:  "PUT",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(taskPayload),
+    })
+      .then(() => console.log("[Submit] Task synced to backend:", selectedTask.id))
+      .catch(err => console.error("[Submit] Failed to sync task to backend:", err));
     // submitTaskCompletion removed — merged into updateTask above to avoid overwrite
     speakText("Successfully submitted for admin approval. Well done!");
     showSuccess("Task submitted for review ✓");
@@ -2297,13 +2342,57 @@ const StaffDashboard: React.FC = () => {
   };
 
   const handleReschedule = (taskId: string, newDate: string) => {
+    const task = assignedTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // If frozen — raise a RESCHEDULE ticket to admin, do NOT mark complete
+    if ((task as any).isFrozen) {
+      const hasExistingReschedule = contextTickets?.some(
+        tk => tk.taskId === taskId &&
+              (tk as any).ticketType === "reschedule-request" &&
+              (tk.status === "open" || tk.status === "pending-admin")
+      );
+      if (hasExistingReschedule) {
+        showSuccess("⏳ A reschedule request is already pending admin approval.");
+        return;
+      }
+      raiseAssistanceTicket({
+        taskId,
+        taskTitle:   task.title,
+        taskDueDate: task.dueDate,
+        assignedTo:  user?.email ?? "",
+        assignedBy:  (task as any).assignedBy ?? "",
+        raisedBy:    user?.email ?? "",
+        ticketType:  "reschedule-request" as TicketType,
+        reason:      `Doer is requesting a reschedule. Proposed new deadline: ${new Date(newDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}. Original deadline: ${new Date(task.dueDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}.`,
+        staffNote:   `Proposed date: ${newDate}`,
+      });
+      showSuccess("📤 Reschedule request sent to admin for approval");
+      return;
+    }
+
+    // Not frozen — normal reschedule (local + backend)
     setRescheduledTasks(prev => ({ ...prev, [taskId]: newDate }));
+    fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${taskId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dueDate: newDate }),
+    }).catch(() => {});
     showSuccess("✓ Deadline rescheduled");
   };
 
   const handleDelayedComplete = (task: Task) => {
     if ((task as any).isFrozen) {
-      showSuccess("🔒 Task is frozen — admin must approve the assistance ticket first.");
+      showSuccess("🔒 Task is frozen — cannot mark as complete. Admin must approve the ticket first.");
+      return;
+    }
+    // Block if there is a pending reschedule ticket
+    const hasPendingReschedule = contextTickets?.some(
+      tk => tk.taskId === task.id &&
+            (tk as any).ticketType === "reschedule-request" &&
+            (tk.status === "open" || tk.status === "pending-admin")
+    );
+    if (hasPendingReschedule) {
+      showSuccess("⏳ Reschedule request pending admin approval — cannot mark as complete yet.");
       return;
     }
     setSelectedTask(task);
@@ -2311,16 +2400,29 @@ const StaffDashboard: React.FC = () => {
   };
 
   // ── Auto-generate Assistance Tickets for delayed tasks ──────────────────────
+  // Only runs ONCE per session (ticketInitRef) and only for tasks that:
+  // (a) have no existing open/pending ticket yet, AND (b) are not already frozen
   useEffect(() => {
     if (ticketInitRef.current) return;
     if (assignedTasks.length === 0) return;
+    if (!contextTickets) return;
     ticketInitRef.current = true;
 
-    const delayed = assignedTasks.filter(t => isDelayed(t));
+    const delayed = assignedTasks.filter(t => {
+      if (!isDelayed(t)) return false;
+      // Skip if task is already frozen (ticket already submitted to admin)
+      if ((t as any).isFrozen) return false;
+      // Skip if there is already an open or pending-admin ticket for this task
+      const hasExisting = contextTickets.some(
+        tk => tk.taskId === t.id &&
+              (tk.status === "open" || tk.status === "pending-admin" || tk.status === "admin-approved")
+      );
+      return !hasExisting;
+    });
     if (delayed.length === 0) return;
 
-    // Use context raiseAssistanceTicket — it deduplicates internally
     delayed.forEach(t => {
+      // Raise ticket — stays "open" until doer adds explanation and submits
       raiseAssistanceTicket({
         taskId:      t.id,
         taskTitle:   t.title,
@@ -2329,15 +2431,13 @@ const StaffDashboard: React.FC = () => {
         assignedBy:  (t as any).assignedBy ?? "",
         raisedBy:    user?.email ?? "",
         ticketType:  "general-query" as TicketType,
-        reason:      `This task was due on ${new Date(t.dueDate).toLocaleDateString()} and has not been completed. An assistance ticket has been automatically raised to notify your admin and track the delay.`,
+        reason:      `Task "${t.title}" is overdue (was due ${new Date(t.dueDate).toLocaleDateString()}). Task has been frozen. Doer must provide an explanation before it reaches the admin.`,
         staffNote:   "",
       });
     });
-  }, [assignedTasks]);
+  }, [assignedTasks, contextTickets]);
 
-  // ── Freeze any delayed task that has an active ticket — runs every render ───
-  // Runs separately from ticket creation so it catches tickets that already
-  // existed before this session (avoids ticketInitRef blocking the freeze).
+  // ── Freeze / Unfreeze auto-heal — syncs isFrozen with ticket state ──────────
   useEffect(() => {
     if (!assignedTasks.length || !contextTickets) return;
     assignedTasks.forEach(t => {
@@ -2347,16 +2447,33 @@ const StaffDashboard: React.FC = () => {
               tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
       );
       const isAlreadyFrozen = (t as any).isFrozen === true;
+
+      // Freeze if there is an active ticket and task is not yet frozen
       if (hasActiveTicket && !isAlreadyFrozen) {
+        const updated = { ...t, isFrozen: true };
         updateTask?.(t.id, { isFrozen: true } as any);
+        // Persist to backend so admin dashboard sees it
+        fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isFrozen: true }),
+        }).catch(() => {});
       }
-      // Unfreeze if all tickets for this task are resolved / approved
-      if (!hasActiveTicket && isAlreadyFrozen) {
-        const allResolved = contextTickets
-          .filter(tk => tk.taskId === t.id)
-          .every(tk => tk.status === "resolved" || tk.status === "admin-approved");
-        if (allResolved) {
+
+      // Unfreeze if all tickets for this task are resolved/approved AND task is still frozen
+      if (isAlreadyFrozen) {
+        const taskTickets = contextTickets.filter(tk => tk.taskId === t.id);
+        if (taskTickets.length === 0) return;
+        const allResolved = taskTickets.every(
+          tk => tk.status === "resolved" || tk.status === "admin-approved"
+        );
+        // ONLY unfreeze if there is at least one admin-approved ticket
+        const hasApproved = taskTickets.some(tk => tk.status === "admin-approved");
+        if (allResolved && hasApproved) {
           updateTask?.(t.id, { isFrozen: false } as any);
+          fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isFrozen: false }),
+          }).catch(() => {});
         }
       }
     });
@@ -4348,6 +4465,44 @@ const TaskCard: React.FC<TaskCardProps> = ({
               <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
               Awaiting {frozenName}&apos;s Review
             </div>
+
+            {/* Reschedule request from frozen state */}
+            {(() => {
+              const hasPendingReschedule = contextTickets?.some(
+                tk => tk.taskId === task.id &&
+                      (tk as any).ticketType === "reschedule-request" &&
+                      (tk.status === "open" || tk.status === "pending-admin")
+              );
+              if (hasPendingReschedule) {
+                return (
+                  <div style={{ fontSize: 11, color: "#00d4ff", textAlign: "center", marginTop: 4, fontStyle: "italic" as const }}>
+                    📅 Reschedule request pending admin approval
+                  </div>
+                );
+              }
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                  <input
+                    type="date"
+                    id={`reschedule-frozen-${task.id}`}
+                    min={new Date().toISOString().split("T")[0]}
+                    style={{ padding: "5px 8px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#e0e0f0", fontSize: 11, outline: "none", colorScheme: "dark" as const }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      const input = document.getElementById(`reschedule-frozen-${task.id}`) as HTMLInputElement;
+                      if (!input?.value) { showSuccess("Please select a proposed date first"); return; }
+                      handleReschedule(task.id, input.value);
+                    }}
+                    style={{ padding: "5px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    📅 Request Reschedule
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
