@@ -5,7 +5,7 @@ import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText, loadGlobalVoiceEnabled } from "../services/VoiceModule";
-const roswaltLogo = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_abcdef.png";
+const roswaltLogo = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_abc123.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -1790,7 +1790,7 @@ const StaffDashboard: React.FC = () => {
   const tickets = (contextTickets ?? []).filter(
     t => t.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
   );
-  const ticketInitRef = useRef(false);
+  const ticketInitRef = useRef(false); // kept for compatibility
 
   // AI Score modal state
   const [aiScoreResult,     setAiScoreResult]     = useState<AIScoreResult | null>(null);
@@ -2401,29 +2401,36 @@ const StaffDashboard: React.FC = () => {
   };
 
   // ── Auto-generate Assistance Tickets for delayed tasks ──────────────────────
-  // Only runs ONCE per session (ticketInitRef) and only for tasks that:
-  // (a) have no existing open/pending ticket yet, AND (b) are not already frozen
+  // Runs ONCE per session only. Uses a Set to track which taskIds have already
+  // had a ticket raised this session — prevents duplicate tickets on re-renders.
+  const raisedTicketIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    if (ticketInitRef.current) return;
+    // Wait until both tasks and tickets are loaded
     if (assignedTasks.length === 0) return;
     if (!contextTickets) return;
-    ticketInitRef.current = true;
+    // Don't run until tickets have been fetched (avoid false "no existing" positives)
+    if (contextTickets.length === 0 && assignedTasks.some(t => isDelayed(t))) {
+      // tickets might not be loaded yet — wait for next render
+      return;
+    }
 
     const delayed = assignedTasks.filter(t => {
       if (!isDelayed(t)) return false;
-      // Skip if task is already frozen (ticket already submitted to admin)
+      // Skip frozen tasks
       if ((t as any).isFrozen) return false;
-      // Skip if there is already an open or pending-admin ticket for this task
-      const hasExisting = contextTickets.some(
-        tk => tk.taskId === t.id &&
-              (tk.status === "open" || tk.status === "pending-admin" || tk.status === "admin-approved")
-      );
+      // Skip if already raised this session
+      if (raisedTicketIdsRef.current.has(t.id)) return false;
+      // Skip if ANY ticket already exists for this task (any status)
+      const hasExisting = contextTickets.some(tk => tk.taskId === t.id);
       return !hasExisting;
     });
+
     if (delayed.length === 0) return;
 
     delayed.forEach(t => {
-      // Raise ticket — stays "open" until doer adds explanation and submits
+      // Mark as raised immediately to prevent duplicate raises
+      raisedTicketIdsRef.current.add(t.id);
       raiseAssistanceTicket({
         taskId:      t.id,
         taskTitle:   t.title,
@@ -2432,13 +2439,22 @@ const StaffDashboard: React.FC = () => {
         assignedBy:  (t as any).assignedBy ?? "",
         raisedBy:    user?.email ?? "",
         ticketType:  "general-query" as TicketType,
-        reason:      `Task "${t.title}" is overdue (was due ${new Date(t.dueDate).toLocaleDateString()}). Task has been frozen. Doer must provide an explanation before it reaches the admin.`,
+        reason:      `Task "${t.title}" is overdue (was due ${new Date(t.dueDate).toLocaleDateString()}). Task has been frozen pending your explanation and admin review.`,
         staffNote:   "",
       });
     });
-  }, [assignedTasks, contextTickets]);
+  // Only re-run when tasks or tickets first load — not on every change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    assignedTasks.length > 0 ? "loaded" : "empty",
+    contextTickets ? "tickets-loaded" : "no-tickets",
+  ]);
 
   // ── Freeze / Unfreeze auto-heal — syncs isFrozen with ticket state ──────────
+  // Tracked ref prevents redundant backend calls when state is already correct
+  const frozenSyncedRef = useRef<Set<string>>(new Set());
+  const unfrozenSyncedRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!assignedTasks.length || !contextTickets) return;
     assignedTasks.forEach(t => {
@@ -2449,9 +2465,10 @@ const StaffDashboard: React.FC = () => {
       );
       const isAlreadyFrozen = (t as any).isFrozen === true;
 
-      // Freeze if there is an active ticket and task is not yet frozen
-      if (hasActiveTicket && !isAlreadyFrozen) {
-        const updated = { ...t, isFrozen: true };
+      // Freeze if active ticket exists and not yet frozen — sync ONCE per task
+      if (hasActiveTicket && !isAlreadyFrozen && !frozenSyncedRef.current.has(t.id)) {
+        frozenSyncedRef.current.add(t.id);
+        unfrozenSyncedRef.current.delete(t.id);
         updateTask?.(t.id, { isFrozen: true } as any);
         // Persist to backend so admin dashboard sees it
         fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
@@ -2469,7 +2486,9 @@ const StaffDashboard: React.FC = () => {
         );
         // ONLY unfreeze if there is at least one admin-approved ticket
         const hasApproved = taskTickets.some(tk => tk.status === "admin-approved");
-        if (allResolved && hasApproved) {
+        if (allResolved && hasApproved && !unfrozenSyncedRef.current.has(t.id)) {
+          unfrozenSyncedRef.current.add(t.id);
+          frozenSyncedRef.current.delete(t.id);
           updateTask?.(t.id, { isFrozen: false } as any);
           fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
             method: "PUT", headers: { "Content-Type": "application/json" },
@@ -3399,6 +3418,7 @@ const StaffDashboard: React.FC = () => {
                       setDragOver={setDragOver}
                       isCompleted
                       allTickets={contextTickets ?? []}
+                      onShowMessage={showSuccess}
                     />
                   ))}
                 </div>
@@ -4391,7 +4411,7 @@ interface TaskCardProps {
   isCompleted?:   boolean;
   allTickets?:    AssistanceTicket[];
   onReschedule?:  (taskId: string, newDate: string) => void;
-  onShowSuccess?:  (msg: string) => void;
+  onShowMessage?: (msg: string) => void;
 }
 
 // ── TaskCard — unchanged from original ──────────────────────────────────────
@@ -4399,7 +4419,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   task, photos, getProjectName, getAssignerInfo,
   onComplete, onUpload, onRemovePhoto, onOpenLightbox,
   dragOver, setDragOver, isCompleted,
-  allTickets = [], onReschedule, onShowSuccess,
+  allTickets = [], onReschedule, onShowMessage,
 }) => {
   const approvalMap: Record<string, { label: string; cls: string }> = {
     assigned:              { label: "Assigned",       cls: "badge-blue"   },
@@ -4502,7 +4522,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
                     onClick={e => {
                       e.stopPropagation();
                       const input = document.getElementById(`reschedule-frozen-${task.id}`) as HTMLInputElement;
-                      if (!input?.value) { onShowSuccess?.("Please select a proposed date first"); return; }
+                      if (!input?.value) { onShowMessage?.("Please select a proposed date first"); return; }
                       onReschedule?.(task.id, input.value);
                     }}
                     style={{ padding: "5px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
