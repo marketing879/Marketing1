@@ -5,7 +5,6 @@
 
 const API = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
 
-// 10 minutes — enough for a 96MB video on a slow connection
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function uploadToCloudinary(
@@ -20,59 +19,36 @@ export async function uploadToCloudinary(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API}/api/upload`);
-
-    // ── Timeout: 10 min for large video files ────────────────────────────────
     xhr.timeout = UPLOAD_TIMEOUT_MS;
-    xhr.ontimeout = () =>
-      reject(new Error(
-        `Upload timed out after 10 minutes. File: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB). ` +
-        `Please check your internet connection and try again.`
-      ));
+    xhr.ontimeout = () => reject(new Error("Upload timed out. Please check your connection and try again."));
 
-    // ── Progress reporting ───────────────────────────────────────────────────
     if (onProgress) {
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
       });
     }
 
-    // ── Success ──────────────────────────────────────────────────────────────
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
           if (data.success && data.url) resolve(data.url);
-          else reject(new Error(data.message || "Upload failed — no URL returned"));
-        } catch {
-          reject(new Error("Invalid response from upload server"));
-        }
+          else reject(new Error(data.message || "Upload failed"));
+        } catch { reject(new Error("Invalid response from upload server")); }
       } else if (xhr.status === 413) {
-        reject(new Error(
-          `File too large for server (${(file.size / 1024 / 1024).toFixed(1)}MB). ` +
-          `Maximum allowed is 200MB.`
-        ));
+        reject(new Error(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 200MB.`));
       } else {
-        // Try to parse error message from server response
         let serverMsg = "";
         try { serverMsg = JSON.parse(xhr.responseText)?.message || ""; } catch {}
-        reject(new Error(
-          serverMsg || `Upload failed (HTTP ${xhr.status}) for file: ${file.name}`
-        ));
+        reject(new Error(serverMsg || `Upload failed (HTTP ${xhr.status})`));
       }
     };
 
-    // ── Network error ────────────────────────────────────────────────────────
-    xhr.onerror = () =>
-      reject(new Error(
-        `Network error while uploading "${file.name}". ` +
-        `Please check your connection and try again.`
-      ));
-
+    xhr.onerror = () => reject(new Error("Network error during upload. Please check your connection."));
     xhr.send(formData);
   });
 }
 
-// ── Upload multiple files, returns array of CDN URLs ─────────────────────────
 export async function uploadFilesToCloudinary(
   files: File[],
   folder = "roswalt/attachments",
