@@ -4,8 +4,8 @@ import { useUser, Task, AssistanceTicket, TicketType } from "../contexts/UserCon
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
-import { greetUser, setElevenLabsVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
-const roswaltLogo = process.env.PUBLIC_URL + "/assets/ROSWALT-LOGO-GOLDEN-8K.png";
+import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
+import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -123,14 +123,7 @@ async function extractVideoFrames(videoDataUrl: string, frameCount = 6): Promise
 // ── Strip our appended #filename tag before checking MIME ─────────────────────
 function cleanDataUrl(dataUrl: string): string {
   const hashIdx = dataUrl.indexOf("#filename=");
-  const base = hashIdx > -1 ? dataUrl.slice(0, hashIdx) : dataUrl;
-  // CDN URLs: strip any remaining fragment
-  if (base.startsWith("http")) return base;
-  return base;
-}
-
-function isCdnUrl(dataUrl: string): boolean {
-  return dataUrl.includes("#cdn=true") || (dataUrl.startsWith("http") && !dataUrl.startsWith("data:"));
+  return hashIdx > -1 ? dataUrl.slice(0, hashIdx) : dataUrl;
 }
 function getFilenameFromUrl(dataUrl: string): string {
   const m = dataUrl.match(/#filename=([^&]+)/);
@@ -278,25 +271,18 @@ async function extractDocumentText(dataUrl: string): Promise<{ text: string; isP
 
 async function scoreWithAI(notes: string, files: string[], purpose?: string, links?: string[]): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
-  const isPreExtractedVideo = files.some(f => f.includes("#video-frame="));
-  const isCdnVideo = hasFiles && (files[0].includes("#cdn=true") || (files[0].startsWith("http") && !files[0].startsWith("data:")));
-  const isVideo   = hasFiles && (files[0].startsWith("data:video/") || isPreExtractedVideo || isCdnVideo);
+  const isVideo   = hasFiles && files[0].startsWith("data:video/");
 
   // ── Detect document uploads ────────────────────────────────────────────────
   const documentFiles  = files.filter(f => isDocumentFile(f));
   const isDocumentOnly = documentFiles.length > 0 && !isVideo && files.every(f => isDocumentFile(f));
   const hasLinks       = links && links.filter(l => l.trim()).length > 0;
 
-  // For videos: extract 6 frames (base64) or pass CDN URL directly
+  // For videos: extract 6 frames to send as images
   let scoringImages: string[] = [];
   if (isVideo) {
-    if (isCdnVideo) {
-      // CDN video — can't extract frames in browser, score based on notes + purpose only
-      scoringImages = [];
-    } else {
-      try { scoringImages = await extractVideoFrames(files[0], 6); }
-      catch { scoringImages = []; }
-    }
+    try { scoringImages = await extractVideoFrames(files[0], 6); }
+    catch { scoringImages = []; }
   } else {
     scoringImages = files.filter(f => !f.startsWith("data:video/") && !isDocumentFile(f));
   }
@@ -1794,22 +1780,6 @@ const StaffDashboard: React.FC = () => {
   const profileInputRef = useRef<HTMLInputElement>(null);
   const greetedRef = useRef(false);
 
-  // ── Voice module toggle ──────────────────────────────────────────────────
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getGlobalVoiceEnabled());
-
-  useEffect(() => {
-    if (!user?.email) return;
-    loadGlobalVoiceEnabled(user.email).then(setVoiceEnabled);
-  }, [user?.email]);
-
-  const toggleVoice = () => {
-    setVoiceEnabled(prev => {
-      const next = !prev;
-      setGlobalVoiceEnabled(next, user?.email);
-      return next;
-    });
-  };
-
   useEffect(() => {
     if (greetedRef.current) return;
     greetedRef.current = true;
@@ -2077,35 +2047,10 @@ const StaffDashboard: React.FC = () => {
       showSuccess("⚠ Please add completion notes, upload a file, or add a reference link.");
       return;
     }
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-    // CDN videos are https:// URLs (uploaded directly), base64 videos start with data:video/
-    const hasCdnVideo = photos.some(p => p.startsWith("http") && (p.includes("cloudinary") || p.includes("cdn")));
-    const isVid  = photos.length > 0 && (
-      photos[0].startsWith("data:video/") ||
-      hasCdnVideo
-    );
-    const isDoc  = photos.length > 0 && photos.every(f => isDocumentFile(f));
 
-    // ── CDN Video fast-path: skip AI scoring, go straight to confirm modal ────
-    if (hasCdnVideo) {
-      if (!completionNotes.trim()) {
-        showSuccess("⚠ Please add completion notes describing the video before submitting.");
-        return;
-      }
-      setAiScoreResult({
-        categories:    [],
-        percentScore:  75,
-        grade:         "B" as const,
-        grammarErrors: [],
-        grammarClean:  true,
-        strengths:     ["Video uploaded to Cloudinary CDN successfully"],
-        improvements:  ["Video quality scoring not available for cloud-uploaded videos — manual admin review required"],
-        extractedText: "",
-        verdict:       "Video submitted via cloud upload. Admin will review the video directly.",
-      });
-      setPendingSubmitTask(selectedTask.id);
-      return; // show score modal, user clicks Confirm to submit
-    }
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    const isVid  = photos.length > 0 && photos[0].startsWith("data:video/");
+    const isDoc  = photos.length > 0 && photos.every(f => isDocumentFile(f));
 
     setAnalyzingImage(true);
     setEvalStage(1);
@@ -2196,86 +2141,23 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleConfirmSubmit = () => {
     if (!selectedTask || !pendingSubmitTask) return;
-
-    showSuccess("⏳ Saving submission…");
-
-    // ── 1. Build score HTML report and upload to Cloudinary ──────────────────
-    let scoreReportUrl: string | undefined;
-    if (aiScoreResult) {
-      try {
-        const doerName = (user as any)?.name || (user as any)?.email || "Doer";
-        const now      = new Date();
-        const ds       = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
-        const ts       = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-        const cats     = (aiScoreResult.categories || []).map((c: any) =>
-          "<h4 style='margin:12px 0 4px'>" + c.name + ": " + c.score + "/20</h4>" +
-          (c.subcriteria || []).map((s: any) =>
-            "<div style='padding:4px 0;border-bottom:1px solid #eee'>" +
-            "<span style='color:" + (s.score === s.max ? "green" : "red") + ";font-weight:700'>" +
-            s.score + "/" + s.max + "</span> <b>" + s.label + "</b>" +
-            "<div style='color:#666;font-size:11px;margin-top:2px'>" + (s.note || "") + "</div></div>"
-          ).join("")
-        ).join("");
-        const html = `<!DOCTYPE html><html><head><meta charset='UTF-8'>
-<title>SmartCue Score Report — ${selectedTask.title}</title>
-<style>body{font-family:Arial,sans-serif;padding:32px;max-width:800px;margin:0 auto}
-h1{color:#1a1a2e}h2{color:#333}hr{border:1px solid #eee;margin:16px 0}
-.score-big{font-size:48px;font-weight:900;color:${aiScoreResult.percentScore>=75?"#00a86b":aiScoreResult.percentScore>=55?"#ff9500":"#cc0033"}}
-.grade{font-size:28px;font-weight:900;padding:4px 16px;border-radius:6px;background:#f0f0f0}
-.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
-</style></head><body>
-<h1>📊 SmartCue AI Score Report</h1>
-<p style='color:#999;font-size:12px'>Generated: ${ds} at ${ts} &nbsp;|&nbsp; Task ID: ${selectedTask.id} &nbsp;|&nbsp; <span style='color:red'>Auto-generated. Read-only.</span></p>
-<hr/>
-<h2>Task: ${selectedTask.title}</h2>
-<p><b>Doer:</b> ${doerName} &nbsp;|&nbsp; <b>Assigned by:</b> ${(selectedTask as any).assignedBy || "—"} &nbsp;|&nbsp; <b>Purpose:</b> ${(selectedTask as any).purpose || "—"}</p>
-<p><b>Due:</b> ${selectedTask.dueDate ? new Date(selectedTask.dueDate).toLocaleDateString("en-IN") : "—"} &nbsp;|&nbsp; <b>Submitted:</b> ${ds}</p>
-<hr/>
-<div style='display:flex;align-items:center;gap:24px;margin:20px 0'>
-  <div class='score-big'>${aiScoreResult.percentScore}/100</div>
-  <div class='grade'>Grade ${aiScoreResult.grade}</div>
-  <div class='tag' style='background:${aiScoreResult.grammarClean?"#d4edda":"#f8d7da"};color:${aiScoreResult.grammarClean?"#155724":"#721c24"}'>
-    ${aiScoreResult.grammarClean ? "✓ Grammar Clean" : "⚠ Grammar Issues Found"}
-  </div>
-</div>
-<p style='color:#555;line-height:1.6'>${aiScoreResult.verdict || ""}</p>
-<h3>Category Breakdown</h3>${cats}
-${aiScoreResult.strengths?.length ? "<h3 style='color:green'>✓ Strengths</h3>" + aiScoreResult.strengths.map((s: string) => "<p>+ " + s + "</p>").join("") : ""}
-${aiScoreResult.improvements?.length ? "<h3 style='color:#e67e00'>→ Improvements</h3>" + aiScoreResult.improvements.map((s: string) => "<p>• " + s + "</p>").join("") : ""}
-${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issues</h3>" + aiScoreResult.grammarErrors.map((e: string) => "<p style='background:#fff3cd;padding:6px 10px;border-radius:4px;margin:4px 0'>" + e + "</p>").join("") : ""}
-<hr/>
-<p style='color:#999;font-size:11px'>SmartCue AI — Roswalt Realty Marketing Operations | ${ds}</p>
-</body></html>`;
-        const htmlBlob = new Blob([html], { type: "text/html" });
-        const htmlFile = new File([htmlBlob], `SmartCue_Report_${selectedTask.id}_${now.toISOString().slice(0,10)}.html`, { type: "text/html" });
-        scoreReportUrl = await uploadToCloudinary(htmlFile, "roswalt/score-reports");
-      } catch (e) {
-        console.warn("[Score report] Upload failed:", e);
-        // Non-blocking — submission continues even if report upload fails
-      }
-    }
-
-    // ── 2. Clean attachment URLs (strip base64 tags, keep CDN URLs as-is) ────
-    const cleanedAttachments = (uploadedPhotos[selectedTask.id] || []).map(url => cleanDataUrl(url));
-
-    // ── 3. Build the full task payload ────────────────────────────────────────
-    const taskPayload: any = {
+    // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
+    // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
+    updateTask?.(selectedTask.id, {
       title:           selectedTask.title,
       description:     selectedTask.description,
-      status:          "completed",
+      status:          "completed" as any,
       priority:        selectedTask.priority,
       dueDate:         selectedTask.dueDate,
       assignedTo:      selectedTask.assignedTo,
-      assignedBy:      (selectedTask as any).assignedBy,
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
-      attachments:     cleanedAttachments,
+      attachments:     uploadedPhotos[selectedTask.id] || [],
       submittedLinks:  taskLinks[selectedTask.id] || [],
-      approvalStatus:  "in-review",
+      approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
-      scoreReportUrl,   // CDN URL of the HTML score report
       scoreData:       aiScoreResult ? {
         percentScore:  aiScoreResult.percentScore,
         grade:         aiScoreResult.grade,
@@ -2286,24 +2168,11 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
         improvements:  aiScoreResult.improvements,
         categories:    aiScoreResult.categories,
         submittedAt:   new Date().toISOString(),
-        reportUrl:     scoreReportUrl,
       } : undefined,
-    };
-
-    // ── 4. Update local context state ─────────────────────────────────────────
-    updateTask?.(selectedTask.id, taskPayload as any);
-
-    // ── 5. Persist to MongoDB via backend PUT ─────────────────────────────────
-    fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${selectedTask.id}`, {
-      method:  "PUT",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(taskPayload),
-    })
-      .then(() => console.log("[Submit] Task + score saved to MongoDB:", selectedTask.id))
-      .catch(err => console.error("[Submit] MongoDB sync failed:", err));
-
+    } as any);
+    // submitTaskCompletion removed — merged into updateTask above to avoid overwrite
     speakText("Successfully submitted for admin approval. Well done!");
-    showSuccess("✓ Task submitted — score & report saved to admin");
+    showSuccess("Task submitted for review ✓");
     setAiScoreResult(null);
     setPendingSubmitTask(null);
     setSelectedTask(null);
@@ -2341,16 +2210,13 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
     catch { return "—"; }
   };
 
-  // ── Photo/Video/Document upload handler ─────────────────────────────────────
-  // Videos are uploaded directly to Cloudinary (no base64) to avoid browser memory crash
-  // Images and documents are read as base64 for inline scoring
-  const handlePhotoUpload = async (taskId: string, files: FileList | null): Promise<void> => {
+  const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
-    const MAX_WARN_MB  = 20;
-    const MAX_BLOCK_MB = 300;
+    const MAX_WARN_MB  = 5;
+    const MAX_BLOCK_MB = 25;
     let uploaded = 0;
 
-    for (const file of Array.from(files)) {
+    Array.from(files).forEach((file) => {
       const isImage    = file.type.startsWith("image/");
       const isVideo    = file.type.startsWith("video/");
       const isDocument = file.type === "application/pdf" ||
@@ -2367,54 +2233,33 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
 
       if (!isImage && !isVideo && !isDocument) {
         showSuccess(`⚠ Unsupported: ${file.name}`);
-        continue;
+        return;
       }
 
+      // ── Size checks ──────────────────────────────────────────────────────
       const sizeMB = file.size / (1024 * 1024);
       if (sizeMB > MAX_BLOCK_MB) {
-        showSuccess(`🚫 "${file.name}" is ${sizeMB.toFixed(2)} MB — exceeds the ${MAX_BLOCK_MB} MB limit.`);
-        speakText(`File too large. ${file.name} is ${sizeMB.toFixed(1)} megabytes. Maximum allowed is ${MAX_BLOCK_MB} megabytes. Please compress and try again.`);
-        continue;
+        showSuccess(`🚫 "${file.name}" is ${sizeMB.toFixed(2)} MB — exceeds the ${MAX_BLOCK_MB} MB limit. Please compress and re-upload.`);
+        speakText(`File too large. ${file.name} is ${sizeMB.toFixed(1)} megabytes. Maximum allowed is ${MAX_BLOCK_MB} megabytes. Please compress or reduce the file and try again.`);
+        return;
       }
       if (sizeMB > MAX_WARN_MB) {
-        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — uploading to cloud…`);
+        showSuccess(`⚠ "${file.name}" is ${sizeMB.toFixed(2)} MB — large files may slow down analysis.`);
       }
 
-      // ── Videos: upload directly to Cloudinary, store CDN URL ──────────────
-      // Loading the entire video as base64 crashes the browser for large files
-      if (isVideo) {
-        showSuccess(`⏳ Uploading video "${file.name}" (${sizeMB.toFixed(1)} MB)…`);
-        try {
-          const cdnUrl = await uploadToCloudinary(file, "roswalt/task-attachments");
-          // Store as a tagged CDN URL so the rest of the code can identify it
-          const taggedUrl = cdnUrl + `#filename=${encodeURIComponent(file.name)}&size=${file.size}&cdn=true`;
-          setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
-          showSuccess(`✓ Video "${file.name}" uploaded successfully`);
-          uploaded++;
-        } catch (err: any) {
-          showSuccess(`✕ Video upload failed: ${err?.message || "Unknown error"}`);
-          speakText(`Video upload failed for ${file.name}. Please try again.`);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        // Embed file name as a query-param comment so we can display it later
+        const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
+        setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
+        if (isDocument) {
+          setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
         }
-        continue;
-      }
-
-      // ── Images and documents: read as base64 (needed for inline AI scoring) ─
-      await new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const url = e.target?.result as string;
-          const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
-          setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
-          if (isDocument) {
-            setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
-          }
-          uploaded++;
-          resolve();
-        };
-        reader.onerror = () => { showSuccess(`✕ Failed to read "${file.name}"`); resolve(); };
-        reader.readAsDataURL(file);
-      });
-    }
+      };
+      reader.readAsDataURL(file);
+      uploaded++;
+    });
 
     if (uploaded > 0) showSuccess(`✓ ${uploaded} file${uploaded > 1 ? "s" : ""} added`);
   };
@@ -3238,43 +3083,6 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
               </div>
             </div>
             <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePicChange} />
-            {/* ── Voice Module Toggle ── */}
-            <button
-              onClick={toggleVoice}
-              title={voiceEnabled ? "Voice ON — click to mute" : "Voice OFF — click to enable"}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-                fontFamily: "inherit", fontSize: 10, fontWeight: 700,
-                border: `1px solid ${voiceEnabled ? "rgba(201,169,110,0.4)" : "rgba(255,255,255,0.1)"}`,
-                background: voiceEnabled ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.04)",
-                color: voiceEnabled ? "#c9a96e" : "#7e84a3",
-                transition: "all 0.2s",
-                letterSpacing: "0.3px",
-                textTransform: "uppercase" as const,
-                flexShrink: 0,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                {voiceEnabled ? (
-                  <>
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8"  y1="23" x2="16" y2="23"/>
-                  </>
-                ) : (
-                  <>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
-                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8"  y1="23" x2="16" y2="23"/>
-                  </>
-                )}
-              </svg>
-              {voiceEnabled ? "Voice ON" : "Voice OFF"}
-            </button>
             <button className="sd-logout" onClick={handleLogout} title="Sign Out">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
@@ -4038,8 +3846,7 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
 
                   <div className="sd-photo-grid" style={{ marginBottom: "8px" }}>
                     {(uploadedPhotos[selectedTask.id] || []).map((url, i) => {
-                      const isVid  = cleanDataUrl(url).startsWith("data:video/") ||
-                               (cleanDataUrl(url).startsWith("http") && (cleanDataUrl(url).includes("cloudinary") || cleanDataUrl(url).includes("cdn")));
+                      const isVid  = cleanDataUrl(url).startsWith("data:video/");
                       const isDoc  = isDocumentFile(url);
                       const fmt    = isDoc ? getDocumentFormat(url) : "";
                       const di     = isDoc ? getDocIcon(fmt) : null;
@@ -4594,43 +4401,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <div className="sd-att-label">
             📎 {taskAttachments.length} Attachment{taskAttachments.length !== 1 ? "s" : ""} submitted
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
-            {taskAttachments.map((url, i) => {
-              const isVidUrl = url.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i) || url.includes("/video/") || (url.startsWith("http") && url.includes("cloudinary") && url.includes("video"));
-              const isImgUrl = !isVidUrl && (url.startsWith("data:image") || url.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || url.includes("/image/"));
-              const fname    = url.split("/").pop()?.split("?")[0] || `Attachment ${i + 1}`;
-              if (isVidUrl) {
-                return (
-                  <a key={i} href={url} download target="_blank" rel="noreferrer"
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 10, textDecoration: "none", transition: "all 0.18s" }}>
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>🎬</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#00d4ff" }}>Video Attachment</div>
-                      <div style={{ fontSize: 9, color: "#7e84a3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{fname}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 7, color: "#00d4ff", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
-                      ⬇ Download
-                    </div>
-                  </a>
-                );
-              }
-              if (isImgUrl) {
-                return (
-                  <div key={i} className="sd-att-thumb" title={`Open attachment ${i + 1}`} onClick={() => onOpenLightbox(taskAttachments, i)}>
-                    <img src={url} alt={`att-${i}`} />
-                  </div>
-                );
-              }
-              // Document
-              return (
-                <a key={i} href={url} download target="_blank" rel="noreferrer"
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, color: "#00d4ff", fontSize: 11, textDecoration: "none" }}>
-                  <span style={{ fontSize: 14 }}>📄</span>
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}>{fname}</span>
-                  <span style={{ fontSize: 10 }}>⬇</span>
-                </a>
-              );
-            })}
+          <div className="sd-att-strip">
+            {taskAttachments.map((url, i) => (
+              <div
+                key={i}
+                className="sd-att-thumb"
+                title={`Open attachment ${i + 1}`}
+                onClick={() => onOpenLightbox(taskAttachments, i)}
+              >
+                <img src={url} alt={`att-${i}`} />
+              </div>
+            ))}
           </div>
         </div>
       )}
