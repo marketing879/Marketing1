@@ -5,7 +5,7 @@ import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText, loadGlobalVoiceEnabled } from "../services/VoiceModule";
-import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
+const roswaltLogo = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773312581/ROSWALT-LOGO-GOLDEN-8K_abcdef.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -1282,9 +1282,10 @@ interface AssistanceTicketsTabProps {
   tickets: AssistanceTicket[];
   onUpdateTicket: (id: string, updates: Partial<AssistanceTicket>) => void;
   onSubmitToAdmin: (id: string) => void;
+  onShowMessage: (msg: string) => void;
 }
 
-const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin }) => {
+const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin, onShowMessage }) => {
   const [expanded,   setExpanded]   = useState<string | null>(null);
   const [staffNotes, setStaffNotes] = useState<{ [id: string]: string }>({});
 
@@ -1426,7 +1427,7 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
                 <div style={{ paddingTop: 14 }}>
 
                   {/* Staff explanation — REQUIRED before ticket can be submitted */}
-                  {ticket.ticketType !== "reschedule-request" && (
+                  {(ticket.ticketType as string) !== "reschedule-request" && (
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
                         Your Explanation <span style={{ color: "#ff3366" }}>*</span>
@@ -1458,7 +1459,7 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
                     </div>
                   )}
                   {/* Reschedule info */}
-                  {ticket.ticketType === "reschedule-request" && ticket.status === "pending-admin" && (
+                  {(ticket.ticketType as string) === "reschedule-request" && ticket.status === "pending-admin" && (
                     <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.18)", borderRadius: 9 }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: "#00d4ff", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 4 }}>
                         📅 Reschedule Request
@@ -1495,8 +1496,8 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
                       <button
                         onClick={() => {
                           const note = staffNotes[ticket.id] ?? ticket.staffNote;
-                          if (!note?.trim() && ticket.ticketType !== "reschedule-request") {
-                            showSuccess("⚠ Please write your explanation before submitting to admin.");
+                          if (!note?.trim() && (ticket.ticketType as string) !== "reschedule-request") {
+                            onShowMessage("⚠ Please write your explanation before submitting to admin.");
                             return;
                           }
                           // Save the note first if changed
@@ -3366,6 +3367,8 @@ const StaffDashboard: React.FC = () => {
                       onOpenLightbox={(photos, idx) => openLightbox(photos, idx)}
                       dragOver={dragOver}
                       setDragOver={setDragOver}
+                      allTickets={contextTickets ?? []}
+                      onReschedule={handleReschedule}
                     />
                   ))}
                 </div>
@@ -3395,6 +3398,7 @@ const StaffDashboard: React.FC = () => {
                       dragOver={dragOver}
                       setDragOver={setDragOver}
                       isCompleted
+                      allTickets={contextTickets ?? []}
                     />
                   ))}
                 </div>
@@ -3416,6 +3420,7 @@ const StaffDashboard: React.FC = () => {
                 tickets={tickets}
                 onUpdateTicket={handleUpdateTicket}
                 onSubmitToAdmin={handleSubmitTicketToAdmin}
+                onShowMessage={showSuccess}
               />
             )}
 
@@ -4384,6 +4389,9 @@ interface TaskCardProps {
   dragOver:       boolean;
   setDragOver:    (v: boolean) => void;
   isCompleted?:   boolean;
+  allTickets?:    AssistanceTicket[];
+  onReschedule?:  (taskId: string, newDate: string) => void;
+  onShowSuccess?:  (msg: string) => void;
 }
 
 // ── TaskCard — unchanged from original ──────────────────────────────────────
@@ -4391,6 +4399,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   task, photos, getProjectName, getAssignerInfo,
   onComplete, onUpload, onRemovePhoto, onOpenLightbox,
   dragOver, setDragOver, isCompleted,
+  allTickets = [], onReschedule, onShowSuccess,
 }) => {
   const approvalMap: Record<string, { label: string; cls: string }> = {
     assigned:              { label: "Assigned",       cls: "badge-blue"   },
@@ -4468,7 +4477,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
 
             {/* Reschedule request from frozen state */}
             {(() => {
-              const hasPendingReschedule = contextTickets?.some(
+              const hasPendingReschedule = allTickets.some(
                 tk => tk.taskId === task.id &&
                       (tk as any).ticketType === "reschedule-request" &&
                       (tk.status === "open" || tk.status === "pending-admin")
@@ -4493,8 +4502,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
                     onClick={e => {
                       e.stopPropagation();
                       const input = document.getElementById(`reschedule-frozen-${task.id}`) as HTMLInputElement;
-                      if (!input?.value) { showSuccess("Please select a proposed date first"); return; }
-                      handleReschedule(task.id, input.value);
+                      if (!input?.value) { onShowSuccess?.("Please select a proposed date first"); return; }
+                      onReschedule?.(task.id, input.value);
                     }}
                     style={{ padding: "5px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                   >

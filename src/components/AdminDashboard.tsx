@@ -1984,9 +1984,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const activeSmartAssistCount = countActiveTickets(smartAssistTickets);
     // Assistance tickets sent to THIS admin for review
+    // Only show tickets for tasks that THIS admin originally assigned (ownership)
     const pendingAssistanceTickets = (assistanceTickets ?? []).filter(
       t => (t.status === "pending-admin" || t.status === "open") &&
-           (t.assignedTo ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
+           (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
 
     // Voice alert when a new ticket arrives for this admin
@@ -3333,17 +3334,31 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <div style={{
                       width: 46, height: 46, borderRadius: 13,
-                      background: "rgba(255,149,0,0.12)",
-                      border: "1px solid rgba(255,149,0,0.35)",
+                      background: (selectedTicket as any).ticketType === "reschedule-request"
+                        ? "rgba(0,212,255,0.12)" : "rgba(255,149,0,0.12)",
+                      border: `1px solid ${(selectedTicket as any).ticketType === "reschedule-request" ? "rgba(0,212,255,0.35)" : "rgba(255,149,0,0.35)"}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontSize: 22,
-                    }}>🎫</div>
+                    }}>
+                      {(selectedTicket as any).ticketType === "reschedule-request" ? "📅" : "🎫"}
+                    </div>
                     <div>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: G.textPrimary, fontFamily: "'Oswald',sans-serif" }}>
-                        Review Assistance Ticket
+                      {/* Task title — prominently displayed (Fix 5) */}
+                      <div style={{ fontSize: 18, fontWeight: 800, color: G.textPrimary, fontFamily: "'Oswald',sans-serif", lineHeight: 1.2, marginBottom: 4 }}>
+                        {selectedTicket.taskTitle}
                       </div>
-                      <div style={{ fontSize: 10, color: "#ff9500", marginTop: 3, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.06em" }}>
-                        {selectedTicket.id} · ACTION REQUIRED
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
+                        <div style={{ fontSize: 10, color: (selectedTicket as any).ticketType === "reschedule-request" ? G.cyan : "#ff9500", fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.06em" }}>
+                          {(selectedTicket as any).ticketType === "reschedule-request"
+                            ? "📅 RESCHEDULE REQUEST"
+                            : "🎫 ASSISTANCE TICKET"} · ACTION REQUIRED
+                        </div>
+                        {/* Ownership badge — confirms this admin owns the ticket (Fix 6) */}
+                        {(selectedTicket.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() && (
+                          <span style={{ fontSize: 9, background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.2)", borderRadius: 4, padding: "1px 6px", color: G.success, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700 }}>
+                            ✓ YOUR TASK
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3400,19 +3415,49 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     </div>
                   </div>
 
-                  {/* What approval does */}
-                  <div style={{
-                    padding: "12px 14px",
-                    background: "rgba(0,255,136,0.04)",
-                    border: "1px solid rgba(0,255,136,0.15)",
-                    borderRadius: 10, display: "flex", gap: 10,
-                  }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>🔓</span>
-                    <div style={{ fontSize: 11, color: "rgba(0,255,136,0.75)", lineHeight: 1.7 }}>
-                      <strong style={{ color: G.success }}>Approving this ticket will unfreeze the task</strong> and send an approval
-                      notification directly to the doer, allowing them to continue working.
+                  {/* What approval does — conditional on ticket type (Fix 7) */}
+                  {(selectedTicket as any).ticketType === "reschedule-request" ? (
+                    <div>
+                      {/* Show proposed date from staffNote */}
+                      <div style={{ padding: "12px 14px", background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.15)", borderRadius: 10, marginBottom: 10 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 6 }}>Doer&apos;s Proposed Date</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: G.textPrimary }}>
+                          {(selectedTicket as any).staffNote?.replace("Proposed date: ", "")
+                            ? new Date((selectedTicket as any).staffNote.replace("Proposed date: ", "")).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+                            : "Not specified"}
+                        </div>
+                        <div style={{ fontSize: 11, color: G.textMuted, marginTop: 4 }}>
+                          Original deadline: {new Date(selectedTicket.taskDueDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                        </div>
+                      </div>
+                      {/* Option to propose a different date */}
+                      <div style={{ padding: "10px 12px", background: "rgba(255,149,0,0.04)", border: "1px solid rgba(255,149,0,0.15)", borderRadius: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: "#ff9500", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 6 }}>Approve with a different date? (optional)</div>
+                        <input type="date"
+                          value={(selectedTicket as any)._adminProposedDate ?? ""}
+                          onChange={e => {
+                            // Store admin's counter-proposed date on the ticket object temporarily
+                            setSelectedTicket(prev => prev ? { ...prev, _adminProposedDate: e.target.value } as any : prev);
+                          }}
+                          min={new Date().toISOString().split("T")[0]}
+                          style={{ width: "100%", padding: "8px 10px", background: G.bgDeep, border: "1px solid rgba(255,149,0,0.25)", borderRadius: 7, color: G.textPrimary, fontSize: 13, outline: "none", colorScheme: "dark" as const }} />
+                        <div style={{ fontSize: 10, color: G.textMuted, marginTop: 4 }}>Leave blank to approve doer&apos;s proposed date</div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div style={{
+                      padding: "12px 14px",
+                      background: "rgba(0,255,136,0.04)",
+                      border: "1px solid rgba(0,255,136,0.15)",
+                      borderRadius: 10, display: "flex", gap: 10,
+                    }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>🔓</span>
+                      <div style={{ fontSize: 11, color: "rgba(0,255,136,0.75)", lineHeight: 1.7 }}>
+                        <strong style={{ color: G.success }}>Approving this ticket will unfreeze the task</strong> and send an approval
+                        notification directly to the doer, allowing them to continue working.
+                      </div>
+                    </div>
+                  )}
 
                   {/* Admin response */}
                   <div>
@@ -3478,10 +3523,42 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         if (!ticketReviewNote.trim()) return;
                         approveAssistanceTicket(selectedTicket.id, ticketReviewNote.trim());
                         const linkedTaskId = selectedTicket.taskId;
-                        speakText(`Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`);
+                        // ── Unfreeze the linked task ──────────────────────────
+                        if (linkedTaskId) {
+                          const linkedTask = allTasksCombined.find((t: Task) => t.id === linkedTaskId) || {} as Task;
+                          const isReschedule = (selectedTicket as any).ticketType === "reschedule-request";
+                          const adminDate    = (selectedTicket as any)._adminProposedDate;
+                          const doerDate     = (selectedTicket as any).staffNote?.replace("Proposed date: ", "") ?? "";
+                          const finalDate    = adminDate || doerDate || linkedTask.dueDate;
+
+                          const updatedTask: Task & { isFrozen?: boolean } = {
+                            ...linkedTask,
+                            isFrozen: false,
+                            ...(isReschedule && finalDate ? { dueDate: finalDate } : {}),
+                            history: [
+                              ...((linkedTask as any).history ?? []),
+                              {
+                                id:        `hist_${Date.now()}`,
+                                timestamp:  new Date().toISOString(),
+                                action:     isReschedule ? "reschedule-approved" : "unfreeze-approved",
+                                by:         user?.email ?? "admin",
+                                notes:      isReschedule
+                                  ? `Reschedule approved. New deadline: ${finalDate}. Admin note: ${ticketReviewNote.trim()}`
+                                  : `Task unfrozen. Admin note: ${ticketReviewNote.trim()}`,
+                              },
+                            ],
+                          };
+                          updateTask(linkedTaskId, updatedTask as never);
+                          syncTaskToBackend(updatedTask);
+                        }
+                        const isReschedule = (selectedTicket as any).ticketType === "reschedule-request";
+                        speakText(isReschedule
+                          ? `Reschedule approved for ${selectedTicket.taskTitle}. The task has been rescheduled and the staff member has been notified.`
+                          : `Assistance ticket approved for ${selectedTicket.taskTitle}. The task has been unfrozen and the staff member has been notified.`
+                        );
                         setShowTicketModal(false);
                         setSelectedTicket(null);
-                        toast("✓ Ticket approved — task unfrozen · Doer notified");
+                        toast(isReschedule ? "✓ Reschedule approved — task rescheduled" : "✓ Ticket approved — task unfrozen · Doer notified");
                       }}
                       disabled={ticketReviewNote.trim().length < 5}
                       style={{
@@ -3502,7 +3579,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       }}
                     >
-                      <CheckCircle size={14} /> Approve & Unfreeze Task
+                      <CheckCircle size={14} /> {(selectedTicket as any).ticketType === "reschedule-request" ? "Approve Reschedule" : "Approve & Unfreeze Task"}
                     </button>
                   </div>
                 </div>
