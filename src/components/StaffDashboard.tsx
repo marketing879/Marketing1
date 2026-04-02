@@ -4,9 +4,8 @@ import { useUser, Task, AssistanceTicket, TicketType } from "../contexts/UserCon
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
-import { greetUser, setElevenLabsVoice, speakText, loadGlobalVoiceEnabled } from "../services/VoiceModule";
-// import roswaltLogo from "../assets/logo.png"; // Logo file not found
-const roswaltLogo = "ROSWALT-LOGO-GOLDEN-8K"; // Placeholder — replace with actual logo path when available
+import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
+const roswaltLogo = "/assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -272,8 +271,7 @@ async function extractDocumentText(dataUrl: string): Promise<{ text: string; isP
 
 async function scoreWithAI(notes: string, files: string[], purpose?: string, links?: string[]): Promise<AIScoreResult> {
   const hasFiles  = files.length > 0;
-  const isPreExtractedVideo = files.some(f => f.includes("#video-frame="));
-  const isVideo   = hasFiles && (files[0].startsWith("data:video/") || isPreExtractedVideo);
+  const isVideo   = hasFiles && files[0].startsWith("data:video/");
 
   // ── Detect document uploads ────────────────────────────────────────────────
   const documentFiles  = files.filter(f => isDocumentFile(f));
@@ -1283,10 +1281,9 @@ interface AssistanceTicketsTabProps {
   tickets: AssistanceTicket[];
   onUpdateTicket: (id: string, updates: Partial<AssistanceTicket>) => void;
   onSubmitToAdmin: (id: string) => void;
-  onShowMessage: (msg: string) => void;
 }
 
-const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin, onShowMessage }) => {
+const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin }) => {
   const [expanded,   setExpanded]   = useState<string | null>(null);
   const [staffNotes, setStaffNotes] = useState<{ [id: string]: string }>({});
 
@@ -1427,49 +1424,28 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
               <div style={{ padding: "0 18px 18px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                 <div style={{ paddingTop: 14 }}>
 
-                  {/* Staff explanation — REQUIRED before ticket can be submitted */}
-                  {(ticket.ticketType as string) !== "reschedule-request" && (
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
-                        Your Explanation <span style={{ color: "#ff3366" }}>*</span>
-                      </div>
-                      <div style={{ fontSize: 10, color: "rgba(255,51,102,0.7)", marginBottom: 8 }}>
-                        Required — this ticket cannot be submitted to admin without an explanation.
-                      </div>
-                      <textarea
-                        value={staffNotes[ticket.id] !== undefined ? staffNotes[ticket.id] : ticket.staffNote}
-                        onChange={e => setStaffNotes(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                        placeholder="Explain why this task is delayed and your plan to complete it…"
-                        disabled={ticket.status === "pending-admin" || ticket.status === "admin-approved" || ticket.status === "resolved"}
-                        style={{
-                          width: "100%", padding: "10px 12px",
-                          background: ticket.status === "open" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
-                          border: `1px solid ${ticket.status === "open" && !(staffNotes[ticket.id] ?? ticket.staffNote)?.trim() ? "rgba(255,51,102,0.4)" : "rgba(255,255,255,0.08)"}`,
-                          borderRadius: 9, color: "#eef0ff", fontSize: 12,
-                          fontFamily: "inherit", resize: "vertical", outline: "none",
-                          minHeight: 90, lineHeight: 1.5,
-                          opacity: ticket.status !== "open" ? 0.6 : 1,
-                          cursor: ticket.status !== "open" ? "not-allowed" : "text",
-                        }}
-                      />
-                      {ticket.status === "open" && !(staffNotes[ticket.id] ?? ticket.staffNote)?.trim() && (
-                        <div style={{ fontSize: 10, color: "#ff3366", marginTop: 4 }}>
-                          ⚠ Please write your explanation before submitting
-                        </div>
-                      )}
+                  {/* Staff explanation note */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                      Your Explanation / Notes
                     </div>
-                  )}
-                  {/* Reschedule info */}
-                  {(ticket.ticketType as string) === "reschedule-request" && ticket.status === "pending-admin" && (
-                    <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.18)", borderRadius: 9 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "#00d4ff", textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 4 }}>
-                        📅 Reschedule Request
-                      </div>
-                      <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.5 }}>
-                        Proposed new date: {(ticket as any).staffNote?.replace("Proposed date: ", "") || "See admin panel"}
-                      </div>
-                    </div>
-                  )}
+                    <textarea
+                      value={staffNotes[ticket.id] !== undefined ? staffNotes[ticket.id] : ticket.staffNote}
+                      onChange={e => setStaffNotes(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                      placeholder="Explain why this task was delayed and your plan to resolve it…"
+                      disabled={ticket.status === "pending-admin" || ticket.status === "admin-approved" || ticket.status === "resolved"}
+                      style={{
+                        width: "100%", padding: "10px 12px",
+                        background: ticket.status === "open" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 9, color: "#eef0ff", fontSize: 12,
+                        fontFamily: "inherit", resize: "vertical", outline: "none",
+                        minHeight: 80, lineHeight: 1.5,
+                        opacity: ticket.status !== "open" ? 0.6 : 1,
+                        cursor: ticket.status !== "open" ? "not-allowed" : "text",
+                      }}
+                    />
+                  </div>
 
                   {/* Action buttons */}
                   {ticket.status === "open" && (
@@ -1493,20 +1469,9 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
                         💾 Save Note
                       </button>
 
-                      {/* Submit to admin — blocked if no explanation */}
+                      {/* Submit to admin */}
                       <button
-                        onClick={() => {
-                          const note = staffNotes[ticket.id] ?? ticket.staffNote;
-                          if (!note?.trim() && (ticket.ticketType as string) !== "reschedule-request") {
-                            onShowMessage("⚠ Please write your explanation before submitting to admin.");
-                            return;
-                          }
-                          // Save the note first if changed
-                          if (note?.trim() && note !== ticket.staffNote) {
-                            onUpdateTicket(ticket.id, { staffNote: note });
-                          }
-                          onSubmitToAdmin(ticket.id);
-                        }}
+                        onClick={() => onSubmitToAdmin(ticket.id)}
                         style={{
                           flex: 2, padding: "9px",
                           background: "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,107,53,0.15))",
@@ -1564,10 +1529,9 @@ interface DelayedTabProps {
   onReschedule: (taskId: string, newDate: string) => void;
   onComplete: (task: Task) => void;
   getProjectName: (id: string) => string;
-  allTickets?: AssistanceTicket[];
 }
 
-const DelayedTab: React.FC<DelayedTabProps> = ({ tasks, rescheduledTasks, onReschedule, onComplete, getProjectName, allTickets = [] }) => {
+const DelayedTab: React.FC<DelayedTabProps> = ({ tasks, rescheduledTasks, onReschedule, onComplete, getProjectName }) => {
   const [newDates,   setNewDates]   = useState<{ [id: string]: string }>({});
   const [notesInput, setNotesInput] = useState<{ [id: string]: string }>({});
   const [savedNotes, setSavedNotes] = useState<{ [id: string]: string }>({});
@@ -1648,137 +1612,104 @@ const DelayedTab: React.FC<DelayedTabProps> = ({ tasks, rescheduledTasks, onResc
             </div>
 
             {/* Expanded actions */}
-            {isOpen && (() => {
-              const hasPendingReschedule = allTickets.some(
-                tk => tk.taskId === task.id &&
-                      (tk as any).ticketType === "reschedule-request" &&
-                      (tk.status === "open" || tk.status === "pending-admin")
-              );
-              const approvedReschedule = allTickets.find(
-                tk => tk.taskId === task.id &&
-                      (tk as any).ticketType === "reschedule-request" &&
-                      tk.status === "admin-approved"
-              );
-
-              return (
-                <div style={{ padding: "14px 18px 18px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-
-                  {/* Step indicator */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 16, fontSize: 9, fontFamily: "'IBM Plex Mono', monospace" }}>
-                    {[
-                      { n: 1, label: "Propose New Date", done: hasPendingReschedule || !!approvedReschedule },
-                      { n: 2, label: "Admin Approves",   done: !!approvedReschedule },
-                      { n: 3, label: "Submit Work",      done: task.approvalStatus === "in-review" || task.approvalStatus === "admin-approved" },
-                    ].map(step => (
-                      <div key={step.n} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6,
-                        background: step.done ? "rgba(0,255,136,0.08)" : "rgba(255,255,255,0.03)",
-                        border: `1px solid ${step.done ? "rgba(0,255,136,0.25)" : "rgba(255,255,255,0.07)"}`,
-                        color: step.done ? "#00ff88" : "#434763", fontWeight: 700, letterSpacing: "0.05em" }}>
-                        <span style={{ width: 16, height: 16, borderRadius: "50%", background: step.done ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.06)",
-                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900 }}>
-                          {step.done ? "✓" : step.n}
-                        </span>
-                        {step.label}
-                      </div>
-                    ))}
+            {isOpen && (
+              <div style={{ padding: "14px 18px 16px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                {/* Update deadline */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                    Update Deadline
                   </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="date"
+                      value={newDates[task.id] || ""}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={e => setNewDates(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      style={{
+                        flex: 1, padding: "9px 11px",
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 8, color: "#eef0ff", fontSize: 12,
+                        outline: "none", fontFamily: "inherit",
+                      }}
+                    />
+                    <button
+                      onClick={() => { if (newDates[task.id]) { onReschedule(task.id, newDates[task.id]); setNewDates(prev => ({ ...prev, [task.id]: "" })); }}}
+                      disabled={!newDates[task.id]}
+                      style={{
+                        padding: "9px 14px",
+                        background: newDates[task.id] ? "rgba(0,212,255,0.12)" : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${newDates[task.id] ? "rgba(0,212,255,0.35)" : "rgba(255,255,255,0.07)"}`,
+                        borderRadius: 8, color: newDates[task.id] ? "#00d4ff" : "#434763",
+                        fontSize: 11, fontWeight: 700, cursor: newDates[task.id] ? "pointer" : "not-allowed",
+                        fontFamily: "inherit", transition: "all 0.18s", textTransform: "uppercase", letterSpacing: "0.5px",
+                      }}
+                    >
+                      <Clock size={10} style={{ display: "inline", marginRight: 5 }} />
+                      Reschedule
+                    </button>
+                  </div>
+                </div>
 
-                  {/* STEP 1 — Propose a new date (if not yet requested) */}
-                  {!hasPendingReschedule && !approvedReschedule && (
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "#00d4ff", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
-                        Step 1 — Propose a New Deadline
-                      </div>
-                      <div style={{ fontSize: 10, color: "#7e84a3", marginBottom: 8 }}>
-                        This will send a reschedule request to the admin for approval. The date will only change after admin approves.
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input
-                          type="date"
-                          value={newDates[task.id] || ""}
-                          min={new Date().toISOString().split("T")[0]}
-                          onChange={e => setNewDates(prev => ({ ...prev, [task.id]: e.target.value }))}
-                          style={{
-                            flex: 1, padding: "9px 11px",
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(0,212,255,0.2)",
-                            borderRadius: 8, color: "#eef0ff", fontSize: 12,
-                            outline: "none", fontFamily: "inherit", colorScheme: "dark" as const,
-                          }}
-                        />
-                        <button
-                          onClick={() => {
-                            if (newDates[task.id]) {
-                              onReschedule(task.id, newDates[task.id]);
-                              setNewDates(prev => ({ ...prev, [task.id]: "" }));
-                            }
-                          }}
-                          disabled={!newDates[task.id]}
-                          style={{
-                            padding: "9px 16px",
-                            background: newDates[task.id] ? "rgba(0,212,255,0.12)" : "rgba(255,255,255,0.03)",
-                            border: `1px solid ${newDates[task.id] ? "rgba(0,212,255,0.4)" : "rgba(255,255,255,0.07)"}`,
-                            borderRadius: 8, color: newDates[task.id] ? "#00d4ff" : "#434763",
-                            fontSize: 11, fontWeight: 700, cursor: newDates[task.id] ? "pointer" : "not-allowed",
-                            fontFamily: "inherit", transition: "all 0.18s", textTransform: "uppercase" as const, letterSpacing: "0.5px",
-                          }}
-                        >
-                          📅 Send Request
-                        </button>
-                      </div>
-                    </div>
+                {/* Delay notes */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+                    Delay Explanation (optional)
+                  </div>
+                  <textarea
+                    value={notesInput[task.id] || ""}
+                    onChange={e => setNotesInput(prev => ({ ...prev, [task.id]: e.target.value }))}
+                    placeholder="Explain the reason for delay…"
+                    style={{
+                      width: "100%", padding: "9px 11px",
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 8, color: "#eef0ff", fontSize: 12,
+                      fontFamily: "inherit", resize: "vertical", outline: "none",
+                      minHeight: 70, lineHeight: 1.5,
+                    }}
+                  />
+                  {notesInput[task.id] && (
+                    <button
+                      onClick={() => { setSavedNotes(prev => ({ ...prev, [task.id]: notesInput[task.id] })); }}
+                      style={{
+                        marginTop: 6, padding: "6px 12px",
+                        background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.25)",
+                        borderRadius: 7, color: "#b06af3", fontSize: 10, fontWeight: 700,
+                        cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px",
+                      }}
+                    >
+                      ✓ Save Note
+                    </button>
                   )}
-
-                  {/* STEP 1 done — pending admin approval */}
-                  {hasPendingReschedule && !approvedReschedule && (
-                    <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(176,106,243,0.07)", border: "1px solid rgba(176,106,243,0.25)", borderRadius: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#b06af3", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
-                        Step 2 — Awaiting Admin Approval
-                      </div>
-                      <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.5 }}>
-                        Your reschedule request has been sent to your admin. The deadline will update automatically once approved.
-                      </div>
-                    </div>
-                  )}
-
-                  {/* STEP 2 done — admin approved, now doer can submit work */}
-                  {approvedReschedule && (
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ padding: "10px 14px", background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.25)", borderRadius: 10, marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: "#00ff88", marginBottom: 3 }}>✓ Step 2 — Reschedule Approved</div>
-                        <div style={{ fontSize: 11, color: "#7e84a3" }}>
-                          New deadline approved. Submit your completed work below.
-                        </div>
-                      </div>
-                      {/* STEP 3 — Submit completed work */}
-                      {task.approvalStatus !== "in-review" && task.approvalStatus !== "superadmin-approved" && (
-                        <button
-                          onClick={() => onComplete(task)}
-                          style={{
-                            width: "100%", padding: "12px",
-                            background: "linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,200,100,0.1))",
-                            border: "1px solid rgba(0,255,136,0.4)",
-                            borderRadius: 9, color: "#00ff88",
-                            fontSize: 12, fontWeight: 700, cursor: "pointer",
-                            fontFamily: "inherit", textTransform: "uppercase" as const, letterSpacing: "0.5px",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                            transition: "all 0.18s",
-                          }}
-                        >
-                          <CheckCircle size={14} /> Step 3 — Submit Completed Work
-                        </button>
-                      )}
-                      {task.approvalStatus === "in-review" && (
-                        <div style={{ textAlign: "center", padding: "10px", fontSize: 11, color: "#b06af3", fontWeight: 700 }}>
-                          ⏳ Submitted — awaiting admin review
-                        </div>
-                      )}
+                  {savedNotes[task.id] && (
+                    <div style={{ marginTop: 8, padding: "8px 10px", background: "rgba(176,106,243,0.06)", border: "1px solid rgba(176,106,243,0.18)", borderRadius: 7, fontSize: 11, color: "#c8a4f5", lineHeight: 1.5 }}>
+                      <span style={{ fontSize: 8, fontWeight: 800, color: "#b06af3", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Saved Note</span>
+                      {savedNotes[task.id]}
                     </div>
                   )}
                 </div>
-              );
-            })()}
+
+                {/* Mark complete */}
+                {task.approvalStatus !== "superadmin-approved" && (
+                  <button
+                    onClick={() => onComplete(task)}
+                    style={{
+                      width: "100%", padding: "10px",
+                      background: "linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,47,255,0.15))",
+                      border: "1px solid rgba(0,212,255,0.3)",
+                      borderRadius: 9, color: "#00d4ff",
+                      fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px",
+                      transition: "all 0.18s",
+                    }}
+                  >
+                    <CheckCircle size={11} style={{ display: "inline", marginRight: 7 }} />
+                    Mark as Completed
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -1825,7 +1756,7 @@ const StaffDashboard: React.FC = () => {
   const tickets = (contextTickets ?? []).filter(
     t => t.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
   );
-  const ticketInitRef = useRef(false); // kept for compatibility
+  const ticketInitRef = useRef(false);
 
   // AI Score modal state
   const [aiScoreResult,     setAiScoreResult]     = useState<AIScoreResult | null>(null);
@@ -1848,12 +1779,6 @@ const StaffDashboard: React.FC = () => {
   });
   const profileInputRef = useRef<HTMLInputElement>(null);
   const greetedRef = useRef(false);
-
-  // Voice preference loaded from MongoDB — gate lives inside VoiceModule
-  useEffect(() => {
-    if (!user?.email) return;
-    loadGlobalVoiceEnabled(user.email); // sets module-level flag, no state needed
-  }, [user?.email]);
 
   useEffect(() => {
     if (greetedRef.current) return;
@@ -2216,23 +2141,22 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleConfirmSubmit = () => {
     if (!selectedTask || !pendingSubmitTask) return;
     // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
     // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
-    const taskPayload: any = {
+    updateTask?.(selectedTask.id, {
       title:           selectedTask.title,
       description:     selectedTask.description,
-      status:          "completed",
+      status:          "completed" as any,
       priority:        selectedTask.priority,
       dueDate:         selectedTask.dueDate,
       assignedTo:      selectedTask.assignedTo,
-      assignedBy:      (selectedTask as any).assignedBy,
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
       attachments:     uploadedPhotos[selectedTask.id] || [],
       submittedLinks:  taskLinks[selectedTask.id] || [],
-      approvalStatus:  "in-review",
+      approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
       scoreData:       aiScoreResult ? {
         percentScore:  aiScoreResult.percentScore,
@@ -2245,19 +2169,7 @@ const StaffDashboard: React.FC = () => {
         categories:    aiScoreResult.categories,
         submittedAt:   new Date().toISOString(),
       } : undefined,
-    };
-
-    // 1. Update local state
-    updateTask?.(selectedTask.id, taskPayload as any);
-
-    // 2. ── Persist to backend — ensures admin sees score, attachments, notes ──
-    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/tasks/${selectedTask.id}`, {
-      method:  "PUT",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(taskPayload),
-    })
-      .then(() => console.log("[Submit] Task synced to backend:", selectedTask.id))
-      .catch(err => console.error("[Submit] Failed to sync task to backend:", err));
+    } as any);
     // submitTaskCompletion removed — merged into updateTask above to avoid overwrite
     speakText("Successfully submitted for admin approval. Well done!");
     showSuccess("Task submitted for review ✓");
@@ -2300,8 +2212,8 @@ const StaffDashboard: React.FC = () => {
 
   const handlePhotoUpload = (taskId: string, files: FileList | null) => {
     if (!files) return;
-    const MAX_WARN_MB  = 20;
-    const MAX_BLOCK_MB = 300;
+    const MAX_WARN_MB  = 5;
+    const MAX_BLOCK_MB = 25;
     let uploaded = 0;
 
     Array.from(files).forEach((file) => {
@@ -2378,57 +2290,13 @@ const StaffDashboard: React.FC = () => {
   };
 
   const handleReschedule = (taskId: string, newDate: string) => {
-    const task = assignedTasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    // If frozen — raise a RESCHEDULE ticket to admin, do NOT mark complete
-    if ((task as any).isFrozen) {
-      const hasExistingReschedule = contextTickets?.some(
-        tk => tk.taskId === taskId &&
-              (tk as any).ticketType === "reschedule-request" &&
-              (tk.status === "open" || tk.status === "pending-admin")
-      );
-      if (hasExistingReschedule) {
-        showSuccess("⏳ A reschedule request is already pending admin approval.");
-        return;
-      }
-      raiseAssistanceTicket({
-        taskId,
-        taskTitle:   task.title,
-        taskDueDate: task.dueDate,
-        assignedTo:  user?.email ?? "",
-        assignedBy:  (task as any).assignedBy ?? "",
-        raisedBy:    user?.email ?? "",
-        ticketType:  "reschedule-request" as TicketType,
-        reason:      `Doer is requesting a reschedule. Proposed new deadline: ${new Date(newDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}. Original deadline: ${new Date(task.dueDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}.`,
-        staffNote:   `Proposed date: ${newDate}`,
-      });
-      showSuccess("📤 Reschedule request sent to admin for approval");
-      return;
-    }
-
-    // Not frozen — normal reschedule (local + backend)
     setRescheduledTasks(prev => ({ ...prev, [taskId]: newDate }));
-    fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${taskId}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dueDate: newDate }),
-    }).catch(() => {});
     showSuccess("✓ Deadline rescheduled");
   };
 
   const handleDelayedComplete = (task: Task) => {
     if ((task as any).isFrozen) {
-      showSuccess("🔒 Task is frozen — cannot mark as complete. Admin must approve the ticket first.");
-      return;
-    }
-    // Block if there is a pending reschedule ticket
-    const hasPendingReschedule = contextTickets?.some(
-      tk => tk.taskId === task.id &&
-            (tk as any).ticketType === "reschedule-request" &&
-            (tk.status === "open" || tk.status === "pending-admin")
-    );
-    if (hasPendingReschedule) {
-      showSuccess("⏳ Reschedule request pending admin approval — cannot mark as complete yet.");
+      showSuccess("🔒 Task is frozen — admin must approve the assistance ticket first.");
       return;
     }
     setSelectedTask(task);
@@ -2436,36 +2304,16 @@ const StaffDashboard: React.FC = () => {
   };
 
   // ── Auto-generate Assistance Tickets for delayed tasks ──────────────────────
-  // Runs ONCE per session only. Uses a Set to track which taskIds have already
-  // had a ticket raised this session — prevents duplicate tickets on re-renders.
-  const raisedTicketIdsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
-    // Wait until both tasks and tickets are loaded
+    if (ticketInitRef.current) return;
     if (assignedTasks.length === 0) return;
-    if (!contextTickets) return;
-    // Don't run until tickets have been fetched (avoid false "no existing" positives)
-    if (contextTickets.length === 0 && assignedTasks.some(t => isDelayed(t))) {
-      // tickets might not be loaded yet — wait for next render
-      return;
-    }
+    ticketInitRef.current = true;
 
-    const delayed = assignedTasks.filter(t => {
-      if (!isDelayed(t)) return false;
-      // Skip frozen tasks
-      if ((t as any).isFrozen) return false;
-      // Skip if already raised this session
-      if (raisedTicketIdsRef.current.has(t.id)) return false;
-      // Skip if ANY ticket already exists for this task (any status)
-      const hasExisting = contextTickets.some(tk => tk.taskId === t.id);
-      return !hasExisting;
-    });
-
+    const delayed = assignedTasks.filter(t => isDelayed(t));
     if (delayed.length === 0) return;
 
+    // Use context raiseAssistanceTicket — it deduplicates internally
     delayed.forEach(t => {
-      // Mark as raised immediately to prevent duplicate raises
-      raisedTicketIdsRef.current.add(t.id);
       raiseAssistanceTicket({
         taskId:      t.id,
         taskTitle:   t.title,
@@ -2474,22 +2322,15 @@ const StaffDashboard: React.FC = () => {
         assignedBy:  (t as any).assignedBy ?? "",
         raisedBy:    user?.email ?? "",
         ticketType:  "general-query" as TicketType,
-        reason:      `Task "${t.title}" is overdue (was due ${new Date(t.dueDate).toLocaleDateString()}). Task has been frozen pending your explanation and admin review.`,
+        reason:      `This task was due on ${new Date(t.dueDate).toLocaleDateString()} and has not been completed. An assistance ticket has been automatically raised to notify your admin and track the delay.`,
         staffNote:   "",
       });
     });
-  // Only re-run when tasks or tickets first load — not on every change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    assignedTasks.length > 0 ? "loaded" : "empty",
-    contextTickets ? "tickets-loaded" : "no-tickets",
-  ]);
+  }, [assignedTasks]);
 
-  // ── Freeze / Unfreeze auto-heal — syncs isFrozen with ticket state ──────────
-  // Tracked ref prevents redundant backend calls when state is already correct
-  const frozenSyncedRef = useRef<Set<string>>(new Set());
-  const unfrozenSyncedRef = useRef<Set<string>>(new Set());
-
+  // ── Freeze any delayed task that has an active ticket — runs every render ───
+  // Runs separately from ticket creation so it catches tickets that already
+  // existed before this session (avoids ticketInitRef blocking the freeze).
   useEffect(() => {
     if (!assignedTasks.length || !contextTickets) return;
     assignedTasks.forEach(t => {
@@ -2499,36 +2340,16 @@ const StaffDashboard: React.FC = () => {
               tk.assignedTo?.toLowerCase() === user?.email?.toLowerCase()
       );
       const isAlreadyFrozen = (t as any).isFrozen === true;
-
-      // Freeze if active ticket exists and not yet frozen — sync ONCE per task
-      if (hasActiveTicket && !isAlreadyFrozen && !frozenSyncedRef.current.has(t.id)) {
-        frozenSyncedRef.current.add(t.id);
-        unfrozenSyncedRef.current.delete(t.id);
+      if (hasActiveTicket && !isAlreadyFrozen) {
         updateTask?.(t.id, { isFrozen: true } as any);
-        // Persist to backend so admin dashboard sees it
-        fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isFrozen: true }),
-        }).catch(() => {});
       }
-
-      // Unfreeze if all tickets for this task are resolved/approved AND task is still frozen
-      if (isAlreadyFrozen) {
-        const taskTickets = contextTickets.filter(tk => tk.taskId === t.id);
-        if (taskTickets.length === 0) return;
-        const allResolved = taskTickets.every(
-          tk => tk.status === "resolved" || tk.status === "admin-approved"
-        );
-        // ONLY unfreeze if there is at least one admin-approved ticket
-        const hasApproved = taskTickets.some(tk => tk.status === "admin-approved");
-        if (allResolved && hasApproved && !unfrozenSyncedRef.current.has(t.id)) {
-          unfrozenSyncedRef.current.add(t.id);
-          frozenSyncedRef.current.delete(t.id);
+      // Unfreeze if all tickets for this task are resolved / approved
+      if (!hasActiveTicket && isAlreadyFrozen) {
+        const allResolved = contextTickets
+          .filter(tk => tk.taskId === t.id)
+          .every(tk => tk.status === "resolved" || tk.status === "admin-approved");
+        if (allResolved) {
           updateTask?.(t.id, { isFrozen: false } as any);
-          fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${t.id}`, {
-            method: "PUT", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isFrozen: false }),
-          }).catch(() => {});
         }
       }
     });
@@ -2997,7 +2818,7 @@ const StaffDashboard: React.FC = () => {
         .badge-purple { background: rgba(176,106,243,0.08);color: var(--cp); border-color: rgba(176,106,243,0.22); }
 
         .sd-assigner-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 500; margin-bottom: 8px; border: 1px solid; word-wrap: break-word; }
-        .sd-task-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; }
+        .sd-task-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
         .sd-task-dates { font-size: 10px; color: var(--t3); display: flex; gap: 10px; font-variant-numeric: tabular-nums; }
         .sd-status-msg { font-size: 10px; font-weight: 700; }
 
@@ -3421,9 +3242,6 @@ const StaffDashboard: React.FC = () => {
                       onOpenLightbox={(photos, idx) => openLightbox(photos, idx)}
                       dragOver={dragOver}
                       setDragOver={setDragOver}
-                      allTickets={contextTickets ?? []}
-                      onReschedule={handleReschedule}
-                      onShowSuccess={showSuccess}
                     />
                   ))}
                 </div>
@@ -3453,8 +3271,6 @@ const StaffDashboard: React.FC = () => {
                       dragOver={dragOver}
                       setDragOver={setDragOver}
                       isCompleted
-                      allTickets={contextTickets ?? []}
-                      onShowSuccess={showSuccess}
                     />
                   ))}
                 </div>
@@ -3468,7 +3284,6 @@ const StaffDashboard: React.FC = () => {
                 onReschedule={handleReschedule}
                 onComplete={handleDelayedComplete}
                 getProjectName={getProjectName}
-                allTickets={contextTickets ?? []}
               />
             )}
 
@@ -3477,7 +3292,6 @@ const StaffDashboard: React.FC = () => {
                 tickets={tickets}
                 onUpdateTicket={handleUpdateTicket}
                 onSubmitToAdmin={handleSubmitTicketToAdmin}
-                onShowMessage={showSuccess}
               />
             )}
 
@@ -4446,9 +4260,6 @@ interface TaskCardProps {
   dragOver:       boolean;
   setDragOver:    (v: boolean) => void;
   isCompleted?:   boolean;
-  allTickets?:    AssistanceTicket[];
-  onReschedule?:  (taskId: string, newDate: string) => void;
-  onShowSuccess:  (msg: string) => void;
 }
 
 // ── TaskCard — unchanged from original ──────────────────────────────────────
@@ -4456,7 +4267,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
   task, photos, getProjectName, getAssignerInfo,
   onComplete, onUpload, onRemovePhoto, onOpenLightbox,
   dragOver, setDragOver, isCompleted,
-  allTickets = [], onReschedule, onShowSuccess,
 }) => {
   const approvalMap: Record<string, { label: string; cls: string }> = {
     assigned:              { label: "Assigned",       cls: "badge-blue"   },
@@ -4486,92 +4296,36 @@ const TaskCard: React.FC<TaskCardProps> = ({
   return (
     <div className="sd-task" style={delayed ? { borderColor: "rgba(255,51,102,0.25)" } : (task as any).isFrozen ? { borderColor: "rgba(176,106,243,0.35)", background: "rgba(176,106,243,0.03)" } : {}}>
       {/* ── Frozen Banner — shown when a pending-admin ticket is blocking this task ── */}
-      {(task as any).isFrozen && (() => {
-        const frozenAssigner = getAssignerInfo((task as any).assignedBy);
-        const frozenName     = frozenAssigner?.name ?? (task as any).assignedBy ?? "your admin";
-        const frozenRole     = frozenAssigner?.role ?? "admin";
-        const frozenRc       = ROLE_COLOR[frozenRole] ?? ROLE_COLOR.admin;
-        return (
-          <div style={{
-            position: "absolute", inset: 0, zIndex: 10,
-            background: "rgba(6,10,21,0.78)",
-            backdropFilter: "blur(4px)",
-            borderRadius: "inherit",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            gap: 10, padding: 20,
-            border: "1px solid rgba(176,106,243,0.3)",
-          }}>
-            <div style={{ fontSize: 28 }}>🔒</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
-              Task Frozen — Pending Admin Approval
-            </div>
-            {/* Assigner chip */}
-            <div style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "5px 12px", borderRadius: 7,
-              background: frozenRc.bg, border: `1px solid ${frozenRc.border}`,
-              fontSize: 11, color: frozenRc.text, fontWeight: 600,
-            }}>
-              <Shield size={10} />
-              Assigned by <strong style={{ marginLeft: 3 }}>{frozenName}</strong>
-              <span style={{ opacity: 0.55, marginLeft: 3 }}>· {ROLE_LABEL[frozenRole] ?? frozenRole}</span>
-            </div>
-            <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
-              Your assistance ticket has been submitted to{" "}
-              <strong style={{ color: "#b06af3" }}>{frozenName}</strong> for review.
-              You cannot submit this task until the ticket is approved and the task is unfrozen.
-            </div>
-            <div style={{
-              padding: "6px 14px",
-              background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
-              borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
-              textTransform: "uppercase" as const, letterSpacing: "0.5px",
-              display: "flex", alignItems: "center", gap: 6,
-            }}>
-              <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
-              Awaiting {frozenName}&apos;s Review
-            </div>
-
-            {/* Reschedule request from frozen state */}
-            {(() => {
-              const hasPendingReschedule = allTickets.some(
-                tk => tk.taskId === task.id &&
-                      (tk as any).ticketType === "reschedule-request" &&
-                      (tk.status === "open" || tk.status === "pending-admin")
-              );
-              if (hasPendingReschedule) {
-                return (
-                  <div style={{ fontSize: 11, color: "#00d4ff", textAlign: "center", marginTop: 4, fontStyle: "italic" as const }}>
-                    📅 Reschedule request pending admin approval
-                  </div>
-                );
-              }
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <input
-                    type="date"
-                    id={`reschedule-frozen-${task.id}`}
-                    min={new Date().toISOString().split("T")[0]}
-                    style={{ padding: "5px 8px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#e0e0f0", fontSize: 11, outline: "none", colorScheme: "dark" as const }}
-                    onClick={e => e.stopPropagation()}
-                  />
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      const input = document.getElementById(`reschedule-frozen-${task.id}`) as HTMLInputElement;
-                      if (!input?.value) { onShowSuccess("Please select a proposed date first"); return; }
-                      onReschedule?.(task.id, input.value);
-                    }}
-                    style={{ padding: "5px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, color: "#00d4ff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    📅 Request Reschedule
-                  </button>
-                </div>
-              );
-            })()}
+      {(task as any).isFrozen && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 10,
+          background: "rgba(6,10,21,0.72)",
+          backdropFilter: "blur(4px)",
+          borderRadius: "inherit",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 10, padding: 20,
+          border: "1px solid rgba(176,106,243,0.3)",
+        }}>
+          <div style={{ fontSize: 28 }}>🔒</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
+            Task Frozen — Pending Admin Approval
           </div>
-        );
-      })()}
+          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
+            An assistance ticket for this task has been submitted to your admin.
+            You cannot submit this task until the ticket is approved and the task is unfrozen.
+          </div>
+          <div style={{
+            padding: "6px 14px",
+            background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
+            borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
+            textTransform: "uppercase" as const, letterSpacing: "0.5px",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span style={{ animation: "badgePulse 1.5s ease-in-out infinite", display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#b06af3" }} />
+            Awaiting Admin Review
+          </div>
+        </div>
+      )}
       {delayed && (
         <div style={{
           position: "absolute", top: 10, right: 10,
@@ -4593,6 +4347,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
         </div>
+        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
+          <button className="sd-btn-complete" onClick={onComplete}>
+            <Eye size={11} /> Submit
+          </button>
+        )}
       </div>
 
       {assigner && (
@@ -4608,46 +4367,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
-      {/* ── Voice Note Player — if admin attached a voice brief ── */}
-      {(task as any).voiceNote && (
-        <div style={{
-          margin: "6px 0 8px",
-          padding: "9px 12px", borderRadius: 9,
-          background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
-          display: "flex", flexDirection: "column", gap: 7,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11 }}>🎙️</span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>
-              Voice Brief from Admin
-            </span>
-          </div>
-          <audio
-            src={(task as any).voiceNote}
-            controls
-            style={{ width: "100%", height: 32, accentColor: "#c9a96e" }}
-          />
-        </div>
-      )}
-
       <div className="sd-task-meta">
         <span className={`badge ${priorityCls}`}>{task.priority} priority</span>
         <span className={`badge ${approval.cls}`}>{approval.label}</span>
         {task.projectId && (
           <span className="badge badge-purple">{getProjectName(task.projectId)}</span>
-        )}
-        {(task as any).isAutopulse && (
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 3,
-            padding: "2px 6px", borderRadius: 4,
-            background: (task as any).autopulsePaused ? "rgba(126,132,163,0.1)" : "rgba(201,169,110,0.1)",
-            border: `1px solid ${(task as any).autopulsePaused ? "rgba(126,132,163,0.3)" : "rgba(201,169,110,0.3)"}`,
-            fontSize: 8, fontWeight: 800,
-            color: (task as any).autopulsePaused ? "#7e84a3" : "#c9a96e",
-            textTransform: "uppercase" as const, letterSpacing: "0.5px"
-          }}>
-            {(task as any).autopulsePaused ? "⏸ PAUSED" : `⚡ AUTOPULSE${(task as any).autopulseGeneration > 0 ? ` #${(task as any).autopulseGeneration}` : ""}`}
-          </span>
         )}
       </div>
 
@@ -4759,29 +4483,25 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
-      <div className="sd-task-footer" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-        {/* Submit button — full width at the bottom of every pending card */}
-        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
-          <button
-            className="sd-btn-complete"
-            onClick={onComplete}
-            style={{ width: "100%", justifyContent: "center", padding: "10px 16px", fontSize: 12 }}
-          >
-            <Eye size={13} /> Submit Task
-          </button>
-        )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-          <div className="sd-task-dates">
-            <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
-            {task.createdAt && <span>Created: {new Date(task.createdAt).toLocaleDateString()}</span>}
-          </div>
-          {statusMsg && task.approvalStatus !== "assigned" && (
-            <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
-          )}
+      <div className="sd-task-footer">
+        <div className="sd-task-dates">
+          <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+          {task.createdAt && <span>Created: {new Date(task.createdAt).toLocaleDateString()}</span>}
         </div>
+        {statusMsg && (
+          <div className="sd-status-msg" style={{ color: statusMsg.color }}>{statusMsg.text}</div>
+        )}
       </div>
     </div>
   );
 };
 
 export default StaffDashboard;
+
+
+
+
+
+
+
+
