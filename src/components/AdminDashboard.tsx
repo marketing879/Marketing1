@@ -1091,32 +1091,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [historyTask,      setHistoryTask]      = useState<Task | null>(null);
 
-    const [showReviewModal,   setShowReviewModal]   = useState(false);
-    const [selectedTask,      setSelectedTask]      = useState<Task | null>(null);
-    const [reviewComments,    setReviewComments]    = useState("");
-    const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
-
-    // ── Fetch full task detail from backend before opening review modal ────────
-    // The polled /api/tasks list may return partial data. We always fetch the
-    // individual task record so attachments, completionNotes, and scoreData
-    // are guaranteed to be present.
-    const openReviewModal = async (task: Task): Promise<void> => {
-      setSelectedTask(task);        // show modal immediately with what we have
-      setShowReviewModal(true);
-      setReviewTaskLoading(true);
-      try {
-        const res = await fetch(`https://roswalt-backend-production.up.railway.app/api/tasks/${task.id}`);
-        if (res.ok) {
-          const full = await res.json();
-          const fullTask: Task = { ...task, ...full, id: full.id || String(full._id) };
-          setSelectedTask(fullTask);
-        }
-      } catch (err) {
-        console.warn("[ReviewModal] Could not fetch full task detail:", err);
-      } finally {
-        setReviewTaskLoading(false);
-      }
-    };
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [selectedTask,    setSelectedTask]    = useState<Task | null>(null);
+    const [reviewComments,  setReviewComments]  = useState("");
 
     // ── Assistance Ticket review state ────────────────────────────────────────
     const [selectedTicket,     setSelectedTicket]     = useState<import("../contexts/UserContext").AssistanceTicket | null>(null);
@@ -1238,8 +1215,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     }, 3500);
   }, [showFlashPanel]);
 
+    // Only show tasks THIS admin assigned — never another admin's tasks
     const tasksToReview = (freshTasks as Task[]).filter(t =>
-      t.approvalStatus === "in-review"
+      t.approvalStatus === "in-review" &&
+      (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()
     );
     // My Tasks tab = tasks where THIS admin is the doer (assigned TO them by someone else)
     // Tasks they assigned OUT are tracked via tasksToReview / "Assigned by Me" card — not here
@@ -1413,6 +1392,28 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       setToastMsg(msg);
       if (toastTimer.current) clearTimeout(toastTimer.current);
       toastTimer.current = setTimeout(() => setToastMsg(null), 3500);
+    };
+
+    // ── Review modal loading state ────────────────────────────────────────────
+    const [reviewTaskLoading, setReviewTaskLoading] = React.useState(false);
+
+    // Opens the review modal, then fetches the FULL task (with attachments + scoreData)
+    // The poll at /api/tasks excludes these fields for performance — so we fetch individually
+    const openReviewModal = async (task: Task): Promise<void> => {
+      setSelectedTask(task);
+      setShowReviewModal(true);
+      setReviewTaskLoading(true);
+      try {
+        const res = await fetch(`${API}/api/tasks/${task.id}`);
+        if (res.ok) {
+          const full = await res.json();
+          setSelectedTask(prev => prev ? { ...prev, ...full, id: full.id || String(full._id) } : prev);
+        }
+      } catch (e) {
+        console.warn("[openReviewModal] Could not fetch full task:", e);
+      } finally {
+        setReviewTaskLoading(false);
+      }
     };
 
     // ── Sync task updates to backend ──────────────────────────────────────────
@@ -4263,18 +4264,20 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           )}
           {showReviewModal && selectedTask && (() => {
             const scoreData = (selectedTask as any).scoreData;
-            const scoreReportUrl = (selectedTask as any).scoreReportUrl;
+            const scoreReportUrl = (selectedTask as any).scoreReportUrl || (selectedTask as any).scoreData?.reportUrl;
             return (
             <div className="g-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); } }}>
               <div className="g-modal g-modal-wide" style={{ maxHeight: "90vh" }}>
                 <ModalHeader title={`Review: ${selectedTask.title}`} sub="Approve to forward to Superadmin, or send back for rework" onClose={() => { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); }} accent={G.gold} />
-                {/* ── Loading shimmer while fetching full task detail ── */}
                 {reviewTaskLoading && (
-                  <div style={{ padding: "10px 28px", display: "flex", alignItems: "center", gap: 10, background: "rgba(0,212,255,0.05)", borderBottom: "1px solid rgba(0,212,255,0.12)" }}>
-                    <Loader size={12} color={G.cyan} style={{ animation: "spin 1s linear infinite" }} />
-                    <span style={{ fontSize: 11, color: G.cyan, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.08em" }}>
-                      Fetching full submission data…
-                    </span>
+                  <div style={{ padding: "8px 28px", background: "rgba(0,212,255,0.05)", borderBottom: "1px solid rgba(0,212,255,0.12)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: G.cyan, fontFamily: "'IBM Plex Mono',monospace" }}>
+                      <Loader size={11} style={{ animation: "spin 1s linear infinite" }} />
+                      Fetching full submission data — attachments, score, notes…
+                    </div>
+                    <div style={{ marginTop: 6, height: 2, background: "rgba(0,212,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", background: `linear-gradient(90deg, ${G.success}, ${G.cyan})`, animation: "progressBar 1.8s ease-in-out infinite" }} />
+                    </div>
                   </div>
                 )}
                 <div style={{ padding: "24px 28px 28px" }}>
@@ -4349,8 +4352,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           </span>
                           {scoreReportUrl && (
                             <a href={scoreReportUrl} target="_blank" rel="noreferrer"
-                              style={{ padding: "4px 12px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 7, color: G.cyan, fontSize: 10, fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 5 }}>
-                              📄 Full Report
+                              style={{ padding: "6px 14px", background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.4)", borderRadius: 8, color: G.cyan, fontSize: 11, fontWeight: 800, textDecoration: "none", display: "flex", alignItems: "center", gap: 6, boxShadow: `0 0 12px ${G.cyan}22` }}>
+                              📄 View Score Report
                             </a>
                           )}
                         </div>
@@ -4395,25 +4398,74 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.65 }}>{selectedTask.completionNotes}</p>
                     </div>
                   )}
+                  {/* ── Score Report Banner (always shown if report exists) ── */}
+                  {(() => {
+                    const reportUrl = (selectedTask as any).scoreReportUrl || (selectedTask as any).scoreData?.reportUrl;
+                    if (!reportUrl) return null;
+                    return (
+                      <div style={{ marginBottom: 14, padding: "12px 16px", background: `${G.cyan}08`, border: `1px solid ${G.cyan}25`, borderRadius: 12, display: "flex", alignItems: "center", gap: 14 }}>
+                        <span style={{ fontSize: 24, flexShrink: 0 }}>📊</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: G.cyan, marginBottom: 2 }}>AI Score Report Attached</div>
+                          <div style={{ fontSize: 10, color: G.textMuted }}>Full breakdown of scores, grammar issues, strengths and improvements</div>
+                        </div>
+                        <a href={reportUrl} target="_blank" rel="noreferrer"
+                          style={{ flexShrink: 0, padding: "8px 18px", background: `${G.cyan}18`, border: `1px solid ${G.cyan}44`, borderRadius: 9, color: G.cyan, fontSize: 12, fontWeight: 800, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+                          📄 Open Report
+                        </a>
+                      </div>
+                    );
+                  })()}
+
                   {selectedTask.attachments && selectedTask.attachments.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>Attachments ({selectedTask.attachments.length})</div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" as const }}>
+                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+                        Attachments ({selectedTask.attachments.length})
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
                         {selectedTask.attachments.map((src, i) => {
-                          const isImage = src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("image");
-                          return (
-                            <div key={i} style={{ position: "relative" as const, cursor: "pointer" }}>
-                              {isImage ? (
+                          const isImage = src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("/image/");
+                          const isVideo = src.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i) || src.includes("/video/") || src.includes("video");
+                          const fname   = src.split("/").pop()?.split("?")[0] || `Attachment ${i + 1}`;
+                          if (isVideo) {
+                            return (
+                              <a key={i} href={src} download target="_blank" rel="noreferrer"
+                                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: `${G.cyan}08`, border: `1px solid ${G.cyan}33`, borderRadius: 12, textDecoration: "none", transition: "all 0.2s" }}
+                                onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.background = `${G.cyan}14`}
+                                onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.background = `${G.cyan}08`}
+                              >
+                                <span style={{ fontSize: 28, flexShrink: 0 }}>🎬</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: G.cyan, marginBottom: 3 }}>Video Attachment</div>
+                                  <div style={{ fontSize: 11, color: G.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{fname}</div>
+                                  <div style={{ fontSize: 10, color: G.textMuted, marginTop: 3 }}>Click to download and review</div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: `${G.cyan}18`, border: `1px solid ${G.cyan}44`, borderRadius: 8, color: G.cyan, fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                                  ⬇ Download Video
+                                </div>
+                              </a>
+                            );
+                          }
+                          if (isImage) {
+                            return (
+                              <div key={i} style={{ position: "relative" as const, cursor: "pointer", display: "inline-block" }}>
                                 <img src={src} alt={`Attachment ${i + 1}`}
                                   onClick={() => openLightbox(selectedTask.attachments!, i)}
                                   style={{ width: 80, height: 80, objectFit: "cover" as const, borderRadius: 8, border: `1px solid ${G.cyan}33` }} />
-                              ) : (
-                                <a href={src} target="_blank" rel="noreferrer"
-                                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 80, height: 80, background: "rgba(255,255,255,0.04)", border: `1px solid ${G.cyan}33`, borderRadius: 8, color: G.cyan, fontSize: 10, fontWeight: 700, textDecoration: "none", flexDirection: "column" as const, gap: 4 }}>
-                                  <FileText size={22} /><span>View</span>
-                                </a>
-                              )}
-                            </div>
+                              </div>
+                            );
+                          }
+                          // Document / other
+                          return (
+                            <a key={i} href={src} download target="_blank" rel="noreferrer"
+                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${G.cyan}33`, borderRadius: 10, color: G.cyan, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+                              <FileText size={18} />
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 700 }}>{fname}</div>
+                                <div style={{ fontSize: 9, color: G.textMuted, marginTop: 2 }}>Click to download / view</div>
+                              </div>
+                              <span style={{ marginLeft: "auto", fontSize: 10 }}>⬇</span>
+                            </a>
                           );
                         })}
                       </div>
