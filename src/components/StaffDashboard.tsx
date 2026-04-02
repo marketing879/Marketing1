@@ -5,7 +5,7 @@ import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
-import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
+const roswaltLogo = "/ROSWALT-LOGO-GOLDEN-8K.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -3214,6 +3214,42 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
 
           {/* Right: user info + logout */}
           <div className="sd-avatar-wrap">
+            {/* ── Voice Toggle Pill — always visible ── */}
+            <button
+              onClick={toggleVoice}
+              title={voiceEnabled ? "Voice ON — click to mute" : "Voice OFF — click to enable"}
+              style={{
+                display: "flex", alignItems: "center", gap: 7,
+                padding: "7px 14px", borderRadius: 20, cursor: "pointer",
+                fontFamily: "inherit", fontSize: 11, fontWeight: 800,
+                border: `2px solid ${voiceEnabled ? "rgba(201,169,110,0.6)" : "rgba(255,255,255,0.15)"}`,
+                background: voiceEnabled ? "rgba(201,169,110,0.15)" : "rgba(255,255,255,0.05)",
+                color: voiceEnabled ? "#c9a96e" : "#7e84a3",
+                transition: "all 0.2s",
+                letterSpacing: "0.5px",
+                textTransform: "uppercase" as const,
+                flexShrink: 0,
+                boxShadow: voiceEnabled ? "0 0 12px rgba(201,169,110,0.25)" : "none",
+              }}
+            >
+              {voiceEnabled ? (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8"  y1="23" x2="16" y2="23"/>
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8"  y1="23" x2="16" y2="23"/>
+                </svg>
+              )}
+              {voiceEnabled ? "Voice ON" : "Voice OFF"}
+            </button>
             <div className="sd-avatar-row">
               <div
                 className="sd-avatar-ring"
@@ -3238,43 +3274,6 @@ ${aiScoreResult.grammarErrors?.length ? "<h3 style='color:red'>✗ Grammar Issue
               </div>
             </div>
             <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePicChange} />
-            {/* ── Voice Module Toggle ── */}
-            <button
-              onClick={toggleVoice}
-              title={voiceEnabled ? "Voice ON — click to mute" : "Voice OFF — click to enable"}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-                fontFamily: "inherit", fontSize: 10, fontWeight: 700,
-                border: `1px solid ${voiceEnabled ? "rgba(201,169,110,0.4)" : "rgba(255,255,255,0.1)"}`,
-                background: voiceEnabled ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.04)",
-                color: voiceEnabled ? "#c9a96e" : "#7e84a3",
-                transition: "all 0.2s",
-                letterSpacing: "0.3px",
-                textTransform: "uppercase" as const,
-                flexShrink: 0,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                {voiceEnabled ? (
-                  <>
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8"  y1="23" x2="16" y2="23"/>
-                  </>
-                ) : (
-                  <>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
-                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8"  y1="23" x2="16" y2="23"/>
-                  </>
-                )}
-              </svg>
-              {voiceEnabled ? "Voice ON" : "Voice OFF"}
-            </button>
             <button className="sd-logout" onClick={handleLogout} title="Sign Out">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
