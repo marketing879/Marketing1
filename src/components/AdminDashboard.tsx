@@ -8,7 +8,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     FileText, MessageSquare, Shield, Sparkles, Loader,
     TrendingUp, Clock, Activity, BarChart3,
     GitBranch, ListTree,
-    AlertTriangle, AlertCircle, History, Radio, Share2, RotateCw, Trash2,
+    AlertTriangle, AlertCircle, History, Radio, Share2, RotateCw, Trash2, Bell,
   } from "lucide-react";
   import ClaudeChat from "./ClaudeChat";
   import HistoryTimeline from "./Historytimeline";
@@ -17,8 +17,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import { sendSystemDM }     from "../services/SystemNotification";
   import { greetUser, setElevenLabsVoice, announceVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
   import { uploadToCloudinary } from "../services/CloudinaryUpload";
-import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
-
+  const roswaltLogoAsset = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773638048/ROSWALT-LOGO-GOLDEN-8K_dfrfxb.png";
 
   void Sparkles; void RotateCw; void Radio;
 
@@ -196,6 +195,14 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       adminResponse?: string;
       respondedAt?: string;
     };
+    // ── Prime Directive ────────────────────────────────────────────────────────
+    isPrimeDirective?:        boolean;
+    pdReminderIntervalHours?: number;   // how often to fire reminder (default 24)
+    pdLastReminderAt?:        string;   // ISO timestamp
+    pdAcknowledgedBy?:        string;   // email of acknowledger
+    pdAcknowledgedAt?:        string;
+    pdSnoozedUntil?:          string;   // ISO — skip reminders until this time
+    pdReminderCount?:         number;
   }
 
   type TeamMember = { id: string; name: string; email: string; role: string; phone?: string };
@@ -971,6 +978,21 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
         attachments:  raiseTicketAttachments,
         targetTaskId: raiseTicketTask.id,
       });
+      // Notify doer if their task has been flagged for deletion
+      if (raiseTicketType === "delete-request") {
+        sendSystemDM({
+          adminEmail:  user?.email ?? "",
+          adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+          doerEmail:   raiseTicketTask.assignedTo,
+          taskId:      raiseTicketTask.id,
+          taskTitle:   raiseTicketTask.title,
+          message:     `🗑️ A delete request has been raised for your task "${raiseTicketTask.title}" by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}. Reason: ${raiseTicketNote}. Awaiting Superadmin approval — no action needed from you yet.`,
+          notifType:   "task_cancelled",
+          priority:    raiseTicketTask.priority,
+          dueDate:     raiseTicketTask.dueDate,
+          projectName: activeProjects.find((p) => p.id === raiseTicketTask.projectId)?.name ?? "",
+        });
+      }
       speakText(
         raiseTicketType === "delete-request"
           ? `Delete request submitted for ${raiseTicketTask.title}. Awaiting superadmin approval.`
@@ -1019,6 +1041,11 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
     const [smartAssistTickets, setSmartAssistTickets] = useState<SmartAssistTicket[]>(() => loadTickets());
     const [showSmartAssist,    setShowSmartAssist]    = useState(false);
     const [activeTicket,       setActiveTicket]       = useState<SmartAssistTicket | null>(null);
+
+    // ── Prime Directive flash state ────────────────────────────────────────────
+    const [pdFlash,            setPdFlash]            = useState<Task | null>(null);
+    const [pdFlashDismissing,  setPdFlashDismissing]  = useState(false);
+    const pdLastFiredRef = React.useRef<Record<string, number>>({});
 
     const [showGlobalHistory, setShowGlobalHistory] = useState(false);
 
@@ -1302,6 +1329,63 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       };
     }, [allTasksCombined, smartAssistTickets]);
 
+    // ── Prime Directive reminder cron — checks every 60 seconds ───────────────
+    useEffect(() => {
+      const playPdSound = () => {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          // Urgent three-pulse tone
+          [880, 1100, 880].forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = "square";
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.22);
+            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.22);
+            gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + i * 0.22 + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.22 + 0.2);
+            osc.start(ctx.currentTime + i * 0.22);
+            osc.stop(ctx.currentTime + i * 0.22 + 0.2);
+          });
+        } catch {}
+      };
+
+      const checkPD = () => {
+        const now = Date.now();
+        const primeTasks = allTasksCombined.filter((t: Task) =>
+          (t as any).isPrimeDirective &&
+          t.approvalStatus !== "superadmin-approved" &&
+          t.approvalStatus !== "rejected"
+        );
+        for (const task of primeTasks) {
+          const pd = task as any;
+          // Skip if snoozed
+          if (pd.pdSnoozedUntil && new Date(pd.pdSnoozedUntil).getTime() > now) continue;
+          // Skip if already acknowledged
+          if (pd.pdAcknowledgedAt) continue;
+          const intervalMs = (pd.pdReminderIntervalHours ?? 24) * 60 * 60 * 1000;
+          const lastFired = pdLastFiredRef.current[task.id] || 0;
+          // Also check server-side lastReminderAt
+          const serverLast = pd.pdLastReminderAt ? new Date(pd.pdLastReminderAt).getTime() : 0;
+          const effectiveLast = Math.max(lastFired, serverLast);
+          if (now - effectiveLast >= intervalMs) {
+            pdLastFiredRef.current[task.id] = now;
+            setPdFlash(task);
+            playPdSound();
+            // Persist reminder log to backend
+            const updatedTask = { ...task, pdReminderCount: (pd.pdReminderCount ?? 0) + 1, pdLastReminderAt: new Date().toISOString() };
+            syncTaskToBackend(updatedTask as Task);
+            break; // show one at a time
+          }
+        }
+      };
+
+      const interval = setInterval(checkPD, 60_000);
+      checkPD(); // run immediately on mount
+      return () => clearInterval(interval);
+    }, [allTasksCombined]);
+
     const toast = (msg: string): void => {
       setToastMsg(msg);
       if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1584,6 +1668,20 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       };
       updateTask(selectedTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
+
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+        doerEmail:   selectedTask.assignedTo,
+        taskId:      selectedTask.id,
+        taskTitle:   selectedTask.title,
+        message:     `↩ Task "${selectedTask.title}" has been sent back for REWORK by ${(user as { name?: string }).name ?? user?.email ?? "Admin"}. Reason: ${reviewComments}. Please revise and resubmit.`,
+        notifType:   "task_rework",
+        priority:    selectedTask.priority,
+        dueDate:     selectedTask.dueDate,
+        projectName: activeProjects.find((p) => p.id === selectedTask.projectId)?.name ?? "",
+      });
+
       setShowReviewModal(false); setSelectedTask(null); setReviewComments("");
       speakText("Task sent back for rework. The staff member has been notified.");
       toast("↩ Sent back for rework.");
@@ -1705,6 +1803,19 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
 
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+        doerEmail:   tatExtTask.assignedTo,
+        taskId:      tatExtTask.id,
+        taskTitle:   tatExtTask.title,
+        message:     `⏰ Your deadline extension for "${tatExtTask.title}" has been APPROVED. New deadline: ${new Date(ext.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} at ${ext.requestedNewTimeSlot}.${tatExtResponse ? " Note: " + tatExtResponse : ""}`,
+        notifType:   "task_approved",
+        priority:    tatExtTask.priority,
+        dueDate:     ext.requestedNewDate,
+        projectName: activeProjects.find((p) => p.id === tatExtTask.projectId)?.name ?? "",
+      });
+
       speakText(
         `TAT extension approved for ${doerName} on the task "${tatExtTask.title}". ` +
         `New deadline is ${new Date(ext.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "long" })} at ${ext.requestedNewTimeSlot}. ` +
@@ -1745,6 +1856,19 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
       updateTask(tatExtTask.id, updatedTask as never);
       syncTaskToBackend(updatedTask);
+
+      sendSystemDM({
+        adminEmail:  user?.email ?? "",
+        adminName:   (user as { name?: string }).name ?? user?.email ?? "Admin",
+        doerEmail:   tatExtTask.assignedTo,
+        taskId:      tatExtTask.id,
+        taskTitle:   tatExtTask.title,
+        message:     `❌ Your deadline extension for "${tatExtTask.title}" was DENIED. Reason: ${tatExtResponse}. The original deadline stands — please ensure timely delivery.`,
+        notifType:   "task_rework",
+        priority:    tatExtTask.priority,
+        dueDate:     tatExtTask.dueDate,
+        projectName: activeProjects.find((p) => p.id === tatExtTask.projectId)?.name ?? "",
+      });
 
       speakText(
         `TAT extension request for "${tatExtTask.title}" has been denied. ` +
@@ -1934,6 +2058,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
       { id: "progress",   label: "Progress",   icon: Activity    },
       { id: "taskmap",    label: "Task Map",   icon: GitBranch   },
       { id: "autopulse",  label: "Autopulse",  icon: Zap         },
+      { id: "prime",       label: "Prime",       icon: Shield      },
     ];
 
     const statCards = [
@@ -2065,6 +2190,7 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                       {tab.id === "review"   && tasksToReview.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{tasksToReview.length}</span>}
                       {tab.id === "tickets"  && pendingAssistanceTickets.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#ff9500", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pendingAssistanceTickets.length}</span>}
                       {tab.id === "autopulse" && allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#c9a96e", borderRadius: "50%", fontSize: 9, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length}</span>}
+                      {tab.id === "prime" && allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#f87171", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length}</span>}
                       {tab.id === "mytasks"  && myPendingTasks.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{myPendingTasks.length}</span>}
                     </button>
                   ))}
@@ -2143,6 +2269,8 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                     { title: "Smart Assist",    value: analytics.activeTicketCount, subtitle: "Open escalations", color: G.amber, tasks: [] },
                     { title: "Assigned by Me",  value: tasksLoaded ? assignedByMe.length : "…",         subtitle: "Tasks I created",   color: G.cyan,    tasks: assignedByMe },
                     { title: "Pending Review",  value: tasksLoaded ? tasksToReview.length : "…",        subtitle: "Awaiting approval", color: G.gold,    tasks: tasksToReview },
+                    { title: "Prime Directives", value: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && t.approvalStatus !== "superadmin-approved").length, subtitle: "D1 — Active", color: "#f87171", tasks: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective) },
+                    { title: "Autopulse",         value: allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length, subtitle: "D2 — Recurring",  color: "#c9a96e", tasks: allTasksCombined.filter((t: Task) => (t as any).isAutopulse) },
                     ];
                   })().map((card, i) => (
                     <div key={i} className="g-stat-card fade-up" style={{ animationDelay: `${i * 60}ms` }}
@@ -3042,6 +3170,132 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
               );
             })()}
 
+            {activeTab === "prime" && (() => {
+              const primeTasks = allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective);
+              const activeP    = primeTasks.filter(t => t.approvalStatus !== "superadmin-approved" && t.approvalStatus !== "rejected" && !(t as any).pdAcknowledgedAt);
+              const ackP       = primeTasks.filter(t => !!(t as any).pdAcknowledgedAt);
+              const snoozedP   = primeTasks.filter(t => (t as any).pdSnoozedUntil && new Date((t as any).pdSnoozedUntil).getTime() > Date.now());
+
+              return (
+                <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
+                    <div>
+                      <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
+                        <Shield size={22} color="#f87171" style={{ display: "inline", marginRight: 10, verticalAlign: "middle" }} />
+                        <em style={{ color: "#f87171" }}>Prime</em> Directives
+                        <span style={{ marginLeft: 12, fontSize: 12, fontFamily: "'IBM Plex Mono',monospace", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 6, padding: "2px 8px", color: "#f87171", verticalAlign: "middle" }}>D1</span>
+                      </h2>
+                      <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                        One-time high-priority tasks — flash reminders until acknowledged
+                      </p>
+                    </div>
+                    <button className="g-btn-gold" onClick={() => setShowCreateModal(true)}
+                      style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)", color: "#f87171" }}>
+                      <Shield size={13} /> New Prime Directive
+                    </button>
+                  </div>
+
+                  {/* Stats row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
+                    {[
+                      { label: "Total D1",       value: primeTasks.length,  color: "#f87171", sub: "All prime directives" },
+                      { label: "Active",          value: activeP.length,    color: G.danger,   sub: "Pending acknowledgement" },
+                      { label: "Acknowledged",    value: ackP.length,       color: G.success,  sub: "Completed + signed off" },
+                      { label: "Snoozed",         value: snoozedP.length,   color: G.amber,    sub: "Temporarily paused" },
+                    ].map(s => (
+                      <div key={s.label} style={{ padding: "18px 20px", background: "rgba(8,14,32,0.65)", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
+                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
+                        <div style={{ fontSize: 11, color: G.textMuted }}>{s.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Empty state */}
+                  {primeTasks.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "80px 24px", background: "rgba(8,14,32,0.65)", border: "1px dashed rgba(248,113,113,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                      <Shield size={40} color="rgba(248,113,113,0.25)" />
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Prime Directives Yet</div>
+                      <div style={{ fontSize: 13, color: G.textMuted, marginBottom: 20 }}>Create a task and toggle Prime Directive ON to activate flash reminders.</div>
+                      <button className="g-btn-gold" onClick={() => setShowCreateModal(true)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)", color: "#f87171" }}>
+                        <Shield size={14} /> Create First Prime Directive
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {primeTasks.map((task: Task, idx: number) => {
+                        const pd = task as any;
+                        const isAcked    = !!pd.pdAcknowledgedAt;
+                        const isSnoozed  = pd.pdSnoozedUntil && new Date(pd.pdSnoozedUntil).getTime() > Date.now();
+                        const interval   = pd.pdReminderIntervalHours ?? 24;
+                        const lastRemind = pd.pdLastReminderAt;
+                        const ac         = APPROVAL_COLORS[task.approvalStatus] || G.textMuted;
+                        return (
+                          <div key={task.id} className="g-card fade-up" style={{
+                            animationDelay: `${idx * 40}ms`, padding: "20px 24px",
+                            borderColor: isAcked ? "rgba(0,245,160,0.2)" : isSnoozed ? "rgba(245,158,11,0.2)" : "rgba(248,113,113,0.3)",
+                            opacity: isAcked ? 0.65 : 1,
+                          }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                              {/* Icon */}
+                              <div style={{ width: 40, height: 40, borderRadius: 10, background: isAcked ? "rgba(0,245,160,0.08)" : "rgba(248,113,113,0.1)", border: `1px solid ${isAcked ? "rgba(0,245,160,0.3)" : "rgba(248,113,113,0.35)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <Shield size={18} color={isAcked ? G.success : "#f87171"} />
+                              </div>
+                              {/* Details */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                                  <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary, margin: 0 }}>{task.title}</h3>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", fontSize: 9, fontWeight: 800, color: "#f87171" }}>
+                                    <Shield size={8} /> D1 PRIME
+                                  </span>
+                                  <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
+                                  <span className="g-badge" style={{ background: `${ac}18`, color: ac, border: `1px solid ${ac}33` }}>{APPROVAL_LABELS[task.approvalStatus] || task.approvalStatus}</span>
+                                  {isAcked && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "rgba(0,245,160,0.08)", border: "1px solid rgba(0,245,160,0.25)", fontSize: 9, fontWeight: 800, color: G.success }}>✓ ACKNOWLEDGED</span>}
+                                  {isSnoozed && !isAcked && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", fontSize: 9, fontWeight: 800, color: G.amber }}>⏸ SNOOZED</span>}
+                                </div>
+                                <p style={{ fontSize: 12, color: G.textSecondary, lineHeight: 1.5, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
+                                  {task.description}
+                                </p>
+                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><User size={10} />{getName(task.assignedTo)}</span>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><Calendar size={10} />Due: {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#f87171" }}><Bell size={9} />Every {interval}h</span>
+                                  {lastRemind && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.amber }}><Clock size={9} />Last reminded: {new Date(lastRemind).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
+                                  {isAcked && pd.pdAcknowledgedBy && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.success }}>✓ by {pd.pdAcknowledgedBy}</span>}
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><Bell size={9} />Reminders: {pd.pdReminderCount ?? 0}</span>
+                                </div>
+                              </div>
+                              {/* Actions */}
+                              {!isAcked && (
+                                <div style={{ display: "flex", gap: 8, flexShrink: 0, flexDirection: "column" }}>
+                                  <button onClick={() => setPdFlash(task)}
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171" }}>
+                                    <Bell size={11} /> Preview
+                                  </button>
+                                  <button onClick={() => {
+                                    const snoozeUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+                                    const updated = { ...task, pdSnoozedUntil: snoozeUntil };
+                                    updateTask(task.id, updated as never);
+                                    syncTaskToBackend(updated as Task);
+                                    toast("⏸ Snoozed for 2 hours");
+                                  }}
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: G.textMuted }}>
+                                    ⏸ Snooze 2h
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })()}
+
             {activeTab === "taskmap" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.purple }}>Map</em></h2>
@@ -3769,6 +4023,28 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
                     )}
                   </div>
 
+                  {/* Prime Directive toggle */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#f87171", display: "flex", alignItems: "center", gap: 6 }}>
+                        <Shield size={13} /> Prime Directive — <span style={{ fontSize: 9, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>D1</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: G.textMuted, marginTop: 2 }}>High-priority one-time task with flash screen reminders</div>
+                    </div>
+                    <button type="button" onClick={() => setNewTask((p: any) => ({ ...p, isPrimeDirective: !p.isPrimeDirective }))}
+                      style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", position: "relative" as const, background: (newTask as any).isPrimeDirective ? "rgba(248,113,113,0.7)" : "rgba(255,255,255,0.1)", transition: "all 0.2s", flexShrink: 0 }}>
+                      <div style={{ position: "absolute", top: 2, left: (newTask as any).isPrimeDirective ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                    </button>
+                  </div>
+                  {(newTask as any).isPrimeDirective && (
+                    <div style={{ padding: "10px 14px", background: "rgba(248,113,113,0.04)", border: "1px solid rgba(248,113,113,0.15)", borderRadius: 8 }}>
+                      <label style={{ fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono',monospace" }}>Flash reminder every (hours)</label>
+                      <input type="number" min={1} max={168} value={(newTask as any).pdReminderIntervalHours ?? 24}
+                        onChange={e => setNewTask((p: any) => ({ ...p, pdReminderIntervalHours: parseInt(e.target.value) || 24 }))}
+                        style={{ width: "100%", marginTop: 6, padding: "8px 10px", background: G.bgDeep, border: "1px solid rgba(248,113,113,0.25)", borderRadius: 7, color: G.textPrimary, fontSize: 14, outline: "none" }} />
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 10 }}>
                     <button className="g-btn-gold" onClick={handleCreateTask} disabled={isUploadingVoice} style={{ flex: 1, opacity: isUploadingVoice ? 0.5 : 1 }}>{isUploadingVoice ? <><Loader size={14} style={{ animation: "sdSpin 0.9s linear infinite" }} /> Uploading Voice…</> : <><CheckCircle size={14} strokeWidth={2.5} />Assign Task</>}</button>
                     <button className="g-btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -4370,7 +4646,135 @@ import roswaltLogoAsset from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
             </div>
           )}
 
-          {showSmartAssist && activeTicket && (
+          {/* ── Prime Directive Flash Overlay ────────────────────────────────── */}
+      {pdFlash && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: pdFlashDismissing
+              ? "rgba(0,0,0,0)"
+              : "linear-gradient(135deg, rgba(248,113,113,0.18) 0%, rgba(0,0,0,0.92) 60%)",
+            backdropFilter: "blur(18px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "background 0.4s",
+            animation: "pdFlashIn 0.35s cubic-bezier(0.22,1,0.36,1) forwards",
+          }}
+        >
+          <style>{`
+            @keyframes pdFlashIn {
+              from { opacity: 0; transform: scale(0.96); }
+              to   { opacity: 1; transform: scale(1); }
+            }
+            @keyframes pdPulseRing {
+              0%   { transform: scale(1);    opacity: 0.6; }
+              100% { transform: scale(1.6);  opacity: 0; }
+            }
+          `}</style>
+
+          {/* Pulse ring */}
+          <div style={{ position: "absolute", width: 160, height: 160, borderRadius: "50%", border: "2px solid rgba(248,113,113,0.5)", animation: "pdPulseRing 1.4s ease-out infinite", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", width: 160, height: 160, borderRadius: "50%", border: "2px solid rgba(248,113,113,0.3)", animation: "pdPulseRing 1.4s ease-out infinite 0.5s", pointerEvents: "none" }} />
+
+          <div style={{
+            position: "relative", width: "100%", maxWidth: 480,
+            background: "linear-gradient(160deg, rgba(15,8,20,0.97), rgba(25,10,30,0.97))",
+            border: "1px solid rgba(248,113,113,0.55)",
+            borderRadius: 24, padding: "36px 32px",
+            boxShadow: "0 0 80px rgba(248,113,113,0.25), 0 40px 80px rgba(0,0,0,0.7)",
+            margin: "0 20px",
+          }}>
+            {/* Top label */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Shield size={24} color="#f87171" />
+              </div>
+              <div>
+                <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#f87171", letterSpacing: "0.18em", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                  ⚡ Prime Directive — D1 Alert
+                </div>
+                <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "rgba(248,113,113,0.5)", letterSpacing: "0.12em" }}>
+                  Reminder #{(pdFlash as any).pdReminderCount ?? 1} · Assigned to {getName((pdFlash as Task).assignedTo)}
+                </div>
+              </div>
+            </div>
+
+            {/* Task title */}
+            <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 10, lineHeight: 1.2 }}>
+              {(pdFlash as Task).title}
+            </h2>
+
+            {/* Description */}
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20 }}>
+              {(pdFlash as Task).description?.slice(0, 160) || "No description provided."}
+            </p>
+
+            {/* Meta row */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28, fontFamily: "'IBM Plex Mono',monospace", fontSize: 11 }}>
+              <span style={{ color: G.amber, display: "flex", alignItems: "center", gap: 5 }}>
+                <Calendar size={11} />Due: {new Date((pdFlash as Task).dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+              <span style={{ color: "#f87171", display: "flex", alignItems: "center", gap: 5 }}>
+                <Flag size={11} />{(pdFlash as Task).priority?.toUpperCase()}
+              </span>
+              <span style={{ color: G.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
+                <User size={11} />{getName((pdFlash as Task).assignedTo)}
+              </span>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 12 }}>
+              {/* Acknowledge */}
+              <button
+                onClick={() => {
+                  const updated = { ...pdFlash, pdAcknowledgedBy: user?.email ?? "admin", pdAcknowledgedAt: new Date().toISOString() };
+                  updateTask((pdFlash as Task).id, updated as never);
+                  syncTaskToBackend(updated as Task);
+                  // Send chatroom notification
+                  sendSystemDM({
+                    notifType:   "task_approved",
+                    taskId:      (pdFlash as Task).id,
+                    taskTitle:   (pdFlash as Task).title,
+                    doerEmail:   (pdFlash as Task).assignedTo,
+                    adminEmail:  user?.email ?? "",
+                    adminName:   user?.name ?? user?.email ?? "Admin",
+                    message:     `✅ Prime Directive acknowledged by ${user?.name ?? user?.email}. Task: "${(pdFlash as Task).title}"`,
+                  });
+                  toast("✓ Prime Directive acknowledged");
+                  setPdFlash(null);
+                }}
+                style={{ flex: 1, padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #f87171, #ef4444)", color: "#fff", fontWeight: 800, fontSize: 13, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.08em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+              >
+                <CheckCircle size={16} /> ACKNOWLEDGE
+              </button>
+
+              {/* Snooze 2h */}
+              <button
+                onClick={() => {
+                  const snoozeUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+                  const updated = { ...pdFlash, pdSnoozedUntil: snoozeUntil };
+                  updateTask((pdFlash as Task).id, updated as never);
+                  syncTaskToBackend(updated as Task);
+                  toast("⏸ Snoozed for 2 hours");
+                  setPdFlash(null);
+                }}
+                style={{ padding: "13px 20px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
+              >
+                ⏸ Snooze 2h
+              </button>
+
+              {/* Dismiss */}
+              <button
+                onClick={() => setPdFlash(null)}
+                style={{ padding: "13px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.3)", fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSmartAssist && activeTicket && (
             <SmartAssistModal
               ticket={activeTicket}
               onClose={() => { setShowSmartAssist(false); setActiveTicket(null); }}

@@ -418,6 +418,7 @@ const ChatRoomInner: React.FC = () => {
                         task_cancelled:   "⚠️",
                         task_reminder:    "⏰",
                         autopulse_created:"⚡",
+                        prime_directive:  "🛡",
                       };
                       const colors: Record<string, string> = {
                         task_assigned:    "rgba(124,106,247,0.15)",
@@ -427,6 +428,7 @@ const ChatRoomInner: React.FC = () => {
                         task_cancelled:   "rgba(248,113,113,0.1)",
                         task_reminder:    "rgba(251,191,36,0.1)",
                         autopulse_created:"rgba(201,169,110,0.1)",
+                        prime_directive:  "rgba(248,113,113,0.18)",
                       };
                       const borders: Record<string, string> = {
                         task_assigned:    "rgba(124,106,247,0.3)",
@@ -436,6 +438,7 @@ const ChatRoomInner: React.FC = () => {
                         task_cancelled:   "rgba(248,113,113,0.3)",
                         task_reminder:    "rgba(251,191,36,0.3)",
                         autopulse_created:"rgba(201,169,110,0.3)",
+                        prime_directive:  "rgba(248,113,113,0.5)",
                       };
                       const isRecent = Date.now() - new Date(notif.createdAt).getTime() < 5 * 60 * 1000;
                       return (
@@ -491,6 +494,11 @@ const ChatRoomInner: React.FC = () => {
                               {notifType === "task_reminder" && (
                                 <div style={{ marginTop: 6, fontSize: 10, color: "#f59e0b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
                                   ⏰ Tap to open Smart Assist →
+                                </div>
+                              )}
+                              {notifType === "prime_directive" && (
+                                <div style={{ marginTop: 6, fontSize: 10, color: "#f87171", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                                  🛡 Prime Directive — Immediate attention required
                                 </div>
                               )}
                             </div>
