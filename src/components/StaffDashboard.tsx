@@ -5,7 +5,7 @@ import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart
 import ClaudeChat from "./ClaudeChat";
 import { uploadToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
-import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
+const roswaltLogo = "/assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
 // ── Role badge helpers ───────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
@@ -1277,13 +1277,187 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ tasks, tickets }) => {
 
 
 // ── Assistance Tickets Tab ───────────────────────────────────────────────────
+// ── RaiseTicketModal ─────────────────────────────────────────────────────────
+interface RaiseTicketModalProps {
+  tasks: Task[];
+  preselectedTaskId?: string;
+  onSubmit: (taskId: string, ticketType: TicketType, reason: string) => void;
+  onClose: () => void;
+}
+
+const RaiseTicketModal: React.FC<RaiseTicketModalProps> = ({ tasks, preselectedTaskId, onSubmit, onClose }) => {
+  const [selectedTaskId, setSelectedTaskId] = useState(preselectedTaskId ?? (tasks[0]?.id ?? ""));
+  const [ticketType,     setTicketType]     = useState<TicketType>("general-query");
+  const [reason,         setReason]         = useState("");
+  const [submitting,     setSubmitting]     = useState(false);
+
+  const TICKET_TYPES: { value: TicketType; label: string; icon: string; desc: string }[] = [
+    { value: "general-query",       label: "General Query",       icon: "❓", desc: "I have a question about this task" },
+    { value: "extension-request" as TicketType,   label: "Extension Request",   icon: "📅", desc: "I need more time to complete this task" },
+    { value: "clarification-needed" as TicketType, label: "Clarification Needed", icon: "💬", desc: "The task brief needs clarification" },
+    { value: "blocker" as TicketType,             label: "Blocked",             icon: "🚧", desc: "Something is preventing me from proceeding" },
+  ];
+
+  const handleSubmit = () => {
+    if (!selectedTaskId || !reason.trim()) return;
+    setSubmitting(true);
+    onSubmit(selectedTaskId, ticketType, reason.trim());
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(4,8,18,0.85)", backdropFilter: "blur(12px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 20,
+    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{
+        width: "100%", maxWidth: 540,
+        background: "linear-gradient(145deg, rgba(10,14,30,0.98), rgba(6,10,21,0.98))",
+        border: "1px solid rgba(255,149,0,0.25)",
+        borderRadius: 20, overflow: "hidden",
+        boxShadow: "0 32px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,149,0,0.05)",
+      }}>
+        {/* Modal header */}
+        <div style={{
+          padding: "20px 24px 16px",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#eef0ff", fontFamily: "'Space Grotesk', sans-serif" }}>
+              🎫 Raise Assistance Ticket
+            </div>
+            <div style={{ fontSize: 11, color: "#7e84a3", marginTop: 3 }}>
+              Let your admin know you need help with a task
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 8, color: "#7e84a3", fontSize: 16, width: 32, height: 32,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>✕</button>
+        </div>
+
+        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Task selector */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+              Select Task
+            </div>
+            <select
+              value={selectedTaskId}
+              onChange={e => setSelectedTaskId(e.target.value)}
+              style={{
+                width: "100%", padding: "10px 12px",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 10, color: "#eef0ff", fontSize: 13,
+                fontFamily: "inherit", outline: "none", cursor: "pointer",
+              }}
+            >
+              {tasks.map(t => (
+                <option key={t.id} value={t.id} style={{ background: "#0a0e1e" }}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ticket type */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+              Ticket Type
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {TICKET_TYPES.map(tt => (
+                <button
+                  key={tt.value}
+                  onClick={() => setTicketType(tt.value)}
+                  style={{
+                    padding: "10px 12px", textAlign: "left",
+                    background: ticketType === tt.value ? "rgba(255,149,0,0.12)" : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${ticketType === tt.value ? "rgba(255,149,0,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    borderRadius: 10, cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{tt.icon}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: ticketType === tt.value ? "#ff9500" : "#eef0ff", marginBottom: 2 }}>
+                    {tt.label}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#434763", lineHeight: 1.4 }}>{tt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+              Describe the Issue <span style={{ color: "#ff3366" }}>*</span>
+            </div>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Explain what help you need, what's blocking you, or what you'd like to clarify…"
+              style={{
+                width: "100%", padding: "10px 12px",
+                background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${reason.trim() ? "rgba(255,149,0,0.25)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 10, color: "#eef0ff", fontSize: 12,
+                fontFamily: "inherit", resize: "vertical", outline: "none",
+                minHeight: 90, lineHeight: 1.6,
+              }}
+            />
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} style={{
+              flex: 1, padding: "11px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 10, color: "#7e84a3",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit",
+            }}>
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!reason.trim() || !selectedTaskId || submitting}
+              style={{
+                flex: 2, padding: "11px",
+                background: reason.trim() && !submitting
+                  ? "linear-gradient(135deg, rgba(255,149,0,0.25), rgba(255,107,53,0.2))"
+                  : "rgba(255,255,255,0.04)",
+                border: `1px solid ${reason.trim() && !submitting ? "rgba(255,149,0,0.5)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 10,
+                color: reason.trim() && !submitting ? "#ff9500" : "#434763",
+                fontSize: 12, fontWeight: 800, cursor: reason.trim() && !submitting ? "pointer" : "not-allowed",
+                fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.6px",
+                boxShadow: reason.trim() && !submitting ? "0 0 20px rgba(255,149,0,0.2)" : "none",
+                transition: "all 0.2s",
+              }}
+            >
+              {submitting ? "Raising…" : "🎫 Raise Ticket"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface AssistanceTicketsTabProps {
   tickets: AssistanceTicket[];
   onUpdateTicket: (id: string, updates: Partial<AssistanceTicket>) => void;
   onSubmitToAdmin: (id: string) => void;
+  onRaiseNew: () => void;
 }
 
-const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin }) => {
+const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, onUpdateTicket, onSubmitToAdmin, onRaiseNew }) => {
   const [expanded,   setExpanded]   = useState<string | null>(null);
   const [staffNotes, setStaffNotes] = useState<{ [id: string]: string }>({});
 
@@ -1297,7 +1471,17 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
       }}>
         <div style={{ fontSize: 36, marginBottom: 14, opacity: 0.25 }}>🎫</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#7e84a3", marginBottom: 5, fontFamily: "'Space Grotesk', sans-serif" }}>No Assistance Tickets</div>
-        <div style={{ fontSize: 12, color: "#434763" }}>Tickets are auto-raised when tasks are overdue.</div>
+        <div style={{ fontSize: 12, color: "#434763", marginBottom: 20 }}>Tickets are auto-raised when tasks are overdue, or you can raise one manually.</div>
+        <button onClick={onRaiseNew} style={{
+          padding: "10px 22px",
+          background: "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,107,53,0.15))",
+          border: "1px solid rgba(255,149,0,0.35)",
+          borderRadius: 10, color: "#ff9500",
+          fontSize: 12, fontWeight: 800, cursor: "pointer",
+          fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.6px",
+        }}>
+          🎫 Raise New Ticket
+        </button>
       </div>
     );
   }
@@ -1311,7 +1495,7 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Header info */}
+      {/* Header info + raise button */}
       <div style={{
         padding: "14px 18px",
         background: "rgba(255,149,0,0.04)",
@@ -1320,13 +1504,25 @@ const AssistanceTicketsTab: React.FC<AssistanceTicketsTabProps> = ({ tickets, on
         display: "flex", alignItems: "flex-start", gap: 12,
       }}>
         <span style={{ fontSize: 20, flexShrink: 0 }}>🎫</span>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#ff9500", marginBottom: 3 }}>Auto-Raised Assistance Tickets</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#ff9500", marginBottom: 3 }}>Assistance Tickets</div>
           <div style={{ fontSize: 11, color: "#7e84a3", lineHeight: 1.6 }}>
-            The system automatically raises an assistance ticket for every delayed task and assigns it to you.
-            Add your notes, then submit to your admin for review and approval.
+            Tickets are auto-raised for overdue tasks. You can also raise a manual ticket for any task you need help with.
+            Add your notes, then submit to your admin for review.
           </div>
         </div>
+        <button onClick={onRaiseNew} style={{
+          flexShrink: 0, padding: "8px 14px",
+          background: "linear-gradient(135deg, rgba(255,149,0,0.2), rgba(255,107,53,0.15))",
+          border: "1px solid rgba(255,149,0,0.4)",
+          borderRadius: 9, color: "#ff9500",
+          fontSize: 10, fontWeight: 800, cursor: "pointer",
+          fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.6px",
+          whiteSpace: "nowrap",
+          boxShadow: "0 0 12px rgba(255,149,0,0.15)",
+        }}>
+          + Raise Ticket
+        </button>
       </div>
 
       {tickets.map(ticket => {
@@ -2426,6 +2622,30 @@ const StaffDashboard: React.FC = () => {
     );
   };
 
+  // ── Manual ticket raise modal state ─────────────────────────────────────────
+  const [showRaiseModal,       setShowRaiseModal]       = useState(false);
+  const [raiseModalPreselect,  setRaiseModalPreselect]  = useState<string | undefined>(undefined);
+
+  const handleRaiseManualTicket = (taskId: string, ticketType: TicketType, reason: string) => {
+    const task = assignedTasks.find(t => t.id === taskId);
+    if (!task) return;
+    raiseAssistanceTicket({
+      taskId,
+      taskTitle:   task.title,
+      taskDueDate: task.dueDate,
+      assignedTo:  user?.email ?? "",
+      assignedBy:  (task as any).assignedBy ?? "",
+      raisedBy:    user?.email ?? "",
+      ticketType,
+      reason,
+      staffNote:   "",
+    });
+    setShowRaiseModal(false);
+    setRaiseModalPreselect(undefined);
+    showSuccess("🎫 Assistance ticket raised successfully");
+    speakText("Your assistance ticket has been raised. You can add notes and submit it to your admin from the Tickets tab.");
+  };
+
   const showAnalytics = activeTab === "pending" || activeTab === "delayed" || activeTab === "tickets";
 
   return (
@@ -3242,6 +3462,7 @@ const StaffDashboard: React.FC = () => {
                       onOpenLightbox={(photos, idx) => openLightbox(photos, idx)}
                       dragOver={dragOver}
                       setDragOver={setDragOver}
+                      onRaiseTicket={() => { setRaiseModalPreselect(task.id); setShowRaiseModal(true); }}
                     />
                   ))}
                 </div>
@@ -3271,6 +3492,7 @@ const StaffDashboard: React.FC = () => {
                       dragOver={dragOver}
                       setDragOver={setDragOver}
                       isCompleted
+                      onRaiseTicket={() => { setRaiseModalPreselect(task.id); setShowRaiseModal(true); }}
                     />
                   ))}
                 </div>
@@ -3292,6 +3514,7 @@ const StaffDashboard: React.FC = () => {
                 tickets={tickets}
                 onUpdateTicket={handleUpdateTicket}
                 onSubmitToAdmin={handleSubmitTicketToAdmin}
+                onRaiseNew={() => { setRaiseModalPreselect(undefined); setShowRaiseModal(true); }}
               />
             )}
 
@@ -4231,6 +4454,16 @@ const StaffDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Manual Raise Ticket Modal ── */}
+      {showRaiseModal && assignedTasks.length > 0 && (
+        <RaiseTicketModal
+          tasks={assignedTasks}
+          preselectedTaskId={raiseModalPreselect}
+          onSubmit={handleRaiseManualTicket}
+          onClose={() => { setShowRaiseModal(false); setRaiseModalPreselect(undefined); }}
+        />
+      )}
     </>
   );
 };
@@ -4260,13 +4493,14 @@ interface TaskCardProps {
   dragOver:       boolean;
   setDragOver:    (v: boolean) => void;
   isCompleted?:   boolean;
+  onRaiseTicket?: () => void;
 }
 
 // ── TaskCard — unchanged from original ──────────────────────────────────────
 const TaskCard: React.FC<TaskCardProps> = ({
   task, photos, getProjectName, getAssignerInfo,
   onComplete, onUpload, onRemovePhoto, onOpenLightbox,
-  dragOver, setDragOver, isCompleted,
+  dragOver, setDragOver, isCompleted, onRaiseTicket,
 }) => {
   const approvalMap: Record<string, { label: string; cls: string }> = {
     assigned:              { label: "Assigned",       cls: "badge-blue"   },
@@ -4350,6 +4584,25 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
           <button className="sd-btn-complete" onClick={onComplete}>
             <Eye size={11} /> Submit
+          </button>
+        )}
+        {!isCompleted && onRaiseTicket && (
+          <button
+            onClick={onRaiseTicket}
+            title="Raise an assistance ticket for this task"
+            style={{
+              padding: "6px 11px",
+              background: "rgba(255,149,0,0.08)",
+              border: "1px solid rgba(255,149,0,0.25)",
+              borderRadius: 8, color: "#ff9500",
+              fontSize: 10, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit", textTransform: "uppercase",
+              letterSpacing: "0.4px", display: "flex", alignItems: "center", gap: 5,
+              transition: "all 0.15s",
+              flexShrink: 0,
+            }}
+          >
+            🎫 Help
           </button>
         )}
       </div>
@@ -4497,11 +4750,3 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
-
-
-
-
-
-
-
-
