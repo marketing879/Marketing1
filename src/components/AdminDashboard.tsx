@@ -4417,60 +4417,79 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     );
                   })()}
 
-                  {selectedTask.attachments && selectedTask.attachments.length > 0 && (
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>
-                        Attachments ({selectedTask.attachments.length})
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
-                        {selectedTask.attachments.map((src, i) => {
-                          const isImage = src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("/image/");
-                          const isVideo = src.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i) || src.includes("/video/") || src.includes("video");
-                          const fname   = src.split("/").pop()?.split("?")[0] || `Attachment ${i + 1}`;
-                          if (isVideo) {
-                            return (
-                              <a key={i} href={src} download target="_blank" rel="noreferrer"
-                                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: `${G.cyan}08`, border: `1px solid ${G.cyan}33`, borderRadius: 12, textDecoration: "none", transition: "all 0.2s" }}
-                                onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.background = `${G.cyan}14`}
-                                onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.background = `${G.cyan}08`}
-                              >
-                                <span style={{ fontSize: 28, flexShrink: 0 }}>🎬</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: G.cyan, marginBottom: 3 }}>Video Attachment</div>
-                                  <div style={{ fontSize: 11, color: G.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{fname}</div>
-                                  <div style={{ fontSize: 10, color: G.textMuted, marginTop: 3 }}>Click to download and review</div>
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: `${G.cyan}18`, border: `1px solid ${G.cyan}44`, borderRadius: 8, color: G.cyan, fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
-                                  ⬇ Download Video
-                                </div>
+                  {selectedTask.attachments && selectedTask.attachments.length > 0 && (() => {
+                    const AttachmentPreview = ({ src, i }: { src: string; i: number }) => {
+                      const [expanded, setExpanded] = React.useState(false);
+                      const isImage = !!(src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("/image/"));
+                      const isVideo = !!(src.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i) || src.includes("/video/"));
+                      const isPdf   = !!(src.match(/\.pdf(\?|$)/i) || src.includes("/raw/") && src.includes(".pdf"));
+                      const fname   = decodeURIComponent(src.split("/").pop()?.split("?")[0] || `Attachment ${i + 1}`);
+                      const icon    = isImage ? "🖼" : isVideo ? "🎬" : isPdf ? "📄" : "📎";
+                      const label   = isImage ? "Image" : isVideo ? "Video" : isPdf ? "PDF Document" : "File";
+
+                      return (
+                        <div style={{ border: `1px solid ${G.cyan}25`, borderRadius: 12, overflow: "hidden", background: "rgba(0,212,255,0.03)" }}>
+                          {/* Header row */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: expanded ? `1px solid ${G.cyan}18` : "none" }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: G.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{fname}</div>
+                              <div style={{ fontSize: 10, color: G.textMuted }}>{label}</div>
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                              <button
+                                onClick={() => setExpanded(p => !p)}
+                                style={{ padding: "5px 12px", background: expanded ? `${G.cyan}20` : `${G.cyan}0a`, border: `1px solid ${G.cyan}33`, borderRadius: 7, color: G.cyan, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase" as const }}>
+                                {expanded ? "▲ Hide" : "▼ Preview"}
+                              </button>
+                              <a href={src} download={fname}
+                                style={{ padding: "5px 12px", background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.25)", borderRadius: 7, color: G.success, fontSize: 10, fontWeight: 800, textDecoration: "none", textTransform: "uppercase" as const }}>
+                                ⬇ Save
                               </a>
-                            );
-                          }
-                          if (isImage) {
-                            return (
-                              <div key={i} style={{ position: "relative" as const, cursor: "pointer", display: "inline-block" }}>
-                                <img src={src} alt={`Attachment ${i + 1}`}
-                                  onClick={() => openLightbox(selectedTask.attachments!, i)}
-                                  style={{ width: 80, height: 80, objectFit: "cover" as const, borderRadius: 8, border: `1px solid ${G.cyan}33` }} />
-                              </div>
-                            );
-                          }
-                          // Document / other
-                          return (
-                            <a key={i} href={src} download target="_blank" rel="noreferrer"
-                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${G.cyan}33`, borderRadius: 10, color: G.cyan, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
-                              <FileText size={18} />
-                              <div>
-                                <div style={{ fontSize: 11, fontWeight: 700 }}>{fname}</div>
-                                <div style={{ fontSize: 9, color: G.textMuted, marginTop: 2 }}>Click to download / view</div>
-                              </div>
-                              <span style={{ marginLeft: "auto", fontSize: 10 }}>⬇</span>
-                            </a>
-                          );
-                        })}
+                            </div>
+                          </div>
+
+                          {/* Inline preview */}
+                          {expanded && (
+                            <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.3)" }}>
+                              {isImage && (
+                                <img src={src} alt={fname}
+                                  style={{ width: "100%", maxHeight: 480, objectFit: "contain" as const, borderRadius: 8, background: "#000", display: "block" }} />
+                              )}
+                              {isVideo && (
+                                <video src={src} controls
+                                  style={{ width: "100%", maxHeight: 400, borderRadius: 8, background: "#000", display: "block" }}
+                                  preload="metadata"
+                                />
+                              )}
+                              {isPdf && (
+                                <iframe src={src} title={fname}
+                                  style={{ width: "100%", height: 520, border: "none", borderRadius: 8, background: "#fff", display: "block" }} />
+                              )}
+                              {!isImage && !isVideo && !isPdf && (
+                                <div style={{ textAlign: "center", padding: "24px", color: G.textMuted, fontSize: 12 }}>
+                                  Preview not available for this file type. Use the Save button to download.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+                          📎 Attachments ({selectedTask.attachments!.length})
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
+                          {selectedTask.attachments!.map((src, i) => (
+                            <AttachmentPreview key={i} src={src} i={i} />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
