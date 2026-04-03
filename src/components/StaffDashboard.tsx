@@ -4617,30 +4617,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
         </div>
-        {!isCompleted && !(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
-          <button className="sd-btn-complete" onClick={onComplete}>
-            <Eye size={11} /> Submit
-          </button>
-        )}
-        {!isCompleted && onRaiseTicket && (
-          <button
-            onClick={onRaiseTicket}
-            title="Raise an assistance ticket for this task"
-            style={{
-              padding: "6px 11px",
-              background: "rgba(255,149,0,0.08)",
-              border: "1px solid rgba(255,149,0,0.25)",
-              borderRadius: 8, color: "#ff9500",
-              fontSize: 10, fontWeight: 700, cursor: "pointer",
-              fontFamily: "inherit", textTransform: "uppercase",
-              letterSpacing: "0.4px", display: "flex", alignItems: "center", gap: 5,
-              transition: "all 0.15s",
-              flexShrink: 0,
-            }}
-          >
-            🎫 Help
-          </button>
-        )}
       </div>
 
       {assigner && (
@@ -4663,6 +4639,36 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <span className="badge badge-purple">{getProjectName(task.projectId)}</span>
         )}
       </div>
+
+      {/* ── Action buttons row — always full width, never clipped ── */}
+      {!isCompleted && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          {!(task as any).isFrozen && (task.approvalStatus === "assigned" || task.approvalStatus === "rejected") && (
+            <button className="sd-btn-complete" onClick={onComplete} style={{ flex: 1, justifyContent: "center" }}>
+              <Eye size={11} /> Submit
+            </button>
+          )}
+          {onRaiseTicket && (
+            <button
+              onClick={onRaiseTicket}
+              title="Raise an assistance ticket for this task"
+              style={{
+                flex: 1, padding: "9px 12px",
+                background: "rgba(255,149,0,0.08)",
+                border: "1px solid rgba(255,149,0,0.25)",
+                borderRadius: 8, color: "#ff9500",
+                fontSize: 10, fontWeight: 700, cursor: "pointer",
+                fontFamily: "inherit", textTransform: "uppercase",
+                letterSpacing: "0.4px", display: "flex", alignItems: "center",
+                justifyContent: "center", gap: 5,
+                transition: "all 0.15s",
+              }}
+            >
+              🎫 Help
+            </button>
+          )}
+        </div>
+      )}
 
       {task.approvalStatus === "rejected" && task.adminComments && (
         <div className="sd-note sd-note-red">
