@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser, Task, AssistanceTicket, TicketType } from "../contexts/UserContext";
 import { Eye, Upload, CheckCircle, Loader, Shield, User, Camera, Clock, BarChart2, AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import ClaudeChat from "./ClaudeChat";
-import { uploadToCloudinary } from "../services/CloudinaryUpload";
+import { uploadToCloudinary, uploadFilesToCloudinary } from "../services/CloudinaryUpload";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
 const roswaltLogo = "/assets/ROSWALT-LOGO-GOLDEN-8K.png";
 
@@ -1934,6 +1934,8 @@ const StaffDashboard: React.FC = () => {
   const [activeTab,           setActiveTab]           = useState<"pending" | "history" | "ai" | "delayed" | "tickets">("pending");
   const [activeFilter,        setActiveFilter]        = useState<string | null>(null);
   const [uploadedPhotos,      setUploadedPhotos]      = useState<{ [taskId: string]: string[] }>({});
+  const [uploadedFiles,       setUploadedFiles]       = useState<{ [taskId: string]: File[] }>({});
+  const [cloudinaryProgress,  setCloudinaryProgress]  = useState<{ current: number; total: number } | null>(null);
   const [dragOver,            setDragOver]            = useState(false);
   const [successMsg,          setSuccessMsg]          = useState("");
   const [reviewingTask,       setReviewingTask]       = useState<string | null>(null);
@@ -2334,8 +2336,32 @@ const StaffDashboard: React.FC = () => {
     speakText("Understood. You can review the reasons in the score panel below.");
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!selectedTask || !pendingSubmitTask) return;
+
+    // ── Upload files to Cloudinary before saving ─────────────────────────────
+    let attachmentUrls: string[] = uploadedPhotos[selectedTask.id] || [];
+    const filesToUpload = uploadedFiles[selectedTask.id] || [];
+
+    if (filesToUpload.length > 0) {
+      setCloudinaryProgress({ current: 0, total: filesToUpload.length });
+      try {
+        const cdnUrls: string[] = [];
+        for (let i = 0; i < filesToUpload.length; i++) {
+          setCloudinaryProgress({ current: i + 1, total: filesToUpload.length });
+          const url = await uploadToCloudinary(filesToUpload[i], "roswalt/attachments");
+          cdnUrls.push(url);
+        }
+        attachmentUrls = cdnUrls; // Replace base64 with real CDN URLs
+      } catch (err: any) {
+        setCloudinaryProgress(null);
+        showSuccess(`🚫 Upload failed: ${err.message || "Check your connection and try again."}`);
+        return; // Don't submit if upload failed
+      } finally {
+        setCloudinaryProgress(null);
+      }
+    }
+
     // Single atomic update — sets approvalStatus + scoreData + attachments in ONE call
     // so no second call can overwrite scoreData or leave approvalStatus as "assigned"
     updateTask?.(selectedTask.id, {
@@ -2347,7 +2373,7 @@ const StaffDashboard: React.FC = () => {
       assignedTo:      selectedTask.assignedTo,
       projectId:       selectedTask.projectId,
       completionNotes: completionNotes,
-      attachments:     uploadedPhotos[selectedTask.id] || [],
+      attachments:     attachmentUrls,
       submittedLinks:  taskLinks[selectedTask.id] || [],
       approvalStatus:  "in-review" as any,
       completedAt:     new Date().toISOString(),
@@ -2446,6 +2472,8 @@ const StaffDashboard: React.FC = () => {
         // Embed file name as a query-param comment so we can display it later
         const taggedUrl = url + `#filename=${encodeURIComponent(file.name)}&size=${file.size}`;
         setUploadedPhotos((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), taggedUrl] }));
+        // Also store the raw File object so we can upload to Cloudinary on submit
+        setUploadedFiles((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), file] }));
         if (isDocument) {
           setTimeout(() => showSuccess(`📄 "${file.name}" ready — SmartCue will scan it on submit.`), 200);
         }
@@ -2459,6 +2487,7 @@ const StaffDashboard: React.FC = () => {
 
   const removePhoto = (taskId: string, index: number) => {
     setUploadedPhotos((prev) => ({ ...prev, [taskId]: (prev[taskId] || []).filter((_, i) => i !== index) }));
+    setUploadedFiles((prev)  => ({ ...prev, [taskId]: (prev[taskId] || []).filter((_, i) => i !== index) }));
     setReviewResults((prev) => { const u = { ...prev }; delete u[taskId]; return u; });
   };
 
@@ -3935,24 +3964,32 @@ const StaffDashboard: React.FC = () => {
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={() => { setAiScoreResult(null); setPendingSubmitTask(null); }}
-                style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px", transition: "all 0.18s" }}
+                disabled={!!cloudinaryProgress}
+                style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 11, fontWeight: 700, cursor: cloudinaryProgress ? "not-allowed" : "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px", transition: "all 0.18s", opacity: cloudinaryProgress ? 0.4 : 1 }}
               >
                 ← Revise
               </button>
               <button
                 onClick={handleConfirmSubmit}
+                disabled={!!cloudinaryProgress}
                 style={{ flex: 2, padding: "12px",
-                  background: aiScoreResult.percentScore >= 55
+                  background: cloudinaryProgress
+                    ? "rgba(255,255,255,0.05)"
+                    : aiScoreResult.percentScore >= 55
                     ? `linear-gradient(135deg, #7b2fff, ${GRADE_COLOR[aiScoreResult.grade]})`
                     : "rgba(255,51,102,0.15)",
-                  border: `1px solid ${aiScoreResult.percentScore >= 55 ? GRADE_COLOR[aiScoreResult.grade] + "66" : "rgba(255,51,102,0.4)"}`,
+                  border: `1px solid ${cloudinaryProgress ? "rgba(255,255,255,0.1)" : aiScoreResult.percentScore >= 55 ? GRADE_COLOR[aiScoreResult.grade] + "66" : "rgba(255,51,102,0.4)"}`,
                   borderRadius: 10,
-                  color: aiScoreResult.percentScore >= 55 ? "white" : "#ff3366",
-                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px", transition: "all 0.18s",
-                  boxShadow: aiScoreResult.percentScore >= 55 ? `0 0 24px ${GRADE_COLOR[aiScoreResult.grade]}33` : "none",
+                  color: cloudinaryProgress ? "#7e84a3" : aiScoreResult.percentScore >= 55 ? "white" : "#ff3366",
+                  fontSize: 11, fontWeight: 700, cursor: cloudinaryProgress ? "not-allowed" : "pointer", fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.5px", transition: "all 0.18s",
+                  boxShadow: !cloudinaryProgress && aiScoreResult.percentScore >= 55 ? `0 0 24px ${GRADE_COLOR[aiScoreResult.grade]}33` : "none",
                 }}
               >
-                {aiScoreResult.percentScore >= 55 ? `✓ Submit for Approval  ${aiScoreResult.percentScore}/100` : "⚠ Submit Anyway (Score Low)"}
+                {cloudinaryProgress
+                  ? `⬆ Uploading ${cloudinaryProgress.current} of ${cloudinaryProgress.total}…`
+                  : aiScoreResult.percentScore >= 55
+                  ? `✓ Submit for Approval  ${aiScoreResult.percentScore}/100`
+                  : "⚠ Submit Anyway (Score Low)"}
               </button>
             </div>
 
@@ -4653,17 +4690,79 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <div className="sd-att-label">
             📎 {taskAttachments.length} Attachment{taskAttachments.length !== 1 ? "s" : ""} submitted
           </div>
-          <div className="sd-att-strip">
-            {taskAttachments.map((url, i) => (
-              <div
-                key={i}
-                className="sd-att-thumb"
-                title={`Open attachment ${i + 1}`}
-                onClick={() => onOpenLightbox(taskAttachments, i)}
-              >
-                <img src={url} alt={`att-${i}`} />
-              </div>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+            {taskAttachments.map((url, i) => {
+              const isCDN    = url.startsWith("http://") || url.startsWith("https://");
+              const isImage  = isCDN
+                ? /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(url)
+                : url.startsWith("data:image/");
+              const isVideo  = isCDN
+                ? /\.(mp4|mov|webm|avi)(\?|$)/i.test(url)
+                : url.startsWith("data:video/");
+              const rawName  = isCDN
+                ? decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? `File ${i + 1}`)
+                : getFilenameFromUrl(url) || `Attachment ${i + 1}`;
+              const icon     = isImage ? "🖼" : isVideo ? "🎬" : "📄";
+
+              return isCDN ? (
+                // ── CDN URL → clickable open + download buttons ──────────────
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 12px",
+                  background: "rgba(0,212,255,0.05)",
+                  border: "1px solid rgba(0,212,255,0.15)",
+                  borderRadius: 9,
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+                  <span style={{
+                    flex: 1, fontSize: 11, color: "#c8ccdd", fontWeight: 500,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{rawName}</span>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: "4px 10px",
+                      background: "rgba(0,212,255,0.1)",
+                      border: "1px solid rgba(0,212,255,0.3)",
+                      borderRadius: 6, color: "#00d4ff",
+                      fontSize: 9, fontWeight: 800,
+                      textDecoration: "none", textTransform: "uppercase",
+                      letterSpacing: "0.5px", flexShrink: 0,
+                    }}
+                  >
+                    👁 View
+                  </a>
+                  <a
+                    href={url}
+                    download={rawName}
+                    style={{
+                      padding: "4px 10px",
+                      background: "rgba(0,255,136,0.08)",
+                      border: "1px solid rgba(0,255,136,0.25)",
+                      borderRadius: 6, color: "#00ff88",
+                      fontSize: 9, fontWeight: 800,
+                      textDecoration: "none", textTransform: "uppercase",
+                      letterSpacing: "0.5px", flexShrink: 0,
+                    }}
+                  >
+                    ⬇ Save
+                  </a>
+                </div>
+              ) : (
+                // ── Legacy base64 → lightbox thumbnail (old behaviour) ───────
+                <div
+                  key={i}
+                  className="sd-att-thumb"
+                  title={`Open attachment ${i + 1}`}
+                  onClick={() => onOpenLightbox(taskAttachments, i)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <img src={url} alt={`att-${i}`} />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
