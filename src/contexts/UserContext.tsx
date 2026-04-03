@@ -223,7 +223,15 @@ const defaultUsers: StoredUser[] = [
   { id: "25", name: "Rahul Shinde",                 email: "rahul.shinde@roswalt.com",         role: "staff",      isDoer: true,  password: "100025", phone: "+91XXXXXXXXXX" },
   { id: "26", name: "Savli Patil",                  email: "savli.patil97@gmail.com",          role: "staff",      isDoer: true,  password: "100026", phone: "+91XXXXXXXXXX" },
   { id: "27", name: "Harshil Tater",                email: "harshil.tater@roswalt.com",        role: "staff",      isDoer: true,  password: "100027", phone: "+91XXXXXXXXXX" },
+  { id: "28", name: "Sanober Shaikh",               email: "sanober.shaikh@roswalt.com",       role: "staff",      isDoer: true,  password: "100028", phone: "+91XXXXXXXXXX" },
+  { id: "29", name: "Arena Moitra",                 email: "arena.moitra@roswalt.com",         role: "staff",      isDoer: true,  password: "100029", phone: "+91XXXXXXXXXX" },
+  { id: "30", name: "Dhairya Mehta",                email: "dhairya.mehta@roswalt.com",         role: "staff",      isDoer: true,  password: "100030", phone: "+91XXXXXXXXXX" },
+  { id: "31", name: "Mahira khatri",                    email: "mahira.khatri@roswalt.com",            role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
+  { id: "32", name: "Zarana Rathod",                    email: "zarana.rathod@roswalt.com",            role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
+  
 ];
+
+
 
 // ── Helper: normalize a raw backend task so `id` is always the UUID field ────
 function normalizeTask(raw: any): Task {
