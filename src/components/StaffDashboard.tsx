@@ -1280,28 +1280,28 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ tasks, tickets }) => {
 // ── RaiseTicketModal ─────────────────────────────────────────────────────────
 interface RaiseTicketModalProps {
   tasks: Task[];
-  preselectedTaskId?: string;
-  onSubmit: (taskId: string, ticketType: TicketType, reason: string) => void;
+  preselectedTitle?: string;
+  onSubmit: (taskTitle: string, ticketType: TicketType, reason: string) => void;
   onClose: () => void;
 }
 
-const RaiseTicketModal: React.FC<RaiseTicketModalProps> = ({ tasks, preselectedTaskId, onSubmit, onClose }) => {
-  const [selectedTaskId, setSelectedTaskId] = useState(preselectedTaskId ?? (tasks[0]?.id ?? ""));
-  const [ticketType,     setTicketType]     = useState<TicketType>("general-query");
-  const [reason,         setReason]         = useState("");
-  const [submitting,     setSubmitting]     = useState(false);
+const RaiseTicketModal: React.FC<RaiseTicketModalProps> = ({ tasks, preselectedTitle, onSubmit, onClose }) => {
+  const [taskTitle,  setTaskTitle]  = useState(preselectedTitle ?? "");
+  const [ticketType, setTicketType] = useState<TicketType>("general-query");
+  const [reason,     setReason]     = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const TICKET_TYPES: { value: TicketType; label: string; icon: string; desc: string }[] = [
     { value: "general-query",       label: "General Query",       icon: "❓", desc: "I have a question about this task" },
     { value: "extension-request" as TicketType,   label: "Extension Request",   icon: "📅", desc: "I need more time to complete this task" },
-    { value: "clarification-needed" as TicketType, label: "Clarification Needed", icon: "💬", desc: "The task brief needs clarification" },
-    { value: "blocker" as TicketType,             label: "Blocked",             icon: "🚧", desc: "Something is preventing me from proceeding" },
+    { value: "general-query" as TicketType,label: "Clarification Needed",icon: "💬", desc: "The task brief needs clarification" },
+    { value: "general-query" as TicketType,      label: "Blocked",             icon: "🚧", desc: "Something is preventing me from proceeding" },
   ];
 
   const handleSubmit = () => {
-    if (!selectedTaskId || !reason.trim()) return;
+    if (!taskTitle.trim() || !reason.trim()) return;
     setSubmitting(true);
-    onSubmit(selectedTaskId, ticketType, reason.trim());
+    onSubmit(taskTitle.trim(), ticketType, reason.trim());
   };
 
   return (
@@ -1340,28 +1340,25 @@ const RaiseTicketModal: React.FC<RaiseTicketModalProps> = ({ tasks, preselectedT
         </div>
 
         <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
-          {/* Task selector */}
+          {/* Task title — free text */}
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
-              Select Task
+              Task Title <span style={{ color: "#ff3366" }}>*</span>
             </div>
-            <select
-              value={selectedTaskId}
-              onChange={e => setSelectedTaskId(e.target.value)}
+            <input
+              type="text"
+              value={taskTitle}
+              onChange={e => setTaskTitle(e.target.value)}
+              placeholder="Type the task title you need help with…"
               style={{
                 width: "100%", padding: "10px 12px",
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${taskTitle.trim() ? "rgba(255,149,0,0.25)" : "rgba(255,255,255,0.08)"}`,
                 borderRadius: 10, color: "#eef0ff", fontSize: 13,
-                fontFamily: "inherit", outline: "none", cursor: "pointer",
+                fontFamily: "inherit", outline: "none",
+                transition: "border-color 0.15s",
               }}
-            >
-              {tasks.map(t => (
-                <option key={t.id} value={t.id} style={{ background: "#0a0e1e" }}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* Ticket type */}
@@ -1426,18 +1423,18 @@ const RaiseTicketModal: React.FC<RaiseTicketModalProps> = ({ tasks, preselectedT
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!reason.trim() || !selectedTaskId || submitting}
+              disabled={!taskTitle.trim() || !reason.trim() || submitting}
               style={{
                 flex: 2, padding: "11px",
-                background: reason.trim() && !submitting
+                background: taskTitle.trim() && reason.trim() && !submitting
                   ? "linear-gradient(135deg, rgba(255,149,0,0.25), rgba(255,107,53,0.2))"
                   : "rgba(255,255,255,0.04)",
-                border: `1px solid ${reason.trim() && !submitting ? "rgba(255,149,0,0.5)" : "rgba(255,255,255,0.08)"}`,
+                border: `1px solid ${taskTitle.trim() && reason.trim() && !submitting ? "rgba(255,149,0,0.5)" : "rgba(255,255,255,0.08)"}`,
                 borderRadius: 10,
-                color: reason.trim() && !submitting ? "#ff9500" : "#434763",
-                fontSize: 12, fontWeight: 800, cursor: reason.trim() && !submitting ? "pointer" : "not-allowed",
+                color: taskTitle.trim() && reason.trim() && !submitting ? "#ff9500" : "#434763",
+                fontSize: 12, fontWeight: 800, cursor: taskTitle.trim() && reason.trim() && !submitting ? "pointer" : "not-allowed",
                 fontFamily: "inherit", textTransform: "uppercase", letterSpacing: "0.6px",
-                boxShadow: reason.trim() && !submitting ? "0 0 20px rgba(255,149,0,0.2)" : "none",
+                boxShadow: taskTitle.trim() && reason.trim() && !submitting ? "0 0 20px rgba(255,149,0,0.2)" : "none",
                 transition: "all 0.2s",
               }}
             >
@@ -2626,15 +2623,17 @@ const StaffDashboard: React.FC = () => {
   const [showRaiseModal,       setShowRaiseModal]       = useState(false);
   const [raiseModalPreselect,  setRaiseModalPreselect]  = useState<string | undefined>(undefined);
 
-  const handleRaiseManualTicket = (taskId: string, ticketType: TicketType, reason: string) => {
-    const task = assignedTasks.find(t => t.id === taskId);
-    if (!task) return;
+  const handleRaiseManualTicket = (taskTitle: string, ticketType: TicketType, reason: string) => {
+    // Try to find a matching task by title (case-insensitive) for linkage
+    const matchedTask = assignedTasks.find(
+      t => t.title.toLowerCase() === taskTitle.toLowerCase()
+    );
     raiseAssistanceTicket({
-      taskId,
-      taskTitle:   task.title,
-      taskDueDate: task.dueDate,
+      taskId:      matchedTask?.id ?? `manual-${Date.now()}`,
+      taskTitle:   taskTitle,
+      taskDueDate: matchedTask?.dueDate ?? new Date().toISOString(),
       assignedTo:  user?.email ?? "",
-      assignedBy:  (task as any).assignedBy ?? "",
+      assignedBy:  matchedTask ? ((matchedTask as any).assignedBy ?? "") : "",
       raisedBy:    user?.email ?? "",
       ticketType,
       reason,
@@ -3462,7 +3461,7 @@ const StaffDashboard: React.FC = () => {
                       onOpenLightbox={(photos, idx) => openLightbox(photos, idx)}
                       dragOver={dragOver}
                       setDragOver={setDragOver}
-                      onRaiseTicket={() => { setRaiseModalPreselect(task.id); setShowRaiseModal(true); }}
+                      onRaiseTicket={() => { setRaiseModalPreselect(task.title); setShowRaiseModal(true); }}
                     />
                   ))}
                 </div>
@@ -3492,7 +3491,7 @@ const StaffDashboard: React.FC = () => {
                       dragOver={dragOver}
                       setDragOver={setDragOver}
                       isCompleted
-                      onRaiseTicket={() => { setRaiseModalPreselect(task.id); setShowRaiseModal(true); }}
+                      onRaiseTicket={() => { setRaiseModalPreselect(task.title); setShowRaiseModal(true); }}
                     />
                   ))}
                 </div>
@@ -4459,7 +4458,7 @@ const StaffDashboard: React.FC = () => {
       {showRaiseModal && assignedTasks.length > 0 && (
         <RaiseTicketModal
           tasks={assignedTasks}
-          preselectedTaskId={raiseModalPreselect}
+          preselectedTitle={raiseModalPreselect}
           onSubmit={handleRaiseManualTicket}
           onClose={() => { setShowRaiseModal(false); setRaiseModalPreselect(undefined); }}
         />
