@@ -61,7 +61,6 @@ interface ReviewResult {
 }
 
 const BACKEND = "https://adaptable-patience-production-45da.up.railway.app";
-const TASKS_BACKEND = "https://roswalt-backend-production.up.railway.app";
 
 // ── Color palette (matches AdminDashboard G object) ─────────────────────────
 const G = {
@@ -236,30 +235,6 @@ const SADashboard: React.FC = () => {
   } = useUser() as any;
 
   const navigate = useNavigate();
-
-  // ── Full tasks cache: fetches complete task data (scoreData, attachments) ──
-  const [fullTasksCache, setFullTasksCache] = useState<Record<string, any>>({});
-  useEffect(() => {
-    const fetchFullTasks = () =>
-      fetch("https://roswalt-backend-production.up.railway.app/api/tasks")
-        .then(r => r.ok ? r.json() : [])
-        .then((data: any[]) => {
-          const cache: Record<string, any> = {};
-          data.forEach((t: any) => { cache[t.id || String(t._id)] = t; });
-          setFullTasksCache(cache);
-        })
-        .catch(() => {});
-    fetchFullTasks();
-    const iv = setInterval(fetchFullTasks, 30000);
-    return () => clearInterval(iv);
-  }, []);
-  // Helper: merge cached full data into a task so scoreData/attachments are always available
-  const enrichTask = (task: Task): Task => {
-    const cached = fullTasksCache[task.id];
-    if (!cached) return task;
-    return { ...task, ...cached, id: task.id };
-  };
-
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const handleTabChange = (tab: Tab) => {
     if (tab !== "projects") setSelectedProject(null);
@@ -484,6 +459,29 @@ const SADashboard: React.FC = () => {
   // Project drill-down state
   const [selectedProject, setSelectedProject] = React.useState<any>(null);
 
+  // ── Score enrichment: fetch full tasks (with scoreData) when projects tab opens ─
+  const [scoreEnrichedTasks, setScoreEnrichedTasks] = React.useState<Record<string, any>>({});
+  const scoreEnrichRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (activeTab !== "projects") return;
+    if (scoreEnrichRef.current) return;
+    scoreEnrichRef.current = true;
+
+    // Fetch all tasks with full data (scoreData included) in one shot
+    fetch(`${BACKEND}/api/tasks`)
+      .then(r => r.ok ? r.json() : [])
+      .then((fullTasks: any[]) => {
+        const map: Record<string, any> = {};
+        fullTasks.forEach((t: any) => {
+          const id = t.id || String(t._id);
+          if (t.scoreData) map[id] = t.scoreData;
+        });
+        setScoreEnrichedTasks(map);
+      })
+      .catch(() => {});
+  }, [activeTab]);
+
   // Ticket oversight state
   const [saTicketFilter,     setSaTicketFilter]     = React.useState<"all"|"delete-request"|"small-activity"|"general-query"|"task-delegation">("all");
   const [selectedSaTicket,   setSelectedSaTicket]   = React.useState<any>(null);
@@ -659,16 +657,14 @@ const SADashboard: React.FC = () => {
   const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
 
   const openReviewModal = async (task: Task): Promise<void> => {
-    // Immediately enrich from cache so score/attachments show without waiting for fetch
-    const enriched = enrichTask(task);
-    setSelectedTask(enriched);
+    setSelectedTask(task);
     setReviewComments("");
     setAiReviewResults(null);
     setReviewPanelOpen(false);
     setShowReviewModal(true);
     setReviewTaskLoading(true);
     try {
-      const res = await fetch(`${TASKS_BACKEND}/api/tasks/${task.id}`);
+      const res = await fetch(`${BACKEND}/api/tasks/${task.id}`);
       if (res.ok) {
         const full = await res.json();
         setSelectedTask(prev => prev ? { ...prev, ...full, id: full.id || String(full._id) } : prev);
@@ -2010,8 +2006,7 @@ const SADashboard: React.FC = () => {
                         <th>Task</th><th>Assigned To</th><th>Assigned By</th><th>Progress</th><th>Approval</th><th>Start Date</th><th>Due Date</th><th>Completed On</th><th>Score</th><th>Action</th>
                       </tr></thead>
                       <tbody>
-                        {(tasks as Task[]).map((rawTask: Task) => {
-                          const task = enrichTask(rawTask);
+                        {(tasks as Task[]).map((task: Task) => {
                           const progressMap: Record<string,number> = {"assigned":20,"in-review":50,"admin-approved":75,"superadmin-approved":100,"rejected":10};
                           const sc: Record<string,string> = {"assigned":G.textMuted,"in-review":G.cyan,"admin-approved":G.amber,"superadmin-approved":G.success,"rejected":G.danger};
                           const p = progressMap[task.approvalStatus] || 0;
@@ -2239,6 +2234,7 @@ const SADashboard: React.FC = () => {
               if (t.approvalStatus === "superadmin-approved") memberMap[t.assignedTo].done++;
               else memberMap[t.assignedTo].pending++;
               if (t.scoreData?.percentScore != null) memberMap[t.assignedTo].scores.push(t.scoreData.percentScore);
+              else if (scoreEnrichedTasks[t.id]?.percentScore != null) memberMap[t.assignedTo].scores.push(scoreEnrichedTasks[t.id].percentScore);
             });
             const memberRows = Object.values(memberMap).sort((a,b) => b.total - a.total);
 
@@ -2353,14 +2349,13 @@ const SADashboard: React.FC = () => {
                         <th>Action</th>
                       </tr></thead>
                       <tbody>
-                        {projTasks.map((rawTask: any) => {
-                          const task = enrichTask(rawTask);
+                        {projTasks.map((task: any) => {
                           const progressMap: Record<string,number> = {"assigned":20,"in-review":50,"admin-approved":75,"superadmin-approved":100,"rejected":10};
                           const sc: Record<string,string>          = {"assigned":G.textMuted,"in-review":G.cyan,"admin-approved":G.amber,"superadmin-approved":G.success,"rejected":G.danger};
                           const p = progressMap[task.approvalStatus] || 0;
                           const c = sc[task.approvalStatus]          || G.textMuted;
                           const completedOn = task.approvalStatus === "superadmin-approved"
-                            ? (task.completedAt || (task as any).reviewHistory?.slice(-1)[0]?.at || null)
+                            ? (task.completedAt || task.approvedAt || task.reviewHistory?.slice(-1)[0]?.at || null)
                             : null;
                           return (
                             <tr key={task.id}>
@@ -2392,12 +2387,15 @@ const SADashboard: React.FC = () => {
                                 {completedOn ? fmtDate(completedOn) : "—"}
                               </td>
                               <td style={{ textAlign:"center" as const }}>
-                                {task.scoreData ? (
-                                  <span style={{ fontSize:11, fontWeight:700, color:scoreColor(task.scoreData.percentScore) }}>
-                                    {task.scoreData.percentScore}/100
-                                    <span style={{ display:"block", fontSize:9, color:G.textMuted }}>{task.scoreData.grade}</span>
-                                  </span>
-                                ) : <span style={{ color:G.textMuted, fontSize:10 }}>—</span>}
+                                {(() => {
+                                  const sd = task.scoreData || scoreEnrichedTasks[task.id];
+                                  return sd ? (
+                                    <span style={{ fontSize:11, fontWeight:700, color:scoreColor(sd.percentScore) }}>
+                                      {sd.percentScore}/100
+                                      <span style={{ display:"block", fontSize:9, color:G.textMuted }}>{sd.grade}</span>
+                                    </span>
+                                  ) : <span style={{ color:G.textMuted, fontSize:10 }}>—</span>;
+                                })()}
                               </td>
                               <td>
                                 <button className="sa-btn sa-btn-secondary" style={{ padding:"5px 10px", fontSize:10 }} onClick={() => openTaskDetail(task)}>
