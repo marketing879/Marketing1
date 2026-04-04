@@ -136,21 +136,7 @@ export const ChatProvider: React.FC<{
     CHANNELS.forEach(ch => loadMessages(ch.id));
   }, [loadMessages]);
 
-  // Pre-load DM histories — staggered to avoid simultaneous API calls
-  useEffect(() => {
-    if (!currentUser?.id || teamMembers.length === 0) return;
-    let i = 0;
-    const members = teamMembers.filter(m => m?.id && m.id !== currentUser.id);
-    const interval = setInterval(() => {
-      if (i >= members.length) { clearInterval(interval); return; }
-      const dmCh = getDMChannelId(currentUser.id, members[i].id);
-      loadMessages(dmCh);
-      i++;
-    }, 150);
-    return () => clearInterval(interval);
-  }, [currentUser?.id, teamMembers.length, loadMessages]);
-
-  // ── Pre-load personal notification channel ────────────────────────────────
+  // ── Personal notification channel only — DM histories load on-demand when opened ──
   useEffect(() => {
     if (!currentUser?.id) return;
     loadMessages(getNotifChannelId(currentUser.id));
