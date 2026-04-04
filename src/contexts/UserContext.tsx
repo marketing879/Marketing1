@@ -197,7 +197,7 @@ interface StoredUser extends User {
 const defaultUsers: StoredUser[] = [
   { id: "0",  name: "Supremo",                      email: "supremo@roswalt.com",             role: "supremo",    isDoer: false, password: "000000" },
   { id: "1",  name: "Madhav Sawant",               email: "madhav.sawant@roswalt.com",      role: "superadmin", isDoer: false, password: "400002" },
-  { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "superadmin", isDoer: false, password: "100002" },
+  { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
   { id: "3",  name: "Vinay Dinkar Vanmali",         email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "300003" },
   { id: "4",  name: "Jalal Chandmiya Shaikh",       email: "jalal.shaikh@roswalt.com",        role: "admin",      isDoer: false, password: "100004" },
   { id: "5",  name: "Nidhi Mehta",                  email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
