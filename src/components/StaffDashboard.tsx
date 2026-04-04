@@ -3845,10 +3845,10 @@ const StaffDashboard: React.FC = () => {
                 </div>
                 {aiScoreResult.grammarErrors.map((err, i) => {
                   // Try to split "phrase: 'original' → 'corrected'" format
-                  const arrowIdx = err.indexOf("→");
+                  const errStr = String(err ?? ""); const arrowIdx = errStr.indexOf("→");
                   const hasSplit = arrowIdx > -1;
-                  const before   = hasSplit ? err.slice(0, arrowIdx).trim() : err;
-                  const after    = hasSplit ? err.slice(arrowIdx + 1).trim() : "";
+                  const before   = hasSplit ? errStr.slice(0, arrowIdx).trim() : errStr;
+                  const after    = hasSplit ? errStr.slice(arrowIdx + 1).trim() : "";
                   return (
                     <div key={i} style={{ marginBottom: 8, padding: "7px 10px", borderRadius: 7, background: "rgba(255,51,102,0.04)", border: "1px solid rgba(255,51,102,0.12)" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
