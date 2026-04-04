@@ -197,7 +197,7 @@ interface StoredUser extends User {
 const defaultUsers: StoredUser[] = [
   { id: "0",  name: "Supremo",                      email: "supremo@roswalt.com",             role: "supremo",    isDoer: false, password: "000000" },
   { id: "1",  name: "Madhav Sawant",               email: "madhav.sawant@roswalt.com",      role: "superadmin", isDoer: false, password: "400002" },
-  { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "admin",      isDoer: false, password: "100002" },
+  { id: "2",  name: "Aziz Ashfaq Khan",             email: "aziz.khan@roswalt.com",           role: "superadmin", isDoer: false, password: "100002" },
   { id: "3",  name: "Vinay Dinkar Vanmali",         email: "vinay.vanmali@roswalt.com",       role: "admin",      isDoer: false, password: "300003" },
   { id: "4",  name: "Jalal Chandmiya Shaikh",       email: "jalal.shaikh@roswalt.com",        role: "admin",      isDoer: false, password: "100004" },
   { id: "5",  name: "Nidhi Mehta",                  email: "nidhi.mehta@roswalt.com",         role: "admin",      isDoer: false, password: "100005" },
@@ -226,8 +226,8 @@ const defaultUsers: StoredUser[] = [
   { id: "28", name: "Sanober Shaikh",               email: "sanober.shaikh@roswalt.com",       role: "staff",      isDoer: true,  password: "100028", phone: "+91XXXXXXXXXX" },
   { id: "29", name: "Arena Moitra",                 email: "arena.moitra@roswalt.com",         role: "staff",      isDoer: true,  password: "100029", phone: "+91XXXXXXXXXX" },
   { id: "30", name: "Dhairya Mehta",                email: "dhairya.mehta@roswalt.com",         role: "staff",      isDoer: true,  password: "100030", phone: "+91XXXXXXXXXX" },
-  { id: "31", name: "Mahira khatri",                    email: "mahira.khatri@roswalt.com",            role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
-  { id: "32", name: "Zarana Rathod",                    email: "zarana.rathod@roswalt.com",            role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
+  { id: "31", name: "Mahira khatri",                 email: "mahira.khatri@roswalt.com",            role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
+  { id: "32", name: "Zarana Rathod",                 email: "zarana.rathod@roswalt.com",            role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
   
 ];
 
@@ -351,7 +351,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (u) => u.email.toLowerCase() === newUser.email.toLowerCase()
     );
     if (exists) return { success: false, message: "Email already exists." };
-    setStoredUsers((prev) => [...prev, { ...newUser, id: Date.now().toString() }]);
+    // FIX Bug 2: set isDoer based on role so newly added users have the correct field
+    const newMember: StoredUser = {
+      ...newUser,
+      id:     Date.now().toString(),
+      isDoer: newUser.role === "staff",
+    };
+    setStoredUsers((prev) => [...prev, newMember]);
+    // FIX Bug 3: persist to backend so user survives page refresh
+    fetch(`${API_URL}/api/users`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(newMember),
+    }).catch((err) => console.warn("[addUser] Backend persist failed:", err));
     logActivity({ category: "user", action: "User Added", actorEmail: user?.email || "", actorName: user?.name || "", targetName: newUser.name, meta: { role: newUser.role, email: newUser.email } });
     return { success: true, message: "User created successfully." };
   };
@@ -686,5 +698,3 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
-
-
