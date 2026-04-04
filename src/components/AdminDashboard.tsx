@@ -7,7 +7,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     Zap, User, ChevronRight, Calendar, Flag,
     FileText, MessageSquare, Shield, Sparkles, Loader,
     TrendingUp, Clock, Activity, BarChart3,
-    GitBranch, ListTree,
+    GitBranch, ListTree, FolderPlus, Building2, MapPin, DollarSign,
     AlertTriangle, AlertCircle, History, Radio, Share2, RotateCw, Trash2, Bell,
   } from "lucide-react";
   import ClaudeChat from "./ClaudeChat";
@@ -900,6 +900,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
     const allMembers     = teamMembers as TeamMember[];
     const activeProjects = (projects as Project[]).filter((p) => !p.status || p.status === "active");
+
+    // ── Vinay-only: project portfolio drill-down ──────────────────────────────
+    const isVinay = (user?.email ?? "").toLowerCase() === "vinay.vanmali@roswalt.com";
+    const [selectedProject, setSelectedProject] = useState<any>(null);
 
     const [activeTab,       setActiveTab]       = useState("analytics");
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2084,6 +2088,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       { id: "taskmap",    label: "Task Map",   icon: GitBranch   },
       { id: "autopulse",  label: "Autopulse",  icon: Zap         },
       { id: "prime",       label: "Prime",       icon: Shield      },
+      ...(isVinay ? [{ id: "portfolio", label: "Portfolio", icon: FolderPlus }] : []),
     ];
 
     const statCards = [
@@ -3328,6 +3333,270 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 <ForwardedTaskTree tasks={allTasksCombined} getNameFn={getName} isAdminFn={isAdminEmail} onSelectTask={(task: Task) => { openReviewModal(task); }} />
               </section>
             )}
+
+            {/* ══ PORTFOLIO TAB — Vinay only ══ */}
+            {activeTab === "portfolio" && isVinay && !selectedProject && (
+              <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+                  <div>
+                    <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
+                      Project <em style={{ color: G.cyan }}>Portfolio</em>
+                    </h2>
+                    <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>
+                      {(projects as any[]).length} project{(projects as any[]).length !== 1 ? "s" : ""} in the system
+                    </p>
+                  </div>
+                </div>
+                {(projects as any[]).length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "72px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
+                    <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.3 }}>📁</div>
+                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, color: G.textMuted }}>No projects yet</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 20 }}>
+                    {(projects as any[]).map((project: any, idx: number) => {
+                      const projTasks = allTasksCombined.filter((t: Task) => t.projectId === project.id);
+                      const done    = projTasks.filter((t: Task) => t.approvalStatus === "superadmin-approved").length;
+                      const pending = projTasks.filter((t: Task) => t.approvalStatus !== "superadmin-approved").length;
+                      const pct     = projTasks.length ? Math.round((done / projTasks.length) * 100) : 0;
+                      return (
+                        <div key={project.id}
+                          onClick={() => setSelectedProject(project)}
+                          style={{ background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "22px 24px", cursor: "pointer", transition: "all 0.22s", backdropFilter: "blur(16px)", animationDelay: `${idx * 55}ms` }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${project.color || G.cyan}55`; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,255,255,0.08)"; (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                            <div style={{ width: 12, height: 12, borderRadius: "50%", background: project.color || G.cyan, boxShadow: `0 0 12px ${project.color || G.cyan}66`, flexShrink: 0 }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: G.textPrimary }}>{project.name}</div>
+                              {project.projectCode && <div style={{ fontSize: 10, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>{project.projectCode}</div>}
+                            </div>
+                            <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 4, background: project.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(212,175,55,0.12)", color: project.status === "active" ? "#10b981" : G.gold, border: `1px solid ${project.status === "active" ? "rgba(16,185,129,0.3)" : "rgba(212,175,55,0.3)"}`, fontWeight: 700, textTransform: "uppercase" as const }}>
+                              {project.status || "active"}
+                            </span>
+                          </div>
+                          {project.description && <p style={{ fontSize: 12, color: G.textSecondary, lineHeight: 1.55, marginBottom: 14 }}>{project.description}</p>}
+                          <div style={{ marginBottom: 14 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                              <span style={{ fontSize: 10, color: G.textMuted, fontWeight: 700 }}>Completion</span>
+                              <span style={{ fontSize: 10, color: pct === 100 ? "#10b981" : G.cyan, fontWeight: 700 }}>{pct}%</span>
+                            </div>
+                            <div style={{ height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 3, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${project.color || G.cyan},${project.color || G.cyan}88)`, borderRadius: 3, transition: "width 0.6s ease" }} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                            {[{ label: "Total", value: projTasks.length, color: G.cyan }, { label: "Done", value: done, color: "#10b981" }, { label: "Pending", value: pending, color: G.amber }].map(s => (
+                              <div key={s.label} style={{ flex: 1, textAlign: "center" as const, padding: "8px 0", background: `${s.color}10`, border: `1px solid ${s.color}25`, borderRadius: 8 }}>
+                                <div style={{ fontSize: 18, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                                <div style={{ fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{s.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 11, color: G.cyan, fontWeight: 600 }}>Click to view details →</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ══ PORTFOLIO DRILL-DOWN — Vinay only ══ */}
+            {activeTab === "portfolio" && isVinay && selectedProject && (() => {
+              const proj      = selectedProject;
+              const projTasks = allTasksCombined.filter((t: Task) => t.projectId === proj.id);
+              const done      = projTasks.filter((t: Task) => t.approvalStatus === "superadmin-approved").length;
+              const pending   = projTasks.filter((t: Task) => t.approvalStatus !== "superadmin-approved").length;
+              const pct       = projTasks.length ? Math.round((done / projTasks.length) * 100) : 0;
+              const scoreColor = (s: number) => s >= 75 ? "#10b981" : s >= 55 ? G.amber : G.danger;
+              const fmtDate    = (d: any) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
+
+              // Per-member breakdown
+              const memberMap: Record<string, { name: string; total: number; done: number; pending: number; scores: number[] }> = {};
+              projTasks.forEach((t: any) => {
+                if (!memberMap[t.assignedTo]) memberMap[t.assignedTo] = { name: getName(t.assignedTo), total: 0, done: 0, pending: 0, scores: [] };
+                memberMap[t.assignedTo].total++;
+                if (t.approvalStatus === "superadmin-approved") memberMap[t.assignedTo].done++;
+                else memberMap[t.assignedTo].pending++;
+                if (t.scoreData?.percentScore != null) memberMap[t.assignedTo].scores.push(t.scoreData.percentScore);
+              });
+              const memberRows = Object.values(memberMap).sort((a, b) => b.total - a.total);
+
+              return (
+                <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                  {/* Header + Back */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap" as const, gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <button onClick={() => setSelectedProject(null)}
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "6px 12px", color: G.textMuted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+                        ← Back
+                      </button>
+                      <div>
+                        <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: G.textPrimary, marginBottom: 2 }}>
+                          <span style={{ color: proj.color || G.cyan }}>●</span> {proj.name}
+                        </h2>
+                        <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted }}>
+                          {proj.projectCode && `${proj.projectCode} · `}{proj.projectType || ""}{proj.location ? ` · ${proj.location}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: "3px 12px", borderRadius: 6, background: proj.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(212,175,55,0.12)", color: proj.status === "active" ? "#10b981" : G.gold, border: `1px solid ${proj.status === "active" ? "rgba(16,185,129,0.3)" : "rgba(212,175,55,0.3)"}`, fontWeight: 800, textTransform: "uppercase" as const }}>
+                      {proj.status || "active"}
+                    </span>
+                  </div>
+
+                  {/* Summary pills */}
+                  <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 12, marginBottom: 24 }}>
+                    {[
+                      { label: "Total Tasks",  value: projTasks.length,  color: G.cyan    },
+                      { label: "Completed",    value: done,              color: "#10b981"  },
+                      { label: "Pending",      value: pending,           color: G.amber    },
+                      { label: "Completion",   value: `${pct}%`,         color: pct === 100 ? "#10b981" : G.cyan },
+                      { label: "Team Members", value: memberRows.length, color: G.purple   },
+                    ].map(s => (
+                      <div key={s.label} style={{ padding: "12px 20px", background: `${s.color}10`, border: `1px solid ${s.color}30`, borderRadius: 12 }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                        <div style={{ fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.6px", marginTop: 2 }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Overall progress */}
+                  <div style={{ padding: "16px 20px", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, marginBottom: 28, backdropFilter: "blur(16px)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>Overall Completion</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: pct === 100 ? "#10b981" : G.cyan }}>{pct}%</span>
+                    </div>
+                    <div style={{ height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 5, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${proj.color || G.cyan},${proj.color || G.cyan}88)`, borderRadius: 5, transition: "width 0.7s ease", boxShadow: `0 0 12px ${proj.color || G.cyan}55` }} />
+                    </div>
+                  </div>
+
+                  {/* Per-member breakdown */}
+                  {memberRows.length > 0 && (
+                    <>
+                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
+                        👥 Team Workload Breakdown
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14, marginBottom: 28 }}>
+                        {memberRows.map((m, i) => {
+                          const memberPct = m.total ? Math.round((m.done / m.total) * 100) : 0;
+                          const avgScore  = m.scores.length ? Math.round(m.scores.reduce((a, b) => a + b, 0) / m.scores.length) : null;
+                          return (
+                            <div key={i} style={{ padding: "16px 18px", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: G.textPrimary }}>{m.name}</div>
+                                {avgScore !== null && (
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: scoreColor(avgScore), padding: "2px 8px", borderRadius: 5, background: `${scoreColor(avgScore)}18`, border: `1px solid ${scoreColor(avgScore)}44` }}>
+                                    Avg {avgScore}/100
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                                {[{ label: "Total", value: m.total, color: G.cyan }, { label: "Done", value: m.done, color: "#10b981" }, { label: "Pending", value: m.pending, color: G.amber }].map(s => (
+                                  <div key={s.label} style={{ flex: 1, textAlign: "center" as const, padding: "6px 0", background: `${s.color}10`, borderRadius: 6 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 800, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                                    <div style={{ fontSize: 8, color: G.textMuted, textTransform: "uppercase" as const }}>{s.label}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${memberPct}%`, background: "linear-gradient(90deg,#10b981,#10b98188)", borderRadius: 2 }} />
+                              </div>
+                              <div style={{ fontSize: 10, color: G.textMuted, marginTop: 4, textAlign: "right" as const }}>{memberPct}% complete</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Task table */}
+                  <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
+                    📋 All Tasks in this Project ({projTasks.length})
+                  </div>
+                  {projTasks.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "48px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
+                      <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>📋</div>
+                      <div style={{ color: G.textMuted }}>No tasks for this project yet</div>
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: "auto", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                            {["Task", "Assigned To", "Assigned By", "Progress", "Approval", "Start Date", "Due Date", "Completed On", "Score", "Action"].map(h => (
+                              <th key={h} style={{ padding: "12px 14px", textAlign: "left" as const, fontSize: 10, fontWeight: 700, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "0.7px", whiteSpace: "nowrap" as const }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projTasks.map((task: any) => {
+                            const progressMap: Record<string, number> = { "assigned": 20, "in-review": 50, "admin-approved": 75, "superadmin-approved": 100, "rejected": 10 };
+                            const colorMap: Record<string, string>   = { "assigned": G.textMuted, "in-review": G.cyan, "admin-approved": G.amber, "superadmin-approved": "#10b981", "rejected": G.danger };
+                            const p = progressMap[task.approvalStatus] || 0;
+                            const c = colorMap[task.approvalStatus] || G.textMuted;
+                            const completedOn = task.approvalStatus === "superadmin-approved" ? (task.completedAt || task.approvedAt || null) : null;
+                            return (
+                              <tr key={task.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                                onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = "rgba(255,255,255,0.02)"}
+                                onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = ""}
+                              >
+                                <td style={{ padding: "12px 14px", color: G.textPrimary, fontWeight: 500, maxWidth: 200 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    {task.tatBreached && <span style={{ fontSize: 8, color: G.danger }}>⚠</span>}
+                                    {task.isFrozen    && <span style={{ fontSize: 8, color: "#b06af3" }}>🔒</span>}
+                                    {task.title}
+                                  </div>
+                                </td>
+                                <td style={{ padding: "12px 14px", fontSize: 12, color: G.textSecondary }}>{getName(task.assignedTo)}</td>
+                                <td style={{ padding: "12px 14px", fontSize: 11, color: G.amber }}>{task.assignedBy ? getName(task.assignedBy) : "—"}</td>
+                                <td style={{ padding: "12px 14px", minWidth: 100 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
+                                      <div style={{ height: "100%", width: `${p}%`, background: `linear-gradient(90deg,${c},${c}88)`, borderRadius: 2 }} />
+                                    </div>
+                                    <span style={{ fontSize: 10, color: c, width: 28, flexShrink: 0 }}>{p}%</span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: "12px 14px" }}>
+                                  <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 4, background: `${c}18`, color: c, border: `1px solid ${c}33`, fontWeight: 700, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>
+                                    {task.approvalStatus?.replace(/-/g, " ")}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted }}>{fmtDate(task.createdAt)}</td>
+                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10 }}>{fmtDate(task.dueDate)}</td>
+                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: completedOn ? "#10b981" : G.textMuted }}>
+                                  {completedOn ? fmtDate(completedOn) : "—"}
+                                </td>
+                                <td style={{ padding: "12px 14px", textAlign: "center" as const }}>
+                                  {task.scoreData ? (
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: scoreColor(task.scoreData.percentScore) }}>
+                                      {task.scoreData.percentScore}/100
+                                      <span style={{ display: "block", fontSize: 9, color: G.textMuted }}>{task.scoreData.grade}</span>
+                                    </span>
+                                  ) : <span style={{ color: G.textMuted, fontSize: 10 }}>—</span>}
+                                </td>
+                                <td style={{ padding: "12px 14px" }}>
+                                  <button onClick={() => openReviewModal(task)}
+                                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, color: G.textSecondary, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                                    <Eye size={11} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              );
+            })()}
           </div>
 
           {/* ════ MODALS ════ */}
