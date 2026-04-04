@@ -631,7 +631,27 @@ const SADashboard: React.FC = () => {
 
   const openLightbox     = (photos: string[], index = 0) => { setLightboxPhotos(photos); setLightboxIndex(index); setShowLightbox(true); };
   const openTaskDetail   = (task: Task) => { setDetailTask(task); setShowTaskDetail(true); };
-  const openReviewModal = (task: Task) => { setSelectedTask(task); setReviewComments(""); setAiReviewResults(null); setReviewPanelOpen(false); setShowReviewModal(true); };
+  const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
+
+  const openReviewModal = async (task: Task): Promise<void> => {
+    setSelectedTask(task);
+    setReviewComments("");
+    setAiReviewResults(null);
+    setReviewPanelOpen(false);
+    setShowReviewModal(true);
+    setReviewTaskLoading(true);
+    try {
+      const res = await fetch(`${BACKEND}/api/tasks/${task.id}`);
+      if (res.ok) {
+        const full = await res.json();
+        setSelectedTask(prev => prev ? { ...prev, ...full, id: full.id || String(full._id) } : prev);
+      }
+    } catch (e) {
+      console.warn("[openReviewModal] Could not fetch full task:", e);
+    } finally {
+      setReviewTaskLoading(false);
+    }
+  };
   const handleLogout   = () => { logout(); navigate("/login"); };
   const showSuccess    = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(""), 3500); };
 
@@ -3089,42 +3109,181 @@ const SADashboard: React.FC = () => {
       )}
 
       {/* ── MODAL: REVIEW TASK ─────────────────────────────────────────────── */}
-      {showReviewModal && selectedTask && (
+      {showReviewModal && selectedTask && (() => {
+        const scoreData      = (selectedTask as any).scoreData;
+        const scoreReportUrl = (selectedTask as any).scoreReportUrl || (selectedTask as any).scoreData?.reportUrl;
+        return (
         <div className="sa-overlay" onClick={e=>{ if(e.target===e.currentTarget){setShowReviewModal(false);setSelectedTask(null);setReviewComments("");setAiReviewResults(null);} }}>
-          <div className="sa-modal">
+          <div className="sa-modal" style={{ maxWidth:780 }}>
             <div className="sa-modal-header">
               <div>
-                <div className="sa-modal-sub">Task Review</div>
+                <div className="sa-modal-sub">Task Review · Superadmin</div>
                 <div className="sa-modal-title">{selectedTask.title}</div>
               </div>
               <button className="sa-modal-close" onClick={()=>{setShowReviewModal(false);setSelectedTask(null);setReviewComments("");setAiReviewResults(null);}}><X size={17} /></button>
             </div>
+
+            {/* Loading bar */}
+            {reviewTaskLoading && (
+              <div style={{ padding:"8px 24px", background:"rgba(212,175,55,0.05)", borderBottom:"1px solid rgba(212,175,55,0.12)" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, fontSize:11, color:G.gold, fontFamily:"'IBM Plex Mono',monospace" }}>
+                  <div style={{ width:11, height:11, border:`2px solid ${G.gold}44`, borderTopColor:G.gold, borderRadius:"50%", animation:"spin 1s linear infinite" }} />
+                  Fetching full submission — attachments, score, notes…
+                </div>
+                <div style={{ marginTop:6, height:2, background:"rgba(212,175,55,0.1)", borderRadius:2, overflow:"hidden" }}>
+                  <div style={{ height:"100%", background:`linear-gradient(90deg,${G.gold},#fff3a0)`, animation:"progressBar 1.8s ease-in-out infinite" }} />
+                </div>
+              </div>
+            )}
+
             <div className="sa-modal-body">
-              <div style={{ display:"flex", flexWrap:"wrap", gap:10, marginBottom:20 }}>
+              {/* Badges */}
+              <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8, marginBottom:16 }}>
                 <span className={`sa-badge sa-badge-${selectedTask.priority==="high"?"danger":selectedTask.priority==="low"?"success":"warning"}`}>
                   <Flag size={11} /> {selectedTask.priority}
                 </span>
                 <span className="sa-badge sa-badge-gold"><User size={11} /> {getStaffName(selectedTask.assignedTo)}</span>
                 <span className="sa-badge sa-badge-cyan"><Calendar size={11} /> Due {new Date(selectedTask.dueDate).toLocaleDateString()}</span>
+                {selectedTask.timeSlot && <span className="sa-badge" style={{ background:"rgba(212,175,55,0.1)", color:G.gold, border:`1px solid ${G.gold}44` }}>{selectedTask.timeSlot}</span>}
               </div>
 
-              <div style={{ padding:"14px 18px", background:"rgba(4,6,18,0.85)", border:"1px solid rgba(212,175,55,0.12)", borderRadius:10, marginBottom:20, fontSize:13, color:G.textSecondary, lineHeight:1.65 }}>
+              {/* Voice Note */}
+              {(selectedTask as any).voiceNote && (
+                <div style={{ marginBottom:14, padding:"12px 14px", borderRadius:10, background:"rgba(212,175,55,0.07)", border:"1px solid rgba(212,175,55,0.3)", display:"flex", flexDirection:"column" as const, gap:8 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:G.gold, textTransform:"uppercase" as const, letterSpacing:"0.7px" }}>🎙 Voice Brief</div>
+                  <audio src={(selectedTask as any).voiceNote} controls style={{ width:"100%", height:36, accentColor:G.gold }} />
+                </div>
+              )}
+
+              {/* AI Score Panel */}
+              {scoreData && (
+                <div style={{ padding:"16px 18px", background:"rgba(0,212,255,0.05)", border:"1px solid rgba(0,212,255,0.2)", borderRadius:12, marginBottom:14 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, flexWrap:"wrap" as const, gap:10 }}>
+                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:G.cyan, letterSpacing:"0.12em", textTransform:"uppercase" as const }}>🎯 AI Score Report</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:22, fontWeight:900, color:scoreData.percentScore>=75?"#10b981":scoreData.percentScore>=55?"#f59e0b":"#ef4444", fontFamily:"'Oswald',sans-serif" }}>
+                        {scoreData.percentScore}/100
+                      </span>
+                      <span style={{ fontSize:13, fontWeight:800, padding:"3px 10px", borderRadius:6, background:scoreData.percentScore>=75?"rgba(16,185,129,0.15)":scoreData.percentScore>=55?"rgba(245,158,11,0.15)":"rgba(239,68,68,0.15)", color:scoreData.percentScore>=75?"#10b981":scoreData.percentScore>=55?"#f59e0b":"#ef4444" }}>
+                        Grade {scoreData.grade}
+                      </span>
+                      {scoreReportUrl && (
+                        <a href={scoreReportUrl} target="_blank" rel="noreferrer"
+                          style={{ padding:"6px 14px", background:"rgba(0,212,255,0.12)", border:"1px solid rgba(0,212,255,0.4)", borderRadius:8, color:G.cyan, fontSize:11, fontWeight:800, textDecoration:"none", display:"flex", alignItems:"center", gap:6 }}>
+                          📄 View Score Report
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  {scoreData.verdict && <p style={{ fontSize:12, color:G.textSecondary, marginBottom:10, lineHeight:1.6 }}>{scoreData.verdict}</p>}
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                    <span style={{ fontSize:10, padding:"3px 9px", borderRadius:5, background:scoreData.grammarClean?"rgba(16,185,129,0.1)":"rgba(239,68,68,0.1)", color:scoreData.grammarClean?"#10b981":"#ef4444", border:`1px solid ${scoreData.grammarClean?"rgba(16,185,129,0.3)":"rgba(239,68,68,0.3)"}` }}>
+                      {scoreData.grammarClean ? "✓ Grammar Clean" : "⚠ Grammar Issues"}
+                    </span>
+                    {(scoreData.categories||[]).map((c:any) => (
+                      <span key={c.name} style={{ fontSize:10, padding:"3px 9px", borderRadius:5, background:"rgba(255,255,255,0.04)", color:G.textSecondary, border:"1px solid rgba(255,255,255,0.08)" }}>
+                        {c.name}: {c.score}/20
+                      </span>
+                    ))}
+                  </div>
+                  {(scoreData.strengths||[]).length>0 && (
+                    <div style={{ marginTop:10 }}>
+                      <div style={{ fontSize:9, color:"#10b981", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:4 }}>Strengths</div>
+                      {scoreData.strengths.slice(0,3).map((s:string,i:number) => <div key={i} style={{ fontSize:11, color:G.textSecondary, marginBottom:2 }}>+ {s}</div>)}
+                    </div>
+                  )}
+                  {(scoreData.improvements||[]).length>0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ fontSize:9, color:"#f59e0b", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:"0.8px", marginBottom:4 }}>Improvements</div>
+                      {scoreData.improvements.slice(0,3).map((s:string,i:number) => <div key={i} style={{ fontSize:11, color:G.textSecondary, marginBottom:2 }}>- {s}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Score Report Banner */}
+              {scoreReportUrl && (
+                <div style={{ marginBottom:14, padding:"12px 16px", background:"rgba(0,212,255,0.05)", border:"1px solid rgba(0,212,255,0.2)", borderRadius:12, display:"flex", alignItems:"center", gap:14 }}>
+                  <span style={{ fontSize:24, flexShrink:0 }}>📊</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:G.cyan, marginBottom:2 }}>AI Score Report Attached</div>
+                    <div style={{ fontSize:10, color:G.textMuted }}>Full breakdown of scores, grammar issues, strengths and improvements</div>
+                  </div>
+                  <a href={scoreReportUrl} target="_blank" rel="noreferrer"
+                    style={{ flexShrink:0, padding:"8px 18px", background:"rgba(0,212,255,0.12)", border:"1px solid rgba(0,212,255,0.4)", borderRadius:9, color:G.cyan, fontSize:12, fontWeight:800, textDecoration:"none" }}>
+                    📄 Open Report
+                  </a>
+                </div>
+              )}
+
+              {/* Description */}
+              <div style={{ padding:"14px 18px", background:"rgba(4,6,18,0.85)", border:"1px solid rgba(212,175,55,0.12)", borderRadius:10, marginBottom:14, fontSize:13, color:G.textSecondary, lineHeight:1.65 }}>
                 {selectedTask.description}
               </div>
 
-              {(selectedTask as any).attachments?.length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  <label className="sa-form-label">Attachments ({(selectedTask as any).attachments.length})</label>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
-                    {(selectedTask as any).attachments.map((url: string, i: number) => (
-                      <div key={i} onClick={()=>openLightbox((selectedTask as any).attachments,i)}
-                        style={{ width:96, height:96, borderRadius:10, overflow:"hidden", border:"1px solid rgba(212,175,55,0.2)", cursor:"pointer", background:"rgba(4,6,18,0.8)" }}>
-                        <img src={url} alt={`att-${i}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                      </div>
-                    ))}
-                  </div>
+              {/* Completion Notes */}
+              {selectedTask.completionNotes && (
+                <div style={{ padding:"14px 16px", background:"rgba(212,175,55,0.08)", border:`1px solid ${G.gold}44`, borderRadius:10, marginBottom:14 }}>
+                  <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:G.gold, letterSpacing:"0.12em", textTransform:"uppercase" as const, marginBottom:8 }}>📝 Completion Notes</div>
+                  <p style={{ fontSize:13, color:G.textSecondary, lineHeight:1.65 }}>{selectedTask.completionNotes}</p>
                 </div>
               )}
+
+              {/* Full Attachments with inline preview */}
+              {selectedTask.attachments && selectedTask.attachments.length > 0 && (() => {
+                const AttachmentPreview = ({ src, i }: { src: string; i: number }) => {
+                  const [expanded, setExpanded] = React.useState(false);
+                  const isImage = !!(src.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i) || src.includes("/image/"));
+                  const isVideo = !!(src.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i) || src.includes("/video/"));
+                  const isPdf   = !!(src.match(/\.pdf(\?|$)/i) || (src.includes("/raw/") && src.includes(".pdf")));
+                  const fname   = decodeURIComponent(src.split("/").pop()?.split("?")[0] || `Attachment ${i + 1}`);
+                  const icon    = isImage ? "🖼" : isVideo ? "🎬" : isPdf ? "📄" : "📎";
+                  const label   = isImage ? "Image" : isVideo ? "Video" : isPdf ? "PDF Document" : "File";
+                  return (
+                    <div style={{ border:`1px solid ${G.gold}25`, borderRadius:12, overflow:"hidden", background:"rgba(212,175,55,0.03)" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px", borderBottom: expanded ? `1px solid ${G.gold}18` : "none" }}>
+                        <span style={{ fontSize:20, flexShrink:0 }}>{icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:G.textSecondary, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{fname}</div>
+                          <div style={{ fontSize:10, color:G.textMuted }}>{label}</div>
+                        </div>
+                        <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                          <button onClick={() => setExpanded(p => !p)}
+                            style={{ padding:"5px 12px", background: expanded ? `${G.gold}20` : `${G.gold}0a`, border:`1px solid ${G.gold}44`, borderRadius:7, color:G.gold, fontSize:10, fontWeight:800, cursor:"pointer", fontFamily:"inherit", textTransform:"uppercase" as const }}>
+                            {expanded ? "▲ Hide" : "▼ Preview"}
+                          </button>
+                          <a href={src} download={fname}
+                            style={{ padding:"5px 12px", background:"rgba(16,185,129,0.08)", border:"1px solid rgba(16,185,129,0.25)", borderRadius:7, color:"#10b981", fontSize:10, fontWeight:800, textDecoration:"none", textTransform:"uppercase" as const }}>
+                            ⬇ Save
+                          </a>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.3)" }}>
+                          {isImage && <img src={src} alt={fname} style={{ width:"100%", maxHeight:480, objectFit:"contain" as const, borderRadius:8, background:"#000", display:"block" }} />}
+                          {isVideo && <video src={src} controls style={{ width:"100%", maxHeight:400, borderRadius:8, background:"#000", display:"block" }} preload="metadata" />}
+                          {isPdf && <iframe src={src} title={fname} style={{ width:"100%", height:520, border:"none", borderRadius:8, background:"#fff", display:"block" }} />}
+                          {!isImage && !isVideo && !isPdf && (
+                            <div style={{ textAlign:"center" as const, padding:"24px", color:G.textMuted, fontSize:12 }}>
+                              Preview not available. Use the Save button to download.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+                return (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:9, color:G.textMuted, letterSpacing:"0.12em", textTransform:"uppercase" as const, marginBottom:10 }}>
+                      📎 Attachments ({selectedTask.attachments!.length})
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                      {selectedTask.attachments!.map((src, i) => <AttachmentPreview key={i} src={src} i={i} />)}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="sa-form-group">
                 <label className="sa-form-label">Your Review Notes</label>
@@ -3141,7 +3300,8 @@ const SADashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
 
       {/* ── MODAL: TASK DETAIL (full lifecycle) ───────────────────────────── */}
@@ -3296,17 +3456,3 @@ const SADashboard: React.FC = () => {
 };
 
 export default SADashboard;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
