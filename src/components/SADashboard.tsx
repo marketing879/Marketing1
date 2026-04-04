@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import ExcelJS from "exceljs";
 import { useUser, Task } from "../contexts/UserContext";
 import ClaudeChat from "./ClaudeChat";
-import roswaltLogo from "../assets/ROSWALT-LOGO-GOLDEN-8K.png";
+// TODO: Add your actual logo file to src/assets/ folder with this name
+// For now, using a placeholder - replace with actual logo path when available
+const roswaltLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23d4af37'/%3E%3Ctext x='50' y='55' text-anchor='middle' font-size='24' fill='%23000' font-weight='bold'%3ER%3C/text%3E%3C/svg%3E";
 import { greetUser, setElevenLabsVoice, speakText } from "../services/VoiceModule";
+import { sendSystemDM } from "../services/SystemNotification";
 import {
   Plus, Upload, LogOut, CheckCircle, RotateCw, Eye, X,
   Zap, User, ChevronRight, Calendar, Flag,
@@ -481,7 +484,20 @@ const SADashboard: React.FC = () => {
   }, [deleteRequestTickets.length]);
 
   const handleApprove = (taskId: string) => {
+    const t = tasks.find((t: Task) => t.id === taskId);
     superadminReviewTask(taskId, true, reviewComments || "Approved by Superadmin");
+    if (t) sendSystemDM({
+      adminEmail:  user?.email ?? "",
+      adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+      doerEmail:   t.assignedTo,
+      taskId:      t.id,
+      taskTitle:   t.title,
+      message:     `🏆 FULLY APPROVED! Your task "${t.title}" has been signed off by Superadmin. Excellent work — the task is now complete.${reviewComments ? " Note: " + reviewComments : ""}`,
+      notifType:   "task_approved",
+      priority:    t.priority,
+      dueDate:     t.dueDate,
+      projectName: (projects as any[]).find((p: any) => p.id === (t as any).projectId)?.name ?? "",
+    });
     setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); setAiReviewResults(null);
     speakText("Task fully approved and marked as complete.");
     showSuccess("Task fully approved ✓");
@@ -489,7 +505,20 @@ const SADashboard: React.FC = () => {
 
   const handleReject = (taskId: string) => {
     if (!reviewComments.trim()) { showSuccess("⚠ Please add a reason for rejection."); return; }
+    const t = tasks.find((t: Task) => t.id === taskId);
     superadminReviewTask(taskId, false, reviewComments);
+    if (t) sendSystemDM({
+      adminEmail:  user?.email ?? "",
+      adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+      doerEmail:   t.assignedTo,
+      taskId:      t.id,
+      taskTitle:   t.title,
+      message:     `↩ Task "${t.title}" needs REWORK — Superadmin feedback: ${reviewComments}. Please revise and resubmit.`,
+      notifType:   "task_cancelled",
+      priority:    t.priority,
+      dueDate:     t.dueDate,
+      projectName: (projects as any[]).find((p: any) => p.id === (t as any).projectId)?.name ?? "",
+    });
     setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); setAiReviewResults(null);
     speakText("Task sent back for rework. The team has been notified.");
     showSuccess("Task sent back for rework");
@@ -520,6 +549,18 @@ const SADashboard: React.FC = () => {
       priority: newTask.priority, dueDate: newTask.dueDate,
       assignedTo: newTask.assignedTo, projectId: newTask.projectId,
       assignedBy: user?.email || "", approvalStatus:"assigned",
+    });
+    sendSystemDM({
+      adminEmail:  user?.email ?? "",
+      adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+      doerEmail:   newTask.assignedTo,
+      taskId:      crypto.randomUUID(),
+      taskTitle:   newTask.title,
+      message:     `📋 New task assigned to you by Superadmin: "${newTask.title}". Priority: ${(newTask.priority as string)?.toUpperCase()}. Due: ${new Date(newTask.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}. ${newTask.description ? newTask.description.slice(0, 100) + "…" : ""}`,
+      notifType:   "task_assigned",
+      priority:    newTask.priority as any,
+      dueDate:     newTask.dueDate,
+      projectName: (projects as any[]).find((p: any) => p.id === newTask.projectId)?.name ?? "",
     });
     speakText(`Task ${newTask.title} assigned to ${(member as any).name}.`);
     showSuccess(`✓ Task assigned to ${(member as any).name}`);
@@ -2666,6 +2707,22 @@ const SADashboard: React.FC = () => {
                         onClick={() => {
                           if (saTicketNote.trim().length < 5) return;
                           superadminApproveTicket(selectedSaTicket.id, false, saTicketNote.trim());
+                          // Notify ticket raiser of rejection
+                          const raiserEmail = (selectedSaTicket as any).assignedBy ?? "";
+                          if (raiserEmail) sendSystemDM({
+                            adminEmail:  user?.email ?? "",
+                            adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+                            doerEmail:   raiserEmail,
+                            taskId:      (selectedSaTicket as any).taskId ?? "",
+                            taskTitle:   selectedSaTicket.taskTitle ?? "Ticket",
+                            message:     selectedSaTicket.ticketType === "delete-request"
+                              ? `❌ Delete request for "${selectedSaTicket.taskTitle}" was DENIED by Superadmin. Reason: ${saTicketNote}. The task remains active.`
+                              : `❌ Assistance ticket for "${selectedSaTicket.taskTitle}" was rejected. Reason: ${saTicketNote}`,
+                            notifType:   "task_cancelled",
+                            priority:    "medium",
+                            dueDate:     "",
+                            projectName: "",
+                          });
                           speakText(`Ticket ${selectedSaTicket.id} has been rejected.`);
                           showSuccess("✗ Ticket rejected");
                           setShowSaTicketModal(false); setSelectedSaTicket(null); setSaTicketNote("");
@@ -2678,6 +2735,40 @@ const SADashboard: React.FC = () => {
                         onClick={() => {
                           if (saTicketNote.trim().length < 5) return;
                           superadminApproveTicket(selectedSaTicket.id, true, saTicketNote.trim());
+                          // ── Notify doer based on ticket type ─────────────
+                          const ticketDoerEmail = (selectedSaTicket as any).raisedByEmail
+                            ?? tasks.find((t: Task) => t.id === (selectedSaTicket as any).targetTaskId)?.assignedTo
+                            ?? "";
+                          if (selectedSaTicket.ticketType === "delete-request") {
+                            // Notify the task's assigned doer that task was deleted
+                            const deletedTask = tasks.find((t: Task) => t.id === (selectedSaTicket as any).targetTaskId);
+                            if (deletedTask) sendSystemDM({
+                              adminEmail:  user?.email ?? "",
+                              adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+                              doerEmail:   deletedTask.assignedTo,
+                              taskId:      deletedTask.id,
+                              taskTitle:   deletedTask.title,
+                              message:     `🗑️ Task "${deletedTask.title}" has been permanently DELETED by Superadmin. ${saTicketNote ? "Reason: " + saTicketNote : ""}`,
+                              notifType:   "task_cancelled",
+                              priority:    deletedTask.priority,
+                              dueDate:     deletedTask.dueDate,
+                              projectName: (projects as any[]).find((p: any) => p.id === (deletedTask as any).projectId)?.name ?? "",
+                            });
+                          } else if (ticketDoerEmail) {
+                            // General ticket approval — notify the ticket raiser
+                            sendSystemDM({
+                              adminEmail:  user?.email ?? "",
+                              adminName:   (user as any)?.name ?? user?.email ?? "Superadmin",
+                              doerEmail:   (selectedSaTicket as any).assignedBy ?? ticketDoerEmail,
+                              taskId:      (selectedSaTicket as any).taskId ?? "",
+                              taskTitle:   selectedSaTicket.taskTitle ?? "Ticket",
+                              message:     `✅ Your assistance ticket for "${selectedSaTicket.taskTitle}" has been APPROVED by Superadmin. ${saTicketNote}`,
+                              notifType:   "task_approved",
+                              priority:    "medium",
+                              dueDate:     "",
+                              projectName: "",
+                            });
+                          }
                           const msg = selectedSaTicket.ticketType === "delete-request"
                             ? `Delete request approved. Task ${selectedSaTicket.taskTitle} will be permanently deleted.`
                             : `Ticket ${selectedSaTicket.id} approved.`;

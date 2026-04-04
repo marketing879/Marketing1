@@ -57,6 +57,10 @@ type VoiceEventKey = keyof typeof VOICE_SCRIPTS;
 let _currentAudio: HTMLAudioElement | null = null;
 let _speakLock = false;
 
+// ── System-wide voice gate (controlled by Supremo only) ──────────────────────
+// Starts OFF. Loaded from /api/settings/voice on mount.
+let _systemVoiceEnabled = false;
+
 function cleanForTTS(text: string): string {
   return text
     .replace(/```[\s\S]*?```/g, "").replace(/`[^`]+`/g, "")
@@ -69,6 +73,8 @@ function cleanForTTS(text: string): string {
 }
 
 async function _speakWithBackend(text: string, onStart?: () => void, onEnd?: () => void): Promise<void> {
+  // Hard gate — zero ElevenLabs calls when system voice is OFF
+  if (!_systemVoiceEnabled) { onEnd?.(); return; }
   if (_currentAudio) { _currentAudio.pause(); _currentAudio.src = ""; _currentAudio = null; }
   if (_speakLock) { onEnd?.(); return; }
   _speakLock = true;
@@ -990,7 +996,19 @@ export default function SupremoDashboard() {
   const [selectedUser,    setSelectedUser]    = useState<any>(null);
   const [showTaskForm,    setShowTaskForm]    = useState(false);
   const [showLogout,      setShowLogout]      = useState(false);
-  const [voiceEnabled,    setVoiceEnabled]    = useState(true);
+  const [voiceEnabled,    setVoiceEnabled]    = useState(false);
+
+  // Load system-wide voice setting from backend on mount (Supremo controls this globally)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/settings/voice`)
+      .then(r => r.ok ? r.json() : { voiceEnabled: false })
+      .then(data => {
+        const enabled = typeof data.voiceEnabled === "boolean" ? data.voiceEnabled : false;
+        _systemVoiceEnabled = enabled;
+        setVoiceEnabled(enabled);
+      })
+      .catch(() => { _systemVoiceEnabled = false; setVoiceEnabled(false); });
+  }, []);
   const [ticker,          setTicker]          = useState(0);
   const [aiMessages,      setAiMessages]      = useState<AiMessage[]>([]);
   const [aiInput,         setAiInput]         = useState("");
@@ -1418,8 +1436,16 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
         progress: t.progress || 0, assignedTo: t.assignedTo,
         dueDate: t.dueDate, tatBreached: t.tatBreached,
         project: t.project, description: t.description,
+        // Autopulse fields — passed through from MongoDB
+        isAutopulse:         (t as any).isAutopulse         || false,
+        autopulseCycleDays:  (t as any).autopulseCycleDays  ?? 7,
+        autopulseGeneration: (t as any).autopulseGeneration ?? 0,
+        autopulsePaused:     (t as any).autopulsePaused     || false,
+        autopulseParentId:   (t as any).autopulseParentId   || null,
       }))
     : tasks;
+
+  const autopulseTasks = activeTasks.filter((t: any) => t.isAutopulse);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
   const breached   = activeTasks.filter(t => t.tatBreached).length;
@@ -1436,6 +1462,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     { id:"overview",   label:"Overview",          icon:"⊟" },
     { id:"tasks",      label:"Task Management",   icon:"☑" },
     { id:"analytics",  label:"Live Analytics",    icon:"📈" },
+    { id:"autopulse",  label:"Autopulse",         icon:"⚡" },
     { id:"activity",   label:"Activity Feed",     icon:"⚡" },
     { id:"team",       label:"Team Members",      icon:"◎" },
     { id:"reports",    label:"Reports",           icon:"◉" },
@@ -1508,12 +1535,25 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
               <div style={{ fontSize:10, color:"var(--t2)" }}>{dateStr}</div>
             </div>
 
-            {/* Voice toggle */}
+            {/* Voice toggle — Supremo only, persists system-wide to backend */}
             <button
-              onClick={() => setVoiceEnabled(v => !v)}
-              className={`btn btn-sm ${voiceEnabled ? "btn-ghost" : "btn-ghost"}`}
+              onClick={async () => {
+                const next = !voiceEnabled;
+                _systemVoiceEnabled = next;
+                setVoiceEnabled(next);
+                try {
+                  await fetch(`${API_BASE}/api/settings/voice`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ voiceEnabled: next }),
+                  });
+                } catch (err) {
+                  console.error("[Voice] Failed to persist setting:", err);
+                }
+              }}
+              className="btn btn-sm btn-ghost"
               style={{ borderColor: voiceEnabled ? "var(--gold)" : "var(--bdr)", color: voiceEnabled ? "var(--gold2)" : "var(--t3)" }}
-              title={voiceEnabled ? "Voice enabled" : "Voice disabled"}
+              title={voiceEnabled ? "Voice ON — click to disable system-wide" : "Voice OFF — click to enable system-wide"}
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
@@ -1627,6 +1667,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                 <StatCard icon="🕐" label="Pending"     value={pending}       sub="Not yet started"   accent="var(--amber)"  onClick={() => { setTaskFilter("pending"); setActiveTab("tasks"); }} />
                 <StatCard icon="🔄" label="Rework"      value={activeTasks.filter(t=>t.status==="rework").length} sub="Needs revision" accent="var(--orange)" onClick={() => { setTaskFilter("rework"); setActiveTab("tasks"); }} />
                 <StatCard icon="✔️" label="Approved"    value={activeTasks.filter(t=>t.status==="approved").length} sub="Fully signed off" accent="var(--sky)" onClick={() => { setTaskFilter("approved"); setActiveTab("tasks"); }} />
+                <StatCard icon="⚡" label="Autopulse"   value={autopulseTasks.length} sub={`${autopulseTasks.filter((t:any)=>!t.autopulsePaused).length} active cycles`} accent="#c9a96e" onClick={() => setActiveTab("autopulse")} />
                 <StatCard icon="👥" label="Team Members" value={allUsers.length} sub="Across all roles" accent="var(--purple)" />
               </div>
 
@@ -1872,7 +1913,14 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                         return (
                           <tr key={task.id}>
                             <td>
-                              <div style={{ fontWeight:500, color:"var(--t1)" }}>{task.title}</div>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                                <span style={{ fontWeight:500, color:"var(--t1)" }}>{task.title}</span>
+                                {(task as any).isAutopulse && (
+                                  <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"1px 6px", borderRadius:4, background:(task as any).autopulsePaused?"rgba(148,163,184,0.1)":"rgba(201,169,110,0.1)", border:`1px solid ${(task as any).autopulsePaused?"rgba(148,163,184,0.25)":"rgba(201,169,110,0.3)"}`, fontSize:8, fontWeight:800, color:(task as any).autopulsePaused?"#94a3b8":"#c9a96e", textTransform:"uppercase" as const }}>
+                                    {(task as any).autopulsePaused ? "⏸ PAUSED" : `⚡ AUTOPULSE${(task as any).autopulseGeneration > 0 ? ` #${(task as any).autopulseGeneration}` : ""}`}
+                                  </span>
+                                )}
+                              </div>
                               {task.tatBreached && <div style={{ fontSize:10, color:"var(--red)", marginTop:2 }}>⚠ TAT Breached</div>}
                               {liveTask?.updatedAt && <div style={{ fontSize:9, color:"var(--t3)", marginTop:1 }}>Updated {new Date(liveTask.updatedAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>}
                             </td>
@@ -2073,6 +2121,86 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
               </div>
             </div>
           )}
+
+          {/* ════ AUTOPULSE ════ */}
+          {activeTab === "autopulse" && (() => {
+            const activePulse   = autopulseTasks.filter((t:any) => !t.autopulsePaused);
+            const pausedPulse   = autopulseTasks.filter((t:any) => t.autopulsePaused);
+            const recurredTasks = autopulseTasks.filter((t:any) => t.autopulseGeneration > 0);
+            return (
+              <div className="anim-in">
+                <div style={{ marginBottom:24, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div>
+                    <div className="section-title">⚡ Autopulse</div>
+                    <div className="section-sub">Recurring task engine — auto-reassigns every cycle after approval</div>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
+                  {[
+                    { label:"Total Autopulse",  value:autopulseTasks.length, color:"#c9a96e" },
+                    { label:"Active Cycles",     value:activePulse.length,   color:"#4ade80" },
+                    { label:"Paused",            value:pausedPulse.length,   color:"#94a3b8" },
+                    { label:"Recurrences Fired", value:recurredTasks.length, color:"#38bdf8" },
+                  ].map(s => (
+                    <div key={s.label} style={{ background:"var(--srf)", border:`1px solid ${s.color}22`, borderRadius:12, padding:"16px 18px" }}>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"var(--t3)", textTransform:"uppercase" as const, letterSpacing:"0.1em", marginBottom:6 }}>{s.label}</div>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:28, fontWeight:700, color:s.color, lineHeight:1 }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Task list */}
+                {autopulseTasks.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"60px 24px", background:"var(--srf)", border:"1px dashed rgba(201,169,110,0.2)", borderRadius:14 }}>
+                    <div style={{ fontSize:36, marginBottom:12, opacity:0.3 }}>⚡</div>
+                    <div style={{ fontFamily:"var(--mono)", fontSize:16, color:"var(--t2)", marginBottom:6 }}>No Autopulse Tasks</div>
+                    <div style={{ fontSize:12, color:"var(--t3)" }}>Admins can enable Autopulse when creating tasks. They will appear here.</div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {autopulseTasks.map((task:any, idx:number) => {
+                      const isPaused   = !!task.autopulsePaused;
+                      const generation = task.autopulseGeneration ?? 0;
+                      const cycleDays  = task.autopulseCycleDays ?? 7;
+                      const statusColors: Record<string,string> = { completed:"#4ade80", approved:"#38bdf8", in_progress:"#818cf8", pending:"#fbbf24", rework:"#fb923c" };
+                      const sc = statusColors[task.status] || "#94a3b8";
+                      return (
+                        <div key={task.id || idx} style={{
+                          background:"var(--srf)", border:`1px solid ${isPaused ? "rgba(255,255,255,0.06)" : "rgba(201,169,110,0.2)"}`,
+                          borderRadius:12, padding:"16px 20px",
+                          opacity: isPaused ? 0.65 : 1, transition:".15s",
+                        }}>
+                          <div style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
+                            <div style={{ width:36, height:36, borderRadius:9, background:isPaused?"rgba(255,255,255,0.04)":"rgba(201,169,110,0.1)", border:`1px solid ${isPaused?"rgba(255,255,255,0.07)":"rgba(201,169,110,0.25)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:16 }}>
+                              {isPaused ? "⏸" : "⚡"}
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:5 }}>
+                                <span style={{ fontSize:14, fontWeight:600, color:"var(--t1)" }}>{task.title}</span>
+                                <span style={{ padding:"1px 7px", borderRadius:4, background:`${sc}18`, border:`1px solid ${sc}33`, fontSize:9, fontWeight:700, color:sc, textTransform:"uppercase" as const }}>{task.status?.replace(/_/g," ")}</span>
+                                {isPaused
+                                  ? <span style={{ padding:"1px 7px", borderRadius:4, background:"rgba(148,163,184,0.1)", border:"1px solid rgba(148,163,184,0.25)", fontSize:9, fontWeight:800, color:"#94a3b8" }}>⏸ PAUSED</span>
+                                  : <span style={{ padding:"1px 7px", borderRadius:4, background:"rgba(201,169,110,0.1)", border:"1px solid rgba(201,169,110,0.3)", fontSize:9, fontWeight:800, color:"#c9a96e" }}>⚡ AUTOPULSE{generation > 0 ? ` #${generation}` : ""}</span>
+                                }
+                              </div>
+                              <div style={{ display:"flex", gap:16, flexWrap:"wrap", fontSize:11, color:"var(--t3)", fontFamily:"var(--mono)" }}>
+                                <span>👤 {task.assignedToName || task.assignedTo?.split("@")[0]}</span>
+                                <span>📅 Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</span>
+                                <span style={{ color:"#c9a96e" }}>⚡ Every {cycleDays} days</span>
+                                {generation > 0 && <span style={{ color:"#38bdf8" }}>🔁 Generation #{generation}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ════ ACTIVITY FEED ════ */}
           {activeTab === "activity" && (
@@ -2729,13 +2857,3 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     </>
   );
 }
-
-
-
-
-
-
-
-
-
-

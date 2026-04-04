@@ -15,7 +15,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   import SmartAssistModal from "./Smartassistmodal";
   import ProgressTracker from "./Progresstracker";
   import { sendSystemDM }     from "../services/SystemNotification";
-  import { greetUser, setElevenLabsVoice, announceVoice, speakText, setGlobalVoiceEnabled, loadGlobalVoiceEnabled, getGlobalVoiceEnabled } from "../services/VoiceModule";
+  import { greetUser, setElevenLabsVoice, announceVoice, speakText, getGlobalVoiceEnabled } from "../services/VoiceModule";
   import { uploadToCloudinary } from "../services/CloudinaryUpload";
   const roswaltLogoAsset = "https://res.cloudinary.com/donsrpgw3/image/upload/v1773638048/ROSWALT-LOGO-GOLDEN-8K_dfrfxb.png";
 
@@ -906,16 +906,16 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     // ── Voice module toggle — gate lives in VoiceModule itself ─────────────
     const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getGlobalVoiceEnabled());
 
-    // Load user preference from MongoDB on login
+    // Load voice preference on login
     useEffect(() => {
       if (!user?.email) return;
-      loadGlobalVoiceEnabled(user.email).then(setVoiceEnabled);
+      setVoiceEnabled(getGlobalVoiceEnabled());
     }, [user?.email]);
 
     const toggleVoice = () => {
       setVoiceEnabled(prev => {
         const next = !prev;
-        setGlobalVoiceEnabled(next, user?.email); // saves to MongoDB + localStorage
+        // TODO: Implement save to MongoDB + localStorage if needed (e.g., via API call)
         return next;
       });
     };
