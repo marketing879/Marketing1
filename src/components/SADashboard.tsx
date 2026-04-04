@@ -61,6 +61,7 @@ interface ReviewResult {
 }
 
 const BACKEND = "https://adaptable-patience-production-45da.up.railway.app";
+const TASKS_BACKEND = "https://roswalt-backend-production.up.railway.app";
 
 // ── Color palette (matches AdminDashboard G object) ─────────────────────────
 const G = {
@@ -641,7 +642,7 @@ const SADashboard: React.FC = () => {
     setShowReviewModal(true);
     setReviewTaskLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/tasks/${task.id}`);
+      const res = await fetch(`${TASKS_BACKEND}/api/tasks/${task.id}`);
       if (res.ok) {
         const full = await res.json();
         setSelectedTask(prev => prev ? { ...prev, ...full, id: full.id || String(full._id) } : prev);
