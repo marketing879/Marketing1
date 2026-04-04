@@ -905,8 +905,56 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     const isVinay = (user?.email ?? "").toLowerCase() === "vinay.vanmali@roswalt.com";
     const [selectedProject, setSelectedProject] = useState<any>(null);
 
+    // ── Aziz-only: add user + create project permissions ──────────────────────
+    const isAziz = (user?.email ?? "").toLowerCase() === "aziz.khan@roswalt.com";
+    const { addUser, addProject, getNextOTP } = useUser() as any;
+    const [azizNewUser,        setAzizNewUser]        = useState({ name: "", email: "", role: "staff", password: "", phone: "" });
+    const [azizUserSuccess,    setAzizUserSuccess]    = useState("");
+    const [azizNewProject,     setAzizNewProject]     = useState({ name: "", description: "", projectCode: "", color: "#d4af37", status: "active" });
+    const [azizProjectSuccess, setAzizProjectSuccess] = useState("");
+
     const [activeTab,       setActiveTab]       = useState("analytics");
     const [showCreateModal, setShowCreateModal] = useState(false);
+
+    // Auto-generate OTP when Aziz opens the adduser tab
+    useEffect(() => {
+      if (isAziz && activeTab === "adduser" && !azizNewUser.password) {
+        setAzizNewUser(prev => ({ ...prev, password: getNextOTP ? String(getNextOTP()) : "" }));
+      }
+    }, [activeTab, isAziz]);
+
+    const handleAzizAddUser = () => {
+      if (!azizNewUser.name.trim() || !azizNewUser.email.trim() || !azizNewUser.password.trim()) {
+        setAzizUserSuccess("⚠ Name, email and password are required."); return;
+      }
+      const result = addUser({ ...azizNewUser, isDoer: azizNewUser.role === "staff" });
+      if (result?.success) {
+        const next = getNextOTP ? String(getNextOTP()) : "";
+        setAzizNewUser({ name: "", email: "", role: "staff", password: next, phone: "" });
+        setAzizUserSuccess("✓ User added successfully");
+        speakText(`New member ${azizNewUser.name} has been added.`);
+      } else {
+        setAzizUserSuccess(`⚠ ${result?.message || "Could not add user."}`);
+      }
+      setTimeout(() => setAzizUserSuccess(""), 3500);
+    };
+
+    const handleAzizAddProject = () => {
+      if (!azizNewProject.name.trim()) {
+        setAzizProjectSuccess("⚠ Project name is required."); return;
+      }
+      addProject({
+        ...azizNewProject,
+        projectCode: azizNewProject.projectCode || azizNewProject.name.substring(0, 3).toUpperCase(),
+        concernedDoerEmail: "",
+        launchDate: "",
+      });
+      setAzizNewProject({ name: "", description: "", projectCode: "", color: "#d4af37", status: "active" });
+      setAzizProjectSuccess("✓ Project created successfully");
+      speakText(`Project ${azizNewProject.name} has been created.`);
+      setTimeout(() => setAzizProjectSuccess(""), 3500);
+    };
+
     // ── Voice module toggle — gate lives in VoiceModule itself ─────────────
     const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getGlobalVoiceEnabled());
 
@@ -2089,6 +2137,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       { id: "autopulse",  label: "Autopulse",  icon: Zap         },
       { id: "prime",       label: "Prime",       icon: Shield      },
       ...(isVinay ? [{ id: "portfolio", label: "Portfolio", icon: FolderPlus }] : []),
+      ...(isAziz  ? [{ id: "adduser",   label: "Add User",  icon: User       }] : []),
+      ...(isAziz  ? [{ id: "addproject",label: "Add Project",icon: Building2  }] : []),
     ];
 
     const statCards = [
@@ -3597,6 +3647,141 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 </section>
               );
             })()}
+
+            {/* ══ ADD USER TAB — Aziz only ══ */}
+            {activeTab === "adduser" && isAziz && (
+              <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                <div style={{ marginBottom: 28 }}>
+                  <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
+                    Add <em style={{ color: G.cyan }}>Team Member</em>
+                  </h2>
+                  <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>Onboard a new member to the platform</p>
+                </div>
+                {azizUserSuccess && (
+                  <div style={{ marginBottom: 20, padding: "12px 18px", borderRadius: 10, background: azizUserSuccess.startsWith("✓") ? "rgba(0,245,160,0.08)" : "rgba(255,45,85,0.08)", border: `1px solid ${azizUserSuccess.startsWith("✓") ? G.success : G.danger}44`, color: azizUserSuccess.startsWith("✓") ? G.success : G.danger, fontSize: 13, fontWeight: 600 }}>
+                    {azizUserSuccess}
+                  </div>
+                )}
+                <div className="g-card" style={{ maxWidth: 520, padding: "28px 32px" }}>
+                  {[
+                    { label: "Full Name",      placeholder: "e.g. Arjun Mehta",          key: "name",  type: "text"  },
+                    { label: "Email Address",  placeholder: "arjun@roswalt.com",          key: "email", type: "email" },
+                    { label: "Mobile (optional)", placeholder: "+91XXXXXXXXXX",           key: "phone", type: "tel"   },
+                  ].map(({ label, placeholder, key, type }) => (
+                    <div key={key} style={{ marginBottom: 18 }}>
+                      <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>{label}</label>
+                      <input
+                        type={type}
+                        placeholder={placeholder}
+                        value={(azizNewUser as any)[key]}
+                        onChange={e => setAzizNewUser(prev => ({ ...prev, [key]: e.target.value }))}
+                        style={{ width: "100%", padding: "11px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.12)`, borderRadius: 9, color: G.textPrimary, fontSize: 13, fontFamily: "'Poppins',sans-serif", outline: "none" }}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>Access Role</label>
+                    <select
+                      value={azizNewUser.role}
+                      onChange={e => setAzizNewUser(prev => ({ ...prev, role: e.target.value }))}
+                      style={{ width: "100%", padding: "11px 14px", background: "rgba(8,14,32,0.9)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, color: G.textPrimary, fontSize: 13, fontFamily: "'Poppins',sans-serif", outline: "none", cursor: "pointer" }}
+                    >
+                      <option value="staff">Staff</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>
+                      Password / OTP &nbsp;<span style={{ padding: "1px 7px", borderRadius: 4, background: "rgba(0,245,160,0.1)", border: "1px solid rgba(0,245,160,0.3)", fontSize: 9, color: G.success, fontWeight: 700 }}>Auto</span>
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        value={azizNewUser.password}
+                        onChange={e => setAzizNewUser(prev => ({ ...prev, password: e.target.value }))}
+                        style={{ flex: 1, padding: "11px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, color: G.gold, fontSize: 15, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "2px", outline: "none" }}
+                      />
+                      <button
+                        onClick={() => setAzizNewUser(prev => ({ ...prev, password: getNextOTP ? String(getNextOTP()) : prev.password }))}
+                        style={{ padding: "0 16px", background: `${G.gold}12`, border: `1px solid ${G.gold}35`, borderRadius: 9, color: G.gold, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" as const, fontFamily: "inherit" }}
+                      >↺ Refresh</button>
+                    </div>
+                  </div>
+                  <button
+                    className="g-btn-gold"
+                    style={{ width: "100%" }}
+                    disabled={!azizNewUser.name.trim() || !azizNewUser.email.trim() || !azizNewUser.password.trim()}
+                    onClick={handleAzizAddUser}
+                  >
+                    <Plus size={14} /> Add Member
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* ══ ADD PROJECT TAB — Aziz only ══ */}
+            {activeTab === "addproject" && isAziz && (
+              <section style={{ marginTop: 40, paddingBottom: 60 }}>
+                <div style={{ marginBottom: 28 }}>
+                  <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
+                    Create <em style={{ color: G.gold }}>Project</em>
+                  </h2>
+                  <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>Add a new project to the platform</p>
+                </div>
+                {azizProjectSuccess && (
+                  <div style={{ marginBottom: 20, padding: "12px 18px", borderRadius: 10, background: azizProjectSuccess.startsWith("✓") ? "rgba(0,245,160,0.08)" : "rgba(255,45,85,0.08)", border: `1px solid ${azizProjectSuccess.startsWith("✓") ? G.success : G.danger}44`, color: azizProjectSuccess.startsWith("✓") ? G.success : G.danger, fontSize: 13, fontWeight: 600 }}>
+                    {azizProjectSuccess}
+                  </div>
+                )}
+                <div className="g-card" style={{ maxWidth: 520, padding: "28px 32px" }}>
+                  {[
+                    { label: "Project Name",  placeholder: "e.g. Roswalt Heights", key: "name",        required: true  },
+                    { label: "Project Code",  placeholder: "e.g. RWH (auto if blank)", key: "projectCode", required: false },
+                    { label: "Description",   placeholder: "Brief overview...",      key: "description", required: false },
+                  ].map(({ label, placeholder, key, required }) => (
+                    <div key={key} style={{ marginBottom: 18 }}>
+                      <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>
+                        {label} {required && <span style={{ color: G.danger }}>*</span>}
+                      </label>
+                      <input
+                        placeholder={placeholder}
+                        value={(azizNewProject as any)[key]}
+                        onChange={e => setAzizNewProject(prev => ({ ...prev, [key]: e.target.value }))}
+                        style={{ width: "100%", padding: "11px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.12)`, borderRadius: 9, color: G.textPrimary, fontSize: 13, fontFamily: "'Poppins',sans-serif", outline: "none" }}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>Status</label>
+                    <select
+                      value={azizNewProject.status}
+                      onChange={e => setAzizNewProject(prev => ({ ...prev, status: e.target.value }))}
+                      style={{ width: "100%", padding: "11px 14px", background: "rgba(8,14,32,0.9)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, color: G.textPrimary, fontSize: 13, fontFamily: "'Poppins',sans-serif", outline: "none", cursor: "pointer" }}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{ display: "block", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 7 }}>Accent Colour</label>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      {["#d4af37","#00d4ff","#10b981","#a855f7","#ef4444","#f59e0b","#ec4899","#3b82f6"].map(c => (
+                        <div key={c} onClick={() => setAzizNewProject(prev => ({ ...prev, color: c }))}
+                          style={{ width: 28, height: 28, borderRadius: "50%", background: c, cursor: "pointer", border: azizNewProject.color === c ? "3px solid #fff" : "3px solid transparent", boxShadow: azizNewProject.color === c ? `0 0 12px ${c}` : "none", transition: "all 0.15s" }} />
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    className="g-btn-gold"
+                    style={{ width: "100%" }}
+                    disabled={!azizNewProject.name.trim()}
+                    onClick={handleAzizAddProject}
+                  >
+                    <FolderPlus size={14} /> Create Project
+                  </button>
+                </div>
+              </section>
+            )}
+
           </div>
 
           {/* ════ MODALS ════ */}
