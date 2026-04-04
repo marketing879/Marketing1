@@ -1,9 +1,8 @@
 // ── Voice Module (Backend ElevenLabs Only) ───────────────────────────────────
-// Uses backend proxy (/api/tts)
-// No Web Speech fallback
-// Single audio engine only
-// announceVoice() and speakText() now return Promise<void> so callers
-// can await full audio playback before gating navigation.
+// ⚠️  VOICE IS DISABLED BY DEFAULT.
+// Only the Supremo dashboard can toggle voice ON/OFF system-wide.
+// All other dashboards call loadSystemVoiceEnabled() on mount — read only.
+// Per-user preferences removed. One global switch controls everything.
 
 type VoiceEvent =
   | "task_assigned"
@@ -27,7 +26,7 @@ const TTS_SECRET = process.env.REACT_APP_TTS_SECRET ?? "";
 if (!TTS_SECRET && typeof window !== "undefined") {
   console.warn(
     "[VoiceModule] REACT_APP_TTS_SECRET is not set. " +
-    "/api/tts calls will return 401 Unauthorized."
+      "/api/tts calls will return 401 Unauthorized."
   );
 }
 
@@ -42,7 +41,7 @@ export function setElevenLabsVoice(voiceId: string): void {
 // ── Time-aware greeting helper ────────────────────────────────────────────────
 function getTimeOfDay(): "morning" | "afternoon" | "evening" | "night" {
   const hour = new Date().getHours();
-  if (hour >= 5  && hour < 12) return "morning";
+  if (hour >= 5 && hour < 12) return "morning";
   if (hour >= 12 && hour < 17) return "afternoon";
   if (hour >= 17 && hour < 21) return "evening";
   return "night";
@@ -50,10 +49,10 @@ function getTimeOfDay(): "morning" | "afternoon" | "evening" | "night" {
 
 function getGreetingWord(): string {
   const map: Record<ReturnType<typeof getTimeOfDay>, string> = {
-    morning:   "Good morning",
+    morning: "Good morning",
     afternoon: "Good afternoon",
-    evening:   "Good evening",
-    night:     "Welcome back",
+    evening: "Good evening",
+    night: "Welcome back",
   };
   return map[getTimeOfDay()];
 }
@@ -74,11 +73,11 @@ export function greetUser(fullName?: string): Promise<void> {
   }
   _loginScriptIndex = idx;
 
-  const greeting  = getGreetingWord();
+  const greeting = getGreetingWord();
   const firstName = fullName?.trim().split(/\s+/)[0] ?? "there";
-  const text      = LOGIN_SCRIPTS[idx]
+  const text = LOGIN_SCRIPTS[idx]
     .replace("{greeting}", greeting)
-    .replace("{name}",    firstName);
+    .replace("{name}", firstName);
 
   return _speak(text);
 }
@@ -119,9 +118,7 @@ const VOICE_SCRIPTS: Record<VoiceEvent, string[]> = {
     "Task removed from the system.",
     "Done. That task has been permanently deleted.",
   ],
-  Welcome_Login: [
-    "Welcome to Smart Cue. Enter your credentials to login.",
-  ],
+  Welcome_Login: ["Welcome to Smart Cue. Enter your credentials to login."],
   Access_Granted: [
     "Access granted. Welcome to your dashboard.",
     "Access granted. You are now authenticated.",
@@ -148,90 +145,104 @@ function getScript(event: VoiceEvent): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLOBAL VOICE TOGGLE
-// One flag controls ALL voice output (speakText, announceVoice, greetUser).
-// Call setGlobalVoiceEnabled(false) from any dashboard to silence everything.
-// Call loadGlobalVoiceEnabled(email) on login to restore the user's preference.
+// SYSTEM-WIDE VOICE TOGGLE
+// ─────────────────────────────────────────────────────────────────────────────
+// • _voiceEnabled starts as FALSE. No credit is spent until Supremo enables it.
+// • loadSystemVoiceEnabled()  → call on every dashboard mount to sync the flag.
+// • setSystemVoiceEnabled()   → call ONLY from SupremoDashboard's toggle.
+// • getGlobalVoiceEnabled()   → read the current flag without a network call.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VOICE_API_BASE =
-  process.env.REACT_APP_API_URL ||
-  "https://adaptable-patience-production-45da.up.railway.app";
+// Default: OFF — no ElevenLabs calls until Supremo explicitly enables
+let _voiceEnabled: boolean = false;
 
-const LS_VOICE_KEY = "smartcue_voice_enabled";
+/**
+ * Fetches the system-wide voice setting from the backend.
+ * Call this on every dashboard's useEffect mount.
+ * Falls back to false (OFF) on any network error.
+ */
+export async function loadSystemVoiceEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/settings/voice`);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.voiceEnabled === "boolean") {
+        _voiceEnabled = data.voiceEnabled;
+        return _voiceEnabled;
+      }
+    }
+  } catch (err) {
+    console.warn("[VoiceModule] Could not load system voice setting:", err);
+  }
+  // Safe default: keep voice OFF
+  _voiceEnabled = false;
+  return false;
+}
 
-// Module-level flag — checked inside _speak() before every TTS call
-let _voiceEnabled: boolean = (() => {
-  try { return localStorage.getItem(LS_VOICE_KEY) !== "false"; } catch { return true; }
-})();
-
-/** Set voice on/off. Saves to localStorage immediately + MongoDB in background. */
-export function setGlobalVoiceEnabled(enabled: boolean, email?: string): void {
+/**
+ * Persists the system-wide voice setting to the backend.
+ * ONLY called from SupremoDashboard.
+ */
+export async function setSystemVoiceEnabled(enabled: boolean): Promise<void> {
   _voiceEnabled = enabled;
-  try { localStorage.setItem(LS_VOICE_KEY, String(enabled)); } catch {}
-  if (email) {
-    fetch(`${VOICE_API_BASE}/api/users/${encodeURIComponent(email.toLowerCase())}`, {
+  try {
+    await fetch(`${API_BASE}/api/settings/voice`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ voiceEnabled: enabled }),
-    }).catch(err => console.warn("[VoiceModule] Could not save voice preference:", err));
+    });
+    console.log(`[VoiceModule] System voice ${enabled ? "ON ✓" : "OFF ✗"} — saved.`);
+  } catch (err) {
+    console.error("[VoiceModule] Failed to persist voice setting:", err);
   }
-  console.log(`[VoiceModule] Voice ${enabled ? "ON ✓" : "OFF ✗"}`);
 }
 
-/** Call on login — loads preference from MongoDB, falls back to localStorage. */
-export async function loadGlobalVoiceEnabled(email: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${VOICE_API_BASE}/api/users/${encodeURIComponent(email.toLowerCase())}`);
-    if (res.ok) {
-      const user = await res.json();
-      if (typeof user.voiceEnabled === "boolean") {
-        _voiceEnabled = user.voiceEnabled;
-        try { localStorage.setItem(LS_VOICE_KEY, String(user.voiceEnabled)); } catch {}
-        return user.voiceEnabled;
-      }
-    }
-  } catch {}
-  // Fallback: localStorage
-  try {
-    const stored = localStorage.getItem(LS_VOICE_KEY);
-    _voiceEnabled = stored !== "false";
-  } catch {}
-  return _voiceEnabled;
-}
-
-/** Read current state without fetching. */
+/** Read current state without a network call. */
 export function getGlobalVoiceEnabled(): boolean {
   return _voiceEnabled;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TTS ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
 let _speakQueue: Promise<void> = Promise.resolve();
 
 async function _speakWithBackend(text: string): Promise<void> {
-  // ── Global voice gate — no API call made when voice is OFF ──────────────
+  // Hard gate — zero API calls when voice is OFF
   if (!_voiceEnabled) return;
+
   try {
     const response = await fetch(`${API_BASE}/api/tts`, {
-      method:  "POST",
+      method: "POST",
       headers: {
-        "Content-Type":  "application/json",
-        ...(TTS_SECRET ? { "Authorization": `Bearer ${TTS_SECRET}` } : {}),
+        "Content-Type": "application/json",
+        ...(TTS_SECRET ? { Authorization: `Bearer ${TTS_SECRET}` } : {}),
       },
       body: JSON.stringify({ text, voiceId: _selectedVoice }),
     });
 
     if (!response.ok) {
-      console.error(`[VoiceModule] Backend TTS failed: ${response.status}`, await response.text().catch(() => ""));
+      console.error(
+        `[VoiceModule] Backend TTS failed: ${response.status}`,
+        await response.text().catch(() => "")
+      );
       return;
     }
 
-    const blob  = await response.blob();
-    const url   = URL.createObjectURL(blob);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
 
     await new Promise<void>((resolve) => {
-      audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-      audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve();
+      };
       audio.play().catch(() => resolve());
     });
   } catch (err) {
@@ -254,12 +265,13 @@ export function speakText(text: string): Promise<void> {
 
 export function logVoiceStatus(): void {
   console.log("🎤 Voice Module Status:");
-  console.log("  Backend API:    ", API_BASE);
-  console.log("  Selected Voice: ", _selectedVoice);
-  console.log("  Auth secret set:", !!TTS_SECRET);
+  console.log("  Backend API:     ", API_BASE);
+  console.log("  Selected Voice:  ", _selectedVoice);
+  console.log("  Auth secret set: ", !!TTS_SECRET);
+  console.log("  Voice enabled:   ", _voiceEnabled);
 }
 
 if (typeof window !== "undefined") {
-  console.log("🎤 Voice Module loaded (Backend ElevenLabs Only)");
+  console.log("🎤 Voice Module loaded (Backend ElevenLabs Only) — default OFF");
   logVoiceStatus();
 }
