@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
+declare const process: {
+  env: {
+    REACT_APP_API_URL?: string;
+  };
+};
+
+const API_URL =
+  process.env.REACT_APP_API_URL ||
+  "https://adaptable-patience-production-45da.up.railway.app";
 
 // ── CHANGE 1: Added "supremo" to the Role type ───────────────────────────────
 export type Role = "staff" | "admin" | "superadmin" | "supremo";
@@ -225,9 +233,9 @@ const defaultUsers: StoredUser[] = [
   { id: "27", name: "Harshil Tater",                email: "harshil.tater@roswalt.com",        role: "staff",      isDoer: true,  password: "100027", phone: "+91XXXXXXXXXX" },
   { id: "28", name: "Sanober Shaikh",               email: "sanober.shaikh@roswalt.com",       role: "staff",      isDoer: true,  password: "100028", phone: "+91XXXXXXXXXX" },
   { id: "29", name: "Arena Moitra",                 email: "arena.moitra@roswalt.com",         role: "staff",      isDoer: true,  password: "100029", phone: "+91XXXXXXXXXX" },
-  { id: "30", name: "Dhairya Mehta",                email: "dhairya.mehta@roswalt.com",         role: "staff",      isDoer: true,  password: "100030", phone: "+91XXXXXXXXXX" },
-  { id: "31", name: "Mahira khatri",                 email: "mahira.khatri@roswalt.com",            role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
-  { id: "32", name: "Zarana Rathod",                 email: "zarana.rathod@roswalt.com",            role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
+  { id: "30", name: "Dhairya Mehta",                email: "dhairya.mehta@roswalt.com",        role: "staff",      isDoer: true,  password: "100030", phone: "+91XXXXXXXXXX" },
+  { id: "31", name: "Mahira khatri",                 email: "mahira.khatri@roswalt.com",       role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
+  { id: "32", name: "Zarana Rathod",                 email: "zarana.rathod@roswalt.com",       role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
   
 ];
 
@@ -629,6 +637,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (ticket.ticketType === "delete-request") {
         const taskToDelete = ticket.targetTaskId || ticket.taskId;
         if (taskToDelete) deleteTask(taskToDelete);
+      } else {
+        // Non-delete tickets: unfreeze the task when superadmin approves
+        updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
       }
       fetch(`${API_URL}/api/tickets/${ticketId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
@@ -639,6 +650,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAssistanceTickets((prev) =>
         prev.map((t) => t.id === ticketId ? { ...t, ...updates } : t)
       );
+      // Always unfreeze task when superadmin rejects the ticket
+      updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
       fetch(`${API_URL}/api/tickets/${ticketId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
