@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 
 declare const process: {
   env: {
@@ -263,6 +263,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activityLog,      setActivityLog]      = useState<ActivityEntry[]>([]);
   const [voiceAccessGranted, setVoiceAccessGranted] = useState<boolean>(false);
 
+  // Guard: prevent raiseAssistanceTicket from firing before backend tickets are loaded
+  const ticketsLoadedRef = useRef(false);
+  // Cooldown: prevent same taskId from raising a ticket more than once per 30s
+  const ticketCooldownRef = useRef<Record<string, number>>({});
+
   // ── logActivity: append entry + persist to backend ───────────────────────
   const logActivity = (entry: Omit<ActivityEntry, "id" | "timestamp">): void => {
     const full: ActivityEntry = {
@@ -306,7 +311,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (u) {
       fetch(`${API_URL}/api/tickets?email=${encodeURIComponent(u.email||"")}&role=${encodeURIComponent(u.role||"")}`)
         .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-        .then((data: any[]) => setAssistanceTickets(data.map((t: any) => ({ ...t, id: t.id || String(t._id) }))))
+        .then((data: any[]) => {
+          setAssistanceTickets(data.map((t: any) => ({ ...t, id: t.id || String(t._id) })));
+          ticketsLoadedRef.current = true;
+        })
         .catch((err) => console.error("[UserContext] Failed to load tickets:", err));
 
       // Load activity log — only for privileged roles; silently skip if route returns 404
@@ -538,13 +546,29 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const raiseAssistanceTicket = (
     ticket: Omit<AssistanceTicket, "id" | "raisedAt" | "status">
   ): void => {
-    // For non-delete tickets: deduplicate by taskId
+    // Guard: don't raise until backend tickets have loaded — prevents duplicates on mount
+    if (!ticketsLoadedRef.current) {
+      console.warn("[raiseAssistanceTicket] Tickets not yet loaded from backend — skipping to prevent duplicate");
+      return;
+    }
+
+    // Cooldown: prevent the same task from raising a ticket more than once per 30s
+    const now = Date.now();
+    const lastRaised = ticketCooldownRef.current[ticket.taskId] || 0;
+    if (now - lastRaised < 30_000) {
+      console.warn("[raiseAssistanceTicket] Cooldown active for taskId:", ticket.taskId, "— skipping");
+      return;
+    }
+
+    // For non-delete tickets: deduplicate by taskId against loaded tickets
     if (ticket.ticketType !== "delete-request") {
       const existing = assistanceTickets.find(
         (t) => t.taskId === ticket.taskId && t.status !== "resolved" && t.status !== "rejected"
       );
       if (existing) return;
     }
+
+    ticketCooldownRef.current[ticket.taskId] = now;
     const newTicket: AssistanceTicket = {
       ...ticket,
       id:       "TKT-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 5).toUpperCase(),
@@ -590,19 +614,15 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const approveAssistanceTicket = (ticketId: string, adminComment: string): void => {
     const ticket = assistanceTickets.find((t) => t.id === ticketId);
     if (!ticket) return;
+    // Close ALL open tickets for this task — handles duplicate ticket scenario
     setAssistanceTickets((prev) =>
       prev.map((t) =>
-        t.id === ticketId
-          ? {
-              ...t,
-              status:     "admin-approved",
-              adminComment,
-              approvedAt: new Date().toISOString(),
-              approvedBy: user?.name ?? "Admin",
-            }
+        t.taskId === ticket.taskId && t.status !== "resolved" && t.status !== "rejected"
+          ? { ...t, status: "admin-approved", adminComment, approvedAt: new Date().toISOString(), approvedBy: user?.name ?? "Admin" }
           : t
       )
     );
+    // Always unfreeze — guaranteed regardless of ticket count
     updateTask(ticket.taskId, { isFrozen: false, frozenTicketId: undefined });
     logActivity({ category: "ticket", action: "Ticket Approved", actorEmail: user?.email || "", actorName: user?.name || "Admin", targetId: ticketId, targetName: ticket.taskTitle, meta: { comment: adminComment } });
     fetch(`${API_URL}/api/tickets/${ticketId}`, {
