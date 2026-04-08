@@ -9,7 +9,8 @@ import {
 // VOICE MODULE  (inline — no external import needed)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const _API_BASE_VOICE = process.env.REACT_APP_API_URL || "https://adaptable-patience-production-45da.up.railway.app";
+const _API_BASE_VOICE = (process.env.REACT_APP_API_URL as string) ||
+  "https://roswalt-backend-production.up.railway.app";
 
 let _selectedVoice: string | null = null;
 const _lastIndex: Record<string, number> = {};
@@ -214,12 +215,7 @@ async function fireVoiceEvent(event: VoiceEvent, voiceEnabled: boolean) {
 
 interface AiMessage  { id: number; role: "user" | "assistant"; text: string; timestamp: Date; }
 interface JarvisMsg  { id: string; role: "user" | "jarvis"; text: string; timestamp: Date; }
-interface MockUser   { id: string; name: string; email: string; role: string; isDoer: boolean; }
-interface MockTask   {
-  id: string; title: string; status: string; priority: string;
-  progress: number; assignedTo: string; dueDate: string;
-  tatBreached: boolean; project: string; description?: string;
-}
+
 interface ChartTipProps {
   active?: boolean;
   payload?: Array<{ color: string; name: string; value: number }>;
@@ -248,65 +244,11 @@ const API_BASE =
   process.env.REACT_APP_API_URL ||
   "https://adaptable-patience-production-45da.up.railway.app";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MOCK DATA
-// ─────────────────────────────────────────────────────────────────────────────
 
-const MOCK_USERS: MockUser[] = [
-  { id:"1",  name:"Pushkaraj Gore",          email:"pushkaraj.gore@roswalt.com",     role:"superadmin", isDoer:false },
-  { id:"2",  name:"Aziz Ashfaq Khan",         email:"aziz.khan@roswalt.com",          role:"admin",      isDoer:false },
-  { id:"3",  name:"Vinay Dinkar Vanmali",     email:"vinay.vanmali@roswalt.com",      role:"admin",      isDoer:false },
-  { id:"4",  name:"Jalal Chandmiya Shaikh",   email:"jalal.shaikh@roswalt.com",       role:"admin",      isDoer:false },
-  { id:"5",  name:"Nidhi Mehta",              email:"nidhi.mehta@roswalt.com",        role:"admin",      isDoer:false },
-  { id:"8",  name:"Prathamesh Chile",         email:"prathamesh.chile@roswalt.com",   role:"staff",      isDoer:true  },
-  { id:"9",  name:"Samruddhi Shivgan",        email:"samruddhi.shivgan@roswalt.com",  role:"staff",      isDoer:true  },
-  { id:"10", name:"Irfan S. Ansari",          email:"irfan.ansari@roswalt.com",       role:"staff",      isDoer:true  },
-  { id:"11", name:"Vishal Chaudhary",         email:"vishal.chaudhary@roswalt.com",   role:"staff",      isDoer:true  },
-  { id:"12", name:"Mithilesh Menge",          email:"mithilesh.menge@roswalt.com",    role:"staff",      isDoer:true  },
-  { id:"13", name:"Jai Bhojwani",             email:"jai.bhojwani@roswalt.com",       role:"staff",      isDoer:true  },
-  { id:"18", name:"Raj Sachin Vichare",       email:"raj.vichare@roswalt.com",        role:"staff",      isDoer:true  },
-];
 
-const INIT_TASKS: MockTask[] = [
-  { id:"t1", title:"Q4 Financial Report",   status:"in_progress", priority:"high",   progress:72,  assignedTo:"prathamesh.chile@roswalt.com",  dueDate:"2025-01-20", tatBreached:false, project:"General"          },
-  { id:"t2", title:"Website Redesign Ph.2", status:"in_progress", priority:"high",   progress:45,  assignedTo:"samruddhi.shivgan@roswalt.com", dueDate:"2025-01-18", tatBreached:true,  project:"Website Redesign" },
-  { id:"t3", title:"Marketing Deck",        status:"pending",      priority:"medium", progress:10,  assignedTo:"irfan.ansari@roswalt.com",      dueDate:"2025-01-25", tatBreached:false, project:"Marketing"        },
-  { id:"t4", title:"Product Spec Doc",      status:"completed",    priority:"low",    progress:100, assignedTo:"vishal.chaudhary@roswalt.com",  dueDate:"2025-01-15", tatBreached:false, project:"Product Launch"   },
-  { id:"t5", title:"Client Onboarding",     status:"in_progress", priority:"high",   progress:60,  assignedTo:"mithilesh.menge@roswalt.com",   dueDate:"2025-01-17", tatBreached:true,  project:"General"          },
-  { id:"t6", title:"Social Media Strategy", status:"rework",       priority:"medium", progress:30,  assignedTo:"jai.bhojwani@roswalt.com",      dueDate:"2025-01-22", tatBreached:false, project:"Marketing"        },
-  { id:"t7", title:"Data Migration Script", status:"approved",     priority:"high",   progress:100, assignedTo:"raj.vichare@roswalt.com",       dueDate:"2025-01-14", tatBreached:false, project:"Website Redesign" },
-];
 
-const PERF_DATA = [
-  { name:"Prathamesh", completed:12, pending:3, breached:1 },
-  { name:"Samruddhi",  completed:8,  pending:5, breached:2 },
-  { name:"Irfan",      completed:15, pending:2, breached:0 },
-  { name:"Vishal",     completed:10, pending:4, breached:1 },
-  { name:"Mithilesh",  completed:7,  pending:6, breached:3 },
-  { name:"Jai",        completed:11, pending:3, breached:1 },
-  { name:"Raj",        completed:14, pending:1, breached:0 },
-];
 
-const TASK_TREND = [
-  { week:"W1", assigned:18, completed:14, breached:2 },
-  { week:"W2", assigned:22, completed:19, breached:1 },
-  { week:"W3", assigned:16, completed:12, breached:3 },
-  { week:"W4", assigned:25, completed:22, breached:2 },
-];
 
-const STATUS_PIE = [
-  { name:"Completed",   value:35, color:"#22c55e" },
-  { name:"In Progress", value:28, color:"#6366f1" },
-  { name:"Pending",     value:18, color:"#f59e0b" },
-  { name:"Rework",      value:12, color:"#f97316" },
-  { name:"Approved",    value:7,  color:"#0ea5e9" },
-];
-
-const RADAR_DATA = [
-  { subject:"Speed",    A:85, B:72 }, { subject:"Quality",  A:78, B:88 },
-  { subject:"TAT",      A:92, B:65 }, { subject:"Volume",   A:70, B:80 },
-  { subject:"Accuracy", A:88, B:76 }, { subject:"Collab",   A:65, B:90 },
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLOBAL CSS — SADashboard palette: dark navy, violet accent, clean cards
@@ -770,8 +712,8 @@ function TaskForm({ users, onAssign, onCancel }: TaskFormProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface JarvisProps {
-  tasks: MockTask[];
-  users: MockUser[];
+  tasks: any[];
+  users: any[];
   userName: string;
   userRole: string;
 }
@@ -992,7 +934,6 @@ export default function SupremoDashboard() {
   const { user: appUser, logout } = useUser();
   const [activeTab,       setActiveTab]       = useState("overview");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
-  const [tasks,           setTasks]           = useState<MockTask[]>(INIT_TASKS);
   const [selectedUser,    setSelectedUser]    = useState<any>(null);
   const [showTaskForm,    setShowTaskForm]    = useState(false);
   const [showLogout,      setShowLogout]      = useState(false);
@@ -1156,7 +1097,7 @@ export default function SupremoDashboard() {
     }, 4 * 60 * 60 * 1000); // every 4 hours
     return () => { if (autoReportRef.current) clearInterval(autoReportRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoReport, voiceEnabled, tasks]);
+  }, [autoReport, voiceEnabled, liveTasks]);
 
   // ── Continuous JARVIS mode ────────────────────────────────────────────────
   useEffect(() => {
@@ -1235,7 +1176,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
       setAiMessages(prev => [...prev, { id:Date.now(), role:"assistant", text:"Network error. Please retry.", timestamp:new Date() }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiInput, tasks, voiceEnabled]);
+  }, [aiInput, liveTasks, voiceEnabled]);
 
   function toggleMic() {
     if (!recRef.current) return;
@@ -1398,7 +1339,6 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
   // ── Task Actions ─────────────────────────────────────────────────────────
 
   function updateTaskStatus(taskId: string, newStatus: string, event: VoiceEvent) {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status:newStatus } : t));
     setLiveTasks(prev => prev.map(t => t._id === taskId ? { ...t, status:newStatus } : t));
     // Also push to backend
     fetch(`${API_BASE}/api/tasks/${taskId}`, {
@@ -1409,7 +1349,6 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
   }
 
   function deleteTask(taskId: string) {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
     setLiveTasks(prev => prev.filter(t => t._id !== taskId));
     fetch(`${API_BASE}/api/tasks/${taskId}`, { method:"DELETE" }).catch(() => {});
     fireVoiceEvent("task_deleted", voiceEnabled);
@@ -1417,21 +1356,18 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
   // ── Use live tasks when available, fall back to mock ─────────────────────
   // ── Use live data when available ─────────────────────────────────────────
-  const allUsers = liveUsers.length > 0
-    ? liveUsers.map((u: any) => ({
-        id: u._id || u.id || u.email,
-        name: u.name || u.email?.split("@")[0] || "Unknown",
-        email: u.email || "",
-        role: u.role || "staff",
-        isDoer: u.isDoer ?? (u.role === "staff"),
-      }))
-    : MOCK_USERS;
+  const allUsers = liveUsers.map((u: any) => ({
+    id: u._id || u.id || u.email,
+    name: u.name || u.email?.split("@")[0] || "Unknown",
+    email: u.email || "",
+    role: u.role || "staff",
+    isDoer: u.isDoer ?? (u.role === "staff"),
+  }));
 
   const currentUserName = (appUser?.role === "supremo" || !appUser?.name || appUser?.name === "Supremo") ? "Pankaj Bhelsekar" : (appUser?.name || "Pankaj Bhelsekar");
   const currentUserInitials = initials(currentUserName);
 
-  const activeTasks = liveTasks.length > 0
-    ? liveTasks.map(t => ({
+  const activeTasks = liveTasks.map(t => ({
         id: t._id, title: t.title, status: t.status, priority: t.priority,
         progress: t.progress || 0, assignedTo: t.assignedTo,
         dueDate: t.dueDate, tatBreached: t.tatBreached,
@@ -1442,8 +1378,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
         autopulseGeneration: (t as any).autopulseGeneration ?? 0,
         autopulsePaused:     (t as any).autopulsePaused     || false,
         autopulseParentId:   (t as any).autopulseParentId   || null,
-      }))
-    : tasks;
+      }));
 
   const autopulseTasks = activeTasks.filter((t: any) => t.isAutopulse);
 
@@ -1468,6 +1403,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     { id:"reports",    label:"Reports",           icon:"◉" },
     { id:"ai",         label:"SmartCue AI",       icon:"⊗" },
     { id:"intel",      label:"Intelligence",      icon:"◭" },
+    { id:"performance",label:"Performance Review",icon:"🏆" },
   ];
 
   return (
@@ -1625,7 +1561,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
           <div style={{ borderTop:"1px solid rgba(212,168,71,.12)", paddingTop:12, marginTop:8 }}>
             <div className="sidebar-label" style={{ paddingTop:0 }}>System Alerts</div>
-            {tasks.filter(t => t.tatBreached).map(t => (
+            {activeTasks.filter(t => t.tatBreached).map(t => (
               <div key={t.id} style={{ fontSize:11, color:"var(--red)", padding:"4px 6px", background:"rgba(244,63,94,.06)", borderRadius:5, marginBottom:4, border:"1px solid rgba(244,63,94,.12)" }}>
                 ▲ {t.title}
               </div>
@@ -1765,7 +1701,16 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                   </div>
                   <div className="card-body">
                     <ResponsiveContainer width="100%" height={180}>
-                      <LineChart data={TASK_TREND} margin={{ top:0, right:16, left:-24, bottom:0 }}>
+                      <LineChart data={(() => {
+                        const weeks = [];
+                        for (let i = 3; i >= 0; i--) {
+                          const wStart = new Date(Date.now() - (i+1)*7*86400000);
+                          const wEnd   = new Date(Date.now() - i*7*86400000);
+                          const wt = liveTasks.filter(t => { const d = new Date((t as any).createdAt || t.dueDate); return d >= wStart && d < wEnd; });
+                          weeks.push({ week:`W${4-i}`, assigned:wt.length, completed:wt.filter(t=>t.status==="completed"||t.status==="approved").length, breached:wt.filter(t=>t.tatBreached).length });
+                        }
+                        return weeks;
+                      })()} margin={{ top:0, right:16, left:-24, bottom:0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--bdr)" />
                         <XAxis dataKey="week" tick={{ fill:"var(--t2)" as any, fontSize:11 }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fill:"var(--t2)" as any, fontSize:11 }} axisLine={false} tickLine={false} />
@@ -1784,7 +1729,20 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                   </div>
                   <div className="card-body">
                     <ResponsiveContainer width="100%" height={198}>
-                      <RadarChart data={RADAR_DATA} margin={{ top:0, right:16, left:16, bottom:0 }}>
+                      <RadarChart data={(() => {
+                        const doers = allUsers.filter((u:any) => u.isDoer);
+                        const speed    = doers.length ? Math.round(doers.reduce((s:number,u:any)=>{ const ut=activeTasks.filter(t=>t.assignedTo===u.email); return s+(ut.length?Math.round((ut.filter(t=>t.status==="completed"||t.status==="approved").length/ut.length)*100):0); },0)/doers.length) : 0;
+                        const ontime   = activeTasks.length ? Math.round(((activeTasks.length-breached)/activeTasks.length)*100) : 0;
+                        const volume   = Math.min(100, activeTasks.length * 2);
+                        return [
+                          { subject:"Speed",    A:speed,   B:70 },
+                          { subject:"Quality",  A:efficiency, B:75 },
+                          { subject:"TAT",      A:ontime,  B:65 },
+                          { subject:"Volume",   A:volume,  B:80 },
+                          { subject:"Accuracy", A:efficiency, B:76 },
+                          { subject:"Collab",   A:Math.min(100,allUsers.length*7), B:85 },
+                        ];
+                      })()} margin={{ top:0, right:16, left:16, bottom:0 }}>
                         <PolarGrid stroke="var(--bdr)" />
                         {React.createElement(PolarAngleAxis as any, { dataKey:"subject", tick:{ fill:"var(--t2)", fontSize:10 } })}
                         <Radar name="This Month" dataKey="A" stroke="var(--acc2)" fill="var(--acc)" fillOpacity={0.12} dot={false} />
@@ -1836,10 +1794,16 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                     </div>
                     <TaskForm
                       users={allUsers}
-                      onAssign={task => {
-                        setTasks(prev => [...prev, { ...task, id:"t"+Date.now(), progress:0, tatBreached:false }]);
+                      onAssign={async task => {
+                        try {
+                          await fetch(`${API_BASE}/api/tasks`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ...task, progress: 0, tatBreached: false }),
+                          });
+                        } catch {}
                         setShowTaskForm(false);
                         fireVoiceEvent("task_assigned", voiceEnabled);
+                        fetchLiveData();
                       }}
                       onCancel={() => setShowTaskForm(false)}
                     />
@@ -2350,7 +2314,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
                 {/* Member detail */}
                 {selectedUser && (() => {
-                  const ut = tasks.filter(t => t.assignedTo === selectedUser.email);
+                  const ut = activeTasks.filter(t => t.assignedTo === selectedUser.email);
                   const uc = ut.filter(t => t.status === "completed" || t.status === "approved").length;
                   const ub = ut.filter(t => t.tatBreached).length;
                   return (
@@ -2823,12 +2787,225 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             </div>
           )}
 
+
+          {/* ══ PERFORMANCE REVIEW TAB ══ */}
+          {activeTab === "performance" && (() => {
+            const staff = allUsers.filter((u: any) => u.role === "staff" || u.isDoer);
+            const totalTasks   = activeTasks.length;
+            const doneTasks    = activeTasks.filter((t: any) => t.status === "approved" || t.status === "completed").length;
+            const breachedCount= activeTasks.filter((t: any) => t.tatBreached).length;
+            const overallScore = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
+            const weekAgo      = new Date(Date.now() - 7 * 86400000);
+
+            // Per-staff metrics
+            const staffMetrics = staff.map((u: any) => {
+              const myTasks   = activeTasks.filter((t: any) => (t.assignedTo || "").toLowerCase() === u.email.toLowerCase());
+              const myDone    = myTasks.filter((t: any) => t.status === "approved" || t.status === "completed");
+              const myBreach  = myTasks.filter((t: any) => t.tatBreached);
+              const recentDone= myDone.filter((t: any) => new Date(t.dueDate) >= weekAgo);
+              const scores    = myTasks.filter((t: any) => (t as any).scoreData?.percentScore != null).map((t: any) => (t as any).scoreData.percentScore);
+              const avgScore  = scores.length ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : null;
+              const completion= myTasks.length ? Math.round((myDone.length / myTasks.length) * 100) : 0;
+              return { ...u, total: myTasks.length, done: myDone.length, breach: myBreach.length, recentDone: recentDone.length, avgScore, completion };
+            }).filter((u: any) => u.total > 0).sort((a: any, b: any) => b.completion - a.completion);
+
+            const topPerformer = staffMetrics[0];
+            const avgCompletion= staffMetrics.length ? Math.round(staffMetrics.reduce((s: number, u: any) => s + u.completion, 0) / staffMetrics.length) : 0;
+            const totalScored  = staffMetrics.filter((u: any) => u.avgScore !== null);
+            const teamAvgScore = totalScored.length ? Math.round(totalScored.reduce((s: number, u: any) => s + u.avgScore, 0) / totalScored.length) : null;
+
+            const gradeColor = (s: number) => s >= 80 ? "#10b981" : s >= 60 ? "#f59e0b" : "#ef4444";
+            const grade = (s: number) => s >= 90 ? "S" : s >= 80 ? "A" : s >= 70 ? "B" : s >= 55 ? "C" : "D";
+
+            return (
+              <div style={{ padding: "32px 36px 60px", fontFamily: "'IBM Plex Mono', monospace" }}>
+
+                {/* ── Page header ── */}
+                <div style={{ marginBottom: 36 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,rgba(212,168,71,.25),rgba(99,102,241,.2))", border: "1px solid rgba(212,168,71,.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🏆</div>
+                    <div>
+                      <h1 style={{ margin: 0, fontFamily: "'Oswald', sans-serif", fontSize: 32, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.5px" }}>
+                        Performance <em style={{ color: "var(--gold)", fontStyle: "italic" }}>Review</em>
+                      </h1>
+                      <p style={{ margin: 0, fontSize: 10, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 2 }}>Team Intelligence · Live Metrics</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Top KPI strip ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14, marginBottom: 32 }}>
+                  {[
+                    { label: "Total Tasks",     value: totalTasks,      color: "#00d4ff",  icon: "◈" },
+                    { label: "Completed",       value: doneTasks,       color: "#10b981",  icon: "✓" },
+                    { label: "TAT Breaches",    value: breachedCount,   color: "#ef4444",  icon: "⚠" },
+                    { label: "Team Avg Score",  value: teamAvgScore !== null ? `${teamAvgScore}/100` : "—", color: "var(--gold)", icon: "★" },
+                    { label: "Completion Rate", value: `${overallScore}%`, color: overallScore >= 70 ? "#10b981" : overallScore >= 50 ? "#f59e0b" : "#ef4444", icon: "◎" },
+                  ].map((kpi, i) => (
+                    <div key={i} style={{
+                      padding: "18px 20px", borderRadius: 14,
+                      background: "rgba(8,14,32,0.8)",
+                      border: `1px solid ${kpi.color}22`,
+                      backdropFilter: "blur(20px)",
+                      position: "relative", overflow: "hidden",
+                    }}>
+                      <div style={{ position: "absolute", top: -10, right: -8, fontSize: 52, opacity: .04, color: kpi.color, fontWeight: 900 }}>{kpi.icon}</div>
+                      <div style={{ fontSize: 9, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 8 }}>{kpi.label}</div>
+                      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 30, fontWeight: 700, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+                      <div style={{ marginTop: 10, height: 2, borderRadius: 1, background: `${kpi.color}15` }}>
+                        <div style={{ height: "100%", width: `${Math.min(100, typeof kpi.value === "number" ? (kpi.value / Math.max(totalTasks, 1)) * 100 : 60)}%`, background: kpi.color, borderRadius: 1, boxShadow: `0 0 8px ${kpi.color}88` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Two-col layout: Leaderboard + Top performer spotlight ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, marginBottom: 28 }}>
+
+                  {/* Leaderboard */}
+                  <div style={{ background: "rgba(8,14,32,0.8)", border: "1px solid rgba(212,168,71,.15)", borderRadius: 16, overflow: "hidden", backdropFilter: "blur(20px)" }}>
+                    <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 16, fontWeight: 600, color: "var(--t1)", letterSpacing: "0.04em" }}>👥 TEAM LEADERBOARD</div>
+                      <div style={{ fontSize: 9, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{staffMetrics.length} members</div>
+                    </div>
+                    <div style={{ overflowY: "auto", maxHeight: 420 }}>
+                      {staffMetrics.map((m: any, i: number) => (
+                        <div key={m.id} style={{
+                          display: "flex", alignItems: "center", gap: 14, padding: "14px 22px",
+                          borderBottom: "1px solid rgba(255,255,255,.04)",
+                          background: i === 0 ? "rgba(212,168,71,.05)" : "transparent",
+                          transition: "background .2s",
+                        }}
+                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,.03)"}
+                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = i === 0 ? "rgba(212,168,71,.05)" : "transparent"}
+                        >
+                          {/* Rank */}
+                          <div style={{ width: 28, textAlign: "center", flexShrink: 0 }}>
+                            {i === 0 ? <span style={{ fontSize: 18 }}>🥇</span>
+                           : i === 1 ? <span style={{ fontSize: 18 }}>🥈</span>
+                           : i === 2 ? <span style={{ fontSize: 18 }}>🥉</span>
+                           : <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, color: "var(--t3)" }}>#{i+1}</span>}
+                          </div>
+                          {/* Avatar */}
+                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg,${gradeColor(m.completion)}44,${gradeColor(m.completion)}22)`, border: `2px solid ${gradeColor(m.completion)}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: gradeColor(m.completion), flexShrink: 0 }}>
+                            {m.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+                          </div>
+                          {/* Name + progress */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
+                            <div style={{ height: 4, background: "rgba(255,255,255,.06)", borderRadius: 2, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${m.completion}%`, background: `linear-gradient(90deg,${gradeColor(m.completion)},${gradeColor(m.completion)}88)`, borderRadius: 2, transition: "width .8s ease", boxShadow: `0 0 8px ${gradeColor(m.completion)}55` }} />
+                            </div>
+                          </div>
+                          {/* Stats */}
+                          <div style={{ display: "flex", gap: 12, flexShrink: 0, alignItems: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 700, color: gradeColor(m.completion) }}>{m.completion}%</div>
+                              <div style={{ fontSize: 8, color: "var(--t3)", textTransform: "uppercase" }}>Done</div>
+                            </div>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 700, color: "var(--t1)" }}>{m.total}</div>
+                              <div style={{ fontSize: 8, color: "var(--t3)", textTransform: "uppercase" }}>Tasks</div>
+                            </div>
+                            {m.avgScore !== null && (
+                              <div style={{ padding: "3px 10px", borderRadius: 6, background: `${gradeColor(m.avgScore)}18`, border: `1px solid ${gradeColor(m.avgScore)}44`, color: gradeColor(m.avgScore), fontSize: 11, fontWeight: 800 }}>
+                                {grade(m.avgScore)}
+                              </div>
+                            )}
+                            {m.breach > 0 && (
+                              <div style={{ fontSize: 10, color: "#ef4444", padding: "2px 7px", borderRadius: 4, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)" }}>⚠ {m.breach}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {staffMetrics.length === 0 && (
+                        <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--t3)", fontSize: 13 }}>No staff data yet</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right col — Spotlight + Team health */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                    {/* Top performer spotlight */}
+                    {topPerformer && (
+                      <div style={{ background: "linear-gradient(135deg,rgba(212,168,71,.12),rgba(99,102,241,.08))", border: "1px solid rgba(212,168,71,.3)", borderRadius: 16, padding: "22px", backdropFilter: "blur(20px)", position: "relative", overflow: "hidden" }}>
+                        <div style={{ position: "absolute", top: -20, right: -20, fontSize: 100, opacity: .04 }}>🏆</div>
+                        <div style={{ fontSize: 9, color: "var(--gold)", textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 12, fontWeight: 700 }}>⭐ Top Performer</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+                          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,rgba(212,168,71,.3),rgba(212,168,71,.1))", border: "2px solid rgba(212,168,71,.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "var(--gold)" }}>
+                            {topPerformer.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{topPerformer.name}</div>
+                            <div style={{ fontSize: 10, color: "var(--gold)", marginTop: 2 }}>{topPerformer.completion}% completion · {topPerformer.total} tasks</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          {[
+                            { label: "Completed",   value: topPerformer.done,    color: "#10b981" },
+                            { label: "AI Score",     value: topPerformer.avgScore !== null ? `${topPerformer.avgScore}/100` : "—", color: "var(--gold)" },
+                            { label: "TAT Breaches", value: topPerformer.breach,  color: topPerformer.breach === 0 ? "#10b981" : "#ef4444" },
+                            { label: "This Week",    value: topPerformer.recentDone, color: "#00d4ff" },
+                          ].map((s, i) => (
+                            <div key={i} style={{ padding: "10px 12px", background: "rgba(0,0,0,.25)", borderRadius: 10, border: "1px solid rgba(255,255,255,.06)" }}>
+                              <div style={{ fontSize: 8, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>{s.label}</div>
+                              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Team health card */}
+                    <div style={{ background: "rgba(8,14,32,0.8)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: "20px 22px", backdropFilter: "blur(20px)", flex: 1 }}>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16, letterSpacing: "0.06em" }}>📊 TEAM HEALTH</div>
+                      {[
+                        { label: "Avg Completion",  value: `${avgCompletion}%`,   bar: avgCompletion,   color: avgCompletion >= 70 ? "#10b981" : "#f59e0b" },
+                        { label: "On-Time Rate",     value: totalTasks ? `${Math.round(((totalTasks - breachedCount) / totalTasks) * 100)}%` : "—", bar: totalTasks ? Math.round(((totalTasks - breachedCount) / totalTasks) * 100) : 0, color: "#00d4ff" },
+                        { label: "Active Members",   value: `${staffMetrics.length}`,  bar: staffMetrics.length * 10, color: "var(--gold)" },
+                        { label: "AI Scored Tasks",  value: `${totalScored.length}`,   bar: staffMetrics.length ? (totalScored.length / staffMetrics.length) * 100 : 0, color: "#8b5cf6" },
+                      ].map((row, i) => (
+                        <div key={i} style={{ marginBottom: 14 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                            <span style={{ fontSize: 10, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{row.label}</span>
+                            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, color: row.color }}>{row.value}</span>
+                          </div>
+                          <div style={{ height: 4, background: "rgba(255,255,255,.05)", borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${Math.min(100, row.bar)}%`, background: `linear-gradient(90deg,${row.color},${row.color}88)`, borderRadius: 2, transition: "width .9s ease" }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Bottom: Score distribution ── */}
+                {totalScored.length > 0 && (
+                  <div style={{ background: "rgba(8,14,32,0.8)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: "22px 24px", backdropFilter: "blur(20px)" }}>
+                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 18, letterSpacing: "0.06em" }}>🎯 AI SCORE DISTRIBUTION — PER MEMBER</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+                      {totalScored.map((m: any, i: number) => (
+                        <div key={i} style={{ padding: "14px 16px", background: "rgba(255,255,255,.03)", border: `1px solid ${gradeColor(m.avgScore)}22`, borderRadius: 12, position: "relative", overflow: "hidden" }}>
+                          <div style={{ position: "absolute", bottom: -8, right: -4, fontFamily: "'Oswald',sans-serif", fontSize: 48, fontWeight: 900, opacity: .06, color: gradeColor(m.avgScore) }}>{grade(m.avgScore)}</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t1)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name.split(" ")[0]}</div>
+                          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: gradeColor(m.avgScore), lineHeight: 1, marginBottom: 4 }}>{m.avgScore}<span style={{ fontSize: 12, fontWeight: 400, opacity: .6 }}>/100</span></div>
+                          <div style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 4, background: `${gradeColor(m.avgScore)}18`, border: `1px solid ${gradeColor(m.avgScore)}33`, fontSize: 10, fontWeight: 800, color: gradeColor(m.avgScore) }}>Grade {grade(m.avgScore)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
         </main>
       </div>
 
       {/* ══ JARVIS ══ */}
       <JarvisAssistant
-        tasks={tasks}
+        tasks={activeTasks}
         users={allUsers}
         userName={currentUserName}
         userRole="Supremo"
