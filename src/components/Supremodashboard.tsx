@@ -929,6 +929,330 @@ function JarvisAssistant({ tasks, users, userName, userRole }: JarvisProps) {
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE REVIEW SESSION COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface QueueEntry   { userId:string; userName:string; email:string; joinedAt:string; }
+interface PromiseScore { userId:string; userName:string; email:string; score:number; comment:string; submittedAt:string; }
+
+function LiveReviewSession({ currentUserName, allUsers, activeTasks, apiBase }:
+  { currentUserName:string; allUsers:any[]; activeTasks:any[]; apiBase:string }) {
+
+  const [sessionActive, setSessionActive] = useState(false);
+  const [inCall,        setInCall]        = useState(false);
+  const [callee,        setCallee]        = useState<QueueEntry|null>(null);
+  const [queue,         setQueue]         = useState<QueueEntry[]>([]);
+  const [scores,        setScores]        = useState<PromiseScore[]>([]);
+  const [localStream,   setLocalStream]   = useState<MediaStream|null>(null);
+  const [remoteStream,  setRemoteStream]  = useState<MediaStream|null>(null);
+  const [micMuted,      setMicMuted]      = useState(false);
+  const [camOff,        setCamOff]        = useState(false);
+  const [duration,      setDuration]      = useState(0);
+  const [newScore,      setNewScore]      = useState<PromiseScore|null>(null);
+  const [sessionId]                       = useState(() => "session_" + Date.now());
+
+  const localRef  = useRef<HTMLVideoElement>(null);
+  const remoteRef = useRef<HTMLVideoElement>(null);
+  const pcRef     = useRef<RTCPeerConnection|null>(null);
+  const sockRef   = useRef<any>(null);
+  const timerRef  = useRef<any>(null);
+  const pollRef2  = useRef<any>(null);
+
+  // ── Attach streams to video elements ──────────────────────────────────────
+  useEffect(() => { if (localRef.current  && localStream)  localRef.current.srcObject  = localStream;  }, [localStream]);
+  useEffect(() => { if (remoteRef.current && remoteStream) remoteRef.current.srcObject = remoteStream; }, [remoteStream]);
+
+  // ── Socket.io setup ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const io = (window as any).io;
+    if (!io) return;
+    const s = io(apiBase, { transports:["websocket","polling"], autoConnect:false });
+    sockRef.current = s;
+    s.connect();
+
+    s.on("meeting:queue-update", (q: QueueEntry[]) => setQueue(q));
+    s.on("meeting:promise-score", (ps: PromiseScore) => {
+      setScores(prev => [...prev, ps]);
+      setNewScore(ps);
+      setTimeout(() => setNewScore(null), 6000);
+    });
+    s.on("meeting:answer", async (answer: RTCSessionDescriptionInit) => {
+      try { await pcRef.current?.setRemoteDescription(answer); } catch {}
+    });
+    s.on("meeting:ice-candidate", async (data: any) => {
+      try { await pcRef.current?.addIceCandidate(data.candidate); } catch {}
+    });
+    s.on("meeting:staff-left", (userId: string) => {
+      setQueue(prev => prev.filter(x => x.userId !== userId));
+      if (callee?.userId === userId) endCall();
+    });
+    return () => { s.disconnect(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase]);
+
+  // ── Start session ─────────────────────────────────────────────────────────
+  async function startSession() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      setLocalStream(stream);
+      setSessionActive(true);
+      setScores([]);
+      sockRef.current?.emit("meeting:supremo-start", { sessionId, name: currentUserName });
+      // Fallback polling
+      pollRef2.current = setInterval(async () => {
+        try {
+          const r = await fetch(`${apiBase}/api/meeting/queue?sessionId=${sessionId}`);
+          if (r.ok) { const d = await r.json(); if (Array.isArray(d)) setQueue(d); }
+        } catch {}
+      }, 4000);
+    } catch { alert("Camera/mic access denied. Please allow permissions."); }
+  }
+
+  // ── End session ───────────────────────────────────────────────────────────
+  function endSession() {
+    endCall();
+    localStream?.getTracks().forEach(t => t.stop());
+    setLocalStream(null); setSessionActive(false); setQueue([]);
+    sockRef.current?.emit("meeting:supremo-end", { sessionId });
+    if (pollRef2.current) { clearInterval(pollRef2.current); pollRef2.current = null; }
+  }
+
+  // ── Call staff member ─────────────────────────────────────────────────────
+  async function callStaff(entry: QueueEntry) {
+    if (inCall) endCall();
+    setCallee(entry); setInCall(true); setDuration(0);
+    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+
+    const pc = new RTCPeerConnection({ iceServers:[
+      { urls:"stun:stun.l.google.com:19302" },
+      { urls:"stun:stun1.l.google.com:19302" },
+    ]});
+    pcRef.current = pc;
+    localStream?.getTracks().forEach(t => pc.addTrack(t, localStream!));
+
+    const rs = new MediaStream();
+    pc.ontrack = e => { e.streams[0].getTracks().forEach(t => rs.addTrack(t)); setRemoteStream(new MediaStream(rs.getTracks())); };
+    pc.onicecandidate = e => { if (e.candidate) sockRef.current?.emit("meeting:ice-candidate", { to: entry.userId, candidate: e.candidate }); };
+    pc.onconnectionstatechange = () => { if (pc.connectionState === "disconnected" || pc.connectionState === "failed") endCall(); };
+
+    const offer = await pc.createOffer({ offerToReceiveAudio:true, offerToReceiveVideo:true });
+    await pc.setLocalDescription(offer);
+    sockRef.current?.emit("meeting:offer", { to: entry.userId, offer, sessionId });
+  }
+
+  // ── End call ─────────────────────────────────────────────────────────────
+  function endCall() {
+    pcRef.current?.close(); pcRef.current = null;
+    setRemoteStream(null); setInCall(false); setCallee(null);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; setDuration(0); }
+    sockRef.current?.emit("meeting:end-call", { sessionId });
+  }
+
+  function toggleMic() { localStream?.getAudioTracks().forEach(t => { t.enabled = !t.enabled; }); setMicMuted(m => !m); }
+  function toggleCam() { localStream?.getVideoTracks().forEach(t => { t.enabled = !t.enabled; }); setCamOff(c => !c); }
+
+  const fmt = (s: number) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  // ── Callee live analytics ─────────────────────────────────────────────────
+  const calleeStats = callee ? (() => {
+    const ut    = activeTasks.filter(t => t.assignedTo === callee.email);
+    const done  = ut.filter(t => t.status==="completed"||t.status==="approved").length;
+    const breach= ut.filter(t => t.tatBreached).length;
+    const comp  = ut.length ? Math.round((done/ut.length)*100) : 0;
+    const sc    = ut.filter(t => (t as any).scoreData?.percentScore != null).map(t => (t as any).scoreData.percentScore);
+    const avg   = sc.length ? Math.round(sc.reduce((a:number,b:number)=>a+b,0)/sc.length) : null;
+    return { total:ut.length, done, breach, completion:comp, avgScore:avg };
+  })() : null;
+
+  const calleePromise = scores.filter(s => s.email === callee?.email).slice(-1)[0];
+
+  // ── NOT STARTED ───────────────────────────────────────────────────────────
+  if (!sessionActive) return (
+    <div style={{ marginBottom:32, padding:"24px 28px", background:"linear-gradient(135deg,rgba(99,102,241,.08),rgba(212,168,71,.06))", border:"1px solid rgba(212,168,71,.2)", borderRadius:16, display:"flex", alignItems:"center", justifyContent:"space-between", gap:20 }}>
+      <div>
+        <div style={{ fontFamily:"'Oswald',sans-serif", fontSize:20, fontWeight:700, color:"var(--t1)", marginBottom:6 }}>🎥 Live Review Session</div>
+        <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.6 }}>
+          Start a live video session — staff join the queue from their dashboard.<br/>
+          Review them one by one with real-time analytics and collect promise scores.
+        </div>
+      </div>
+      <button onClick={startSession} className="btn btn-primary" style={{ padding:"14px 32px", fontSize:14, flexShrink:0 }}>
+        ▶ Start Session
+      </button>
+    </div>
+  );
+
+  // ── SESSION ACTIVE ────────────────────────────────────────────────────────
+  return (
+    <div style={{ marginBottom:32 }}>
+      {/* Header bar */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, padding:"12px 18px", background:"rgba(239,68,68,.06)", border:"1px solid rgba(239,68,68,.2)", borderRadius:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ width:10, height:10, borderRadius:"50%", background:"#ef4444", animation:"blink 1.5s infinite", display:"inline-block" }} />
+          <span style={{ fontFamily:"'Oswald',sans-serif", fontSize:15, fontWeight:700, color:"var(--t1)", letterSpacing:"0.06em" }}>LIVE REVIEW SESSION</span>
+          {inCall && <span style={{ fontSize:12, color:"var(--t3)", fontFamily:"var(--mono)" }}>· {fmt(duration)}</span>}
+          <span style={{ fontSize:11, color:"var(--t3)" }}>· {queue.length} in queue · {scores.length} scores collected</span>
+        </div>
+        <button onClick={endSession} className="btn btn-danger btn-sm">■ End Session</button>
+      </div>
+
+      {/* New score toast */}
+      {newScore && (
+        <div style={{ padding:"12px 18px", marginBottom:14, background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.3)", borderRadius:10, display:"flex", alignItems:"center", gap:12, animation:"slideUp .3s ease" }}>
+          <span style={{ fontSize:22 }}>✅</span>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600, color:"#10b981" }}>{newScore.userName} submitted their Promise Score</div>
+            <div style={{ fontSize:12, color:"var(--t2)" }}>Score: <strong style={{ color:"#10b981" }}>{newScore.score}/100</strong>{newScore.comment ? ` · "${newScore.comment}"` : ""}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 3-col layout */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 260px 300px", gap:14 }}>
+
+        {/* ── Video Panel ── */}
+        <div style={{ background:"rgba(4,8,20,0.95)", border:"1px solid rgba(212,168,71,.2)", borderRadius:16, overflow:"hidden" }}>
+          {/* Remote video */}
+          <div style={{ position:"relative", background:"#060b18", minHeight:240 }}>
+            {inCall ? (
+              <video ref={remoteRef} autoPlay playsInline style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", minHeight:240 }} />
+            ) : (
+              <div style={{ width:"100%", minHeight:240, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
+                <div style={{ fontSize:52, opacity:.15 }}>📹</div>
+                <div style={{ fontSize:12, color:"var(--t3)" }}>Call a staff member to begin</div>
+              </div>
+            )}
+            {/* Local PiP */}
+            <div style={{ position:"absolute", bottom:12, right:12, width:110, height:75, borderRadius:8, overflow:"hidden", border:"2px solid rgba(212,168,71,.4)", background:"#000", boxShadow:"0 4px 16px rgba(0,0,0,.6)" }}>
+              <video ref={localRef} autoPlay muted playsInline style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              {camOff && <div style={{ position:"absolute", inset:0, background:"#111", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📷</div>}
+            </div>
+            {/* Name tag */}
+            {inCall && callee && (
+              <div style={{ position:"absolute", top:10, left:10, padding:"4px 12px", background:"rgba(0,0,0,.75)", backdropFilter:"blur(8px)", borderRadius:6, fontSize:12, color:"#fff", fontWeight:600, border:"1px solid rgba(255,255,255,.1)" }}>
+                {callee.userName}
+              </div>
+            )}
+          </div>
+          {/* Controls */}
+          <div style={{ padding:"12px 16px", display:"flex", gap:8, justifyContent:"center", background:"rgba(8,14,32,.8)", borderTop:"1px solid rgba(255,255,255,.06)" }}>
+            <button onClick={toggleMic} className={`btn btn-sm ${micMuted?"btn-danger":"btn-ghost"}`} title={micMuted?"Unmute":"Mute"}>{micMuted ? "🔇 Muted" : "🎙 Mic"}</button>
+            <button onClick={toggleCam} className={`btn btn-sm ${camOff?"btn-danger":"btn-ghost"}`} title={camOff?"Show cam":"Hide cam"}>{camOff ? "📷 Off" : "📹 Cam"}</button>
+            {inCall && <button onClick={endCall} className="btn btn-sm btn-danger" style={{ paddingLeft:20, paddingRight:20 }}>✕ End Call</button>}
+          </div>
+        </div>
+
+        {/* ── Queue ── */}
+        <div style={{ background:"rgba(8,14,32,0.9)", border:"1px solid rgba(255,255,255,.08)", borderRadius:16, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          <div style={{ padding:"13px 16px", borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <span style={{ fontFamily:"'Oswald',sans-serif", fontSize:13, fontWeight:600, color:"var(--t1)", letterSpacing:"0.06em" }}>👥 QUEUE</span>
+            <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--t3)" }}>{queue.length} waiting</span>
+          </div>
+          <div style={{ flex:1, overflowY:"auto", padding:8 }}>
+            {queue.length === 0 ? (
+              <div style={{ padding:"32px 12px", textAlign:"center", color:"var(--t3)", fontSize:11, lineHeight:1.8 }}>
+                <div style={{ fontSize:28, marginBottom:8, opacity:.2 }}>⏳</div>
+                No staff waiting yet.<br/>They join via their own dashboard when session is live.
+              </div>
+            ) : queue.map((entry, i) => (
+              <div key={entry.userId} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", background: callee?.userId===entry.userId ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.03)", border:`1px solid ${callee?.userId===entry.userId?"rgba(99,102,241,.35)":"rgba(255,255,255,.06)"}`, borderRadius:8, marginBottom:5 }}>
+                <div style={{ width:30, height:30, borderRadius:"50%", background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:"var(--acc2)", flexShrink:0 }}>
+                  {entry.userName.split(" ").map((n:string)=>n[0]).join("").slice(0,2).toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.userName}</div>
+                  <div style={{ fontSize:9, color:"var(--t3)" }}>#{i+1} in queue</div>
+                </div>
+                {callee?.userId === entry.userId
+                  ? <span style={{ fontSize:9, color:"var(--acc2)", fontWeight:700, padding:"2px 6px", background:"rgba(99,102,241,.15)", borderRadius:4 }}>IN CALL</span>
+                  : <button onClick={() => callStaff(entry)} className="btn btn-xs btn-primary">Call</button>
+                }
+              </div>
+            ))}
+          </div>
+          <div style={{ padding:"8px 12px", borderTop:"1px solid rgba(255,255,255,.05)", fontSize:9, color:"var(--t3)", textAlign:"center", lineHeight:1.5 }}>
+            Staff join from their dashboard
+          </div>
+        </div>
+
+        {/* ── Analytics + Promise Score ── */}
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {calleeStats && callee ? (
+            <div style={{ background:"rgba(8,14,32,0.9)", border:"1px solid rgba(212,168,71,.2)", borderRadius:16, padding:"16px 18px" }}>
+              <div style={{ fontSize:9, color:"var(--gold)", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:12, fontWeight:700 }}>📊 {callee.userName.split(" ")[0]}&apos;s Live Analytics</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                {[
+                  { label:"Completion", value:`${calleeStats.completion}%`, color: calleeStats.completion>=80?"#10b981":calleeStats.completion>=60?"#f59e0b":"#ef4444" },
+                  { label:"Done",       value:calleeStats.done,             color:"#10b981" },
+                  { label:"Breaches",   value:calleeStats.breach,           color: calleeStats.breach===0?"#10b981":"#ef4444" },
+                  { label:"AI Score",   value: calleeStats.avgScore !== null ? `${calleeStats.avgScore}/100` : "—", color:"var(--gold)" },
+                ].map((s,i) => (
+                  <div key={i} style={{ padding:"8px 10px", background:"rgba(255,255,255,.03)", borderRadius:8, border:"1px solid rgba(255,255,255,.06)" }}>
+                    <div style={{ fontSize:8, color:"var(--t3)", textTransform:"uppercase", marginBottom:3 }}>{s.label}</div>
+                    <div style={{ fontFamily:"'Oswald',sans-serif", fontSize:20, fontWeight:700, color:s.color, lineHeight:1 }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Progress bar */}
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:9, color:"var(--t3)", textTransform:"uppercase" }}>
+                  <span>Completion</span><span style={{ color: calleeStats.completion>=80?"#10b981":calleeStats.completion>=60?"#f59e0b":"#ef4444" }}>{calleeStats.completion}%</span>
+                </div>
+                <div style={{ height:5, background:"rgba(255,255,255,.05)", borderRadius:3, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${calleeStats.completion}%`, background: calleeStats.completion>=80?"#10b981":calleeStats.completion>=60?"#f59e0b":"#ef4444", borderRadius:3, transition:"width .8s ease" }} />
+                </div>
+              </div>
+              {/* Promise score */}
+              {calleePromise ? (
+                <div style={{ padding:"12px 14px", background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.25)", borderRadius:10 }}>
+                  <div style={{ fontSize:9, color:"#10b981", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6, fontWeight:700 }}>✅ Promise Score Received</div>
+                  <div style={{ fontFamily:"'Oswald',sans-serif", fontSize:34, fontWeight:700, color:"#10b981", lineHeight:1 }}>{calleePromise.score}<span style={{ fontSize:14, fontWeight:400, opacity:.6 }}>/100</span></div>
+                  {calleePromise.comment && <div style={{ fontSize:11, color:"var(--t2)", marginTop:6, fontStyle:"italic", lineHeight:1.5 }}>"{calleePromise.comment}"</div>}
+                </div>
+              ) : (
+                <div style={{ padding:"12px 14px", background:"rgba(255,255,255,.02)", border:"1px dashed rgba(255,255,255,.09)", borderRadius:10, textAlign:"center" }}>
+                  <div style={{ fontSize:11, color:"var(--t3)" }}>Waiting for {callee.userName.split(" ")[0]}&apos;s promise score…</div>
+                  <div style={{ fontSize:9, color:"var(--t3)", marginTop:3, opacity:.6 }}>They'll submit it from their dashboard</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ background:"rgba(8,14,32,0.9)", border:"1px solid rgba(255,255,255,.07)", borderRadius:16, padding:"32px 18px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:10, opacity:.2 }}>📈</div>
+              <div style={{ fontSize:12, color:"var(--t3)" }}>Call a staff member to see their live analytics here</div>
+            </div>
+          )}
+
+          {/* Session promise scores log */}
+          {scores.length > 0 && (
+            <div style={{ background:"rgba(8,14,32,0.9)", border:"1px solid rgba(255,255,255,.07)", borderRadius:16, padding:"14px 16px" }}>
+              <div style={{ fontFamily:"'Oswald',sans-serif", fontSize:12, fontWeight:600, color:"var(--t1)", marginBottom:10, letterSpacing:"0.06em" }}>📋 SESSION PROMISE SCORES</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                {scores.map((s, i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 8px", background:"rgba(255,255,255,.03)", borderRadius:6 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <div style={{ width:22, height:22, borderRadius:"50%", background:"rgba(99,102,241,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:"var(--acc2)" }}>
+                        {s.userName.split(" ").map((n:string)=>n[0]).join("").slice(0,2).toUpperCase()}
+                      </div>
+                      <span style={{ fontSize:11, color:"var(--t2)" }}>{s.userName.split(" ")[0]}</span>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      {s.comment && <span style={{ fontSize:9, color:"var(--t3)", fontStyle:"italic", maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>"{s.comment}"</span>}
+                      <span style={{ fontFamily:"var(--mono)", fontSize:13, fontWeight:700, color: s.score>=80?"#10b981":s.score>=60?"#f59e0b":"#ef4444" }}>{s.score}/100</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SupremoDashboard() {
   const { user: appUser, logout } = useUser();
   const [activeTab,       setActiveTab]       = useState("overview");
@@ -2831,6 +3155,14 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
                     </div>
                   </div>
                 </div>
+
+                {/* ── Live Review Session ── */}
+                <LiveReviewSession
+                  currentUserName={currentUserName}
+                  allUsers={allUsers}
+                  activeTasks={activeTasks}
+                  apiBase={API_BASE}
+                />
 
                 {/* ── Top KPI strip ── */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14, marginBottom: 32 }}>
