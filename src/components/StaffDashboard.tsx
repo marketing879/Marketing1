@@ -378,7 +378,7 @@ Return this exact JSON:
     docUserContent.push({ type: "text", text: textPayload });
 
     // ── Step 4: Call the backend ──────────────────────────────────────────
-    const docResponse = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+    const docResponse = await fetch("https://roswalt-backend-production.up.railway.app/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt: docSystemPrompt, userContent: docUserContent }),
@@ -510,7 +510,7 @@ Return this exact JSON:
 
   let response: Response;
   try {
-    response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+    response = await fetch("https://roswalt-backend-production.up.railway.app/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt, userContent }),
@@ -615,6 +615,7 @@ const ScoreboardPanel: React.FC<ScoreboardProps> = ({ user, profilePic, tasks })
     { label: "Pending",     value: pending.length,    sub: "active",     color: "#f5c518", icon: "⚡" },
     { label: "Delayed",     value: delayed.length,    sub: "overdue",    color: "#ff3366", icon: "⚠"  },
   ];
+
 
   return (
     <div className="sd-scoreboard">
@@ -1953,6 +1954,139 @@ const StaffDashboard: React.FC = () => {
   );
   const ticketInitRef = useRef(false);
 
+  // ── Live Review Meeting ───────────────────────────────────────────────────
+  const [meetingSession,    setMeetingSession]    = useState<string|null>(null);
+  const [inMeetingQueue,    setInMeetingQueue]    = useState(false);
+  const [queuePosition,     setQueuePosition]     = useState<number|null>(null);
+  const [meetingInCall,     setMeetingInCall]      = useState(false);
+  const [meetingCallFrom,   setMeetingCallFrom]    = useState<string|null>(null);
+  const [promiseScore,      setPromiseScore]       = useState(75);
+  const [promiseComment,    setPromiseComment]     = useState("");
+  const [scoreSubmitted,    setScoreSubmitted]     = useState(false);
+  const [localMeetStream,   setLocalMeetStream]    = useState<MediaStream|null>(null);
+  const [remoteMeetStream,  setRemoteMeetStream]   = useState<MediaStream|null>(null);
+  const [showMeetingPanel,  setShowMeetingPanel]   = useState(false);
+  const meetLocalRef  = useRef<HTMLVideoElement>(null);
+  const meetRemoteRef = useRef<HTMLVideoElement>(null);
+  const meetPcRef     = useRef<RTCPeerConnection|null>(null);
+  const meetSockRef   = useRef<any>(null);
+  const meetApiBase   = "https://roswalt-backend-production.up.railway.app";
+
+
+
+  // ── Meeting socket setup ──────────────────────────────────────────────────
+  useEffect(() => {
+    const io = (window as any).io;
+    if (!io) return;
+    const s = io(meetApiBase, { transports:["websocket","polling"], autoConnect:false });
+    meetSockRef.current = s;
+    s.connect();
+
+    s.on("meeting:offer", async ({ from, offer, sessionId }: any) => {
+      setMeetingSession(sessionId);
+      setMeetingInCall(true);
+      setMeetingCallFrom(from);
+      setShowMeetingPanel(true);
+      setScoreSubmitted(false);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        setLocalMeetStream(stream);
+        const pc = new RTCPeerConnection({ iceServers:[{ urls:"stun:stun.l.google.com:19302" }] });
+        meetPcRef.current = pc;
+        stream.getTracks().forEach((t: MediaStreamTrack) => pc.addTrack(t, stream));
+        const rs = new MediaStream();
+        pc.ontrack = (e: RTCTrackEvent) => { e.streams[0].getTracks().forEach((t: MediaStreamTrack) => rs.addTrack(t)); setRemoteMeetStream(new MediaStream(rs.getTracks())); };
+        pc.onicecandidate = (e: RTCPeerConnectionIceEvent) => { if (e.candidate) s.emit("meeting:ice-candidate", { to: from, candidate: e.candidate }); };
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        s.emit("meeting:answer", { to: from, answer });
+      } catch (err) { console.error("[Meeting] WebRTC error", err); }
+    });
+
+    s.on("meeting:ice-candidate", async ({ candidate }: any) => {
+      try { await meetPcRef.current?.addIceCandidate(candidate); } catch {}
+    });
+
+    s.on("meeting:call-ended", () => { endMeetingCall(); });
+
+    s.on("meeting:score-submitted", () => {
+      setScoreSubmitted(true);
+    });
+
+    // Real-time session start notification
+    s.on("meeting:session-started", ({ sessionId }: any) => {
+      setMeetingSession(sessionId);
+    });
+
+    s.on("meeting:session-ended", () => {
+      endMeetingCall();
+      setInMeetingQueue(false);
+      setMeetingSession(null);
+      setShowMeetingPanel(false);
+      setQueuePosition(null);
+    });
+
+    // Poll for active session every 8s
+    const pollSession = setInterval(async () => {
+      try {
+        const r = await fetch("https://roswalt-backend-production.up.railway.app/api/meeting/active-session");
+        if (r.ok) {
+          const d = await r.json();
+          if (d.active && d.sessionId) { setMeetingSession(d.sessionId); }
+          else { setMeetingSession((prev: string|null) => { if (prev) { setInMeetingQueue(false); setShowMeetingPanel(false); } return null; }); }
+        }
+      } catch {}
+    }, 8000);
+
+    // Check immediately on mount
+    fetch("https://roswalt-backend-production.up.railway.app/api/meeting/active-session")
+      .then(r => r.json()).then(d => { if (d.active && d.sessionId) setMeetingSession(d.sessionId); }).catch(() => {});
+
+    return () => { s.disconnect(); clearInterval(pollSession); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Attach streams to video elements
+  useEffect(() => { if (meetLocalRef.current  && localMeetStream)  meetLocalRef.current.srcObject  = localMeetStream;  }, [localMeetStream]);
+  useEffect(() => { if (meetRemoteRef.current && remoteMeetStream) meetRemoteRef.current.srcObject = remoteMeetStream; }, [remoteMeetStream]);
+
+  function endMeetingCall() {
+    meetPcRef.current?.close(); meetPcRef.current = null;
+    localMeetStream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    setLocalMeetStream(null); setRemoteMeetStream(null);
+    setMeetingInCall(false); setMeetingCallFrom(null);
+  }
+
+  function joinMeetingQueue() {
+    if (!meetSockRef.current || !user || !meetingSession) return;
+    meetSockRef.current.emit("meeting:join-queue", {
+      sessionId: meetingSession,
+      userId: user.email,
+      userName: user.name,
+      email: user.email,
+    });
+  }
+
+  function leaveMeetingQueue() {
+    if (!meetSockRef.current || !meetingSession) return;
+    meetSockRef.current.emit("meeting:leave-queue", { sessionId: meetingSession, userId: user?.email });
+    setInMeetingQueue(false); setQueuePosition(null); setShowMeetingPanel(false);
+  }
+
+  async function submitPromiseScore() {
+    if (!meetSockRef.current || !meetingSession) return;
+    meetSockRef.current.emit("meeting:promise-score", {
+      sessionId: meetingSession,
+      userId: user?.email,
+      userName: user?.name,
+      email: user?.email,
+      score: promiseScore,
+      comment: promiseComment,
+    });
+    setScoreSubmitted(true);
+  }
+
   // AI Score modal state
   const [aiScoreResult,     setAiScoreResult]     = useState<AIScoreResult | null>(null);
   const [analyzingImage,    setAnalyzingImage]    = useState(false);
@@ -2141,7 +2275,7 @@ const StaffDashboard: React.FC = () => {
     }
     setDraftingTask(taskId);
     try {
-      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/draft-notes", {
+      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, notes: completionNotes }),
@@ -2183,7 +2317,7 @@ const StaffDashboard: React.FC = () => {
         contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
-      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
+      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, contentArray }),
@@ -3340,6 +3474,115 @@ const StaffDashboard: React.FC = () => {
         <main className="sd-main">
           <div className={`sd-toast ${successMsg ? "visible" : "hidden"}`}>{successMsg}</div>
 
+          {/* ── LIVE REVIEW MEETING PANEL ── */}
+          {showMeetingPanel && (
+            <div style={{ position:"fixed", inset:0, zIndex:950, background:"rgba(0,0,0,.85)", backdropFilter:"blur(12px)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ background:"rgba(8,14,28,.97)", border:"1px solid rgba(0,212,255,.25)", borderRadius:20, width:820, maxWidth:"95vw", overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,.7)" }}>
+
+                {/* Header */}
+                <div style={{ padding:"16px 22px", borderBottom:"1px solid rgba(255,255,255,.07)", display:"flex", alignItems:"center", justifyContent:"space-between", background:"linear-gradient(90deg,rgba(0,212,255,.06),transparent)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ width:9, height:9, borderRadius:"50%", background:"#ef4444", animation:"blink 1.5s infinite", display:"inline-block" }} />
+                    <span style={{ fontWeight:700, fontSize:15, color:"#fff" }}>🎥 Live Review Session</span>
+                    {meetingInCall && <span style={{ fontSize:11, color:"rgba(0,212,255,.7)", fontFamily:"monospace" }}>— In Call</span>}
+                  </div>
+                  {!meetingInCall && (
+                    <button onClick={leaveMeetingQueue} style={{ background:"rgba(244,63,94,.1)", border:"1px solid rgba(244,63,94,.25)", color:"#f43f5e", padding:"5px 14px", borderRadius:7, fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                      Leave Queue
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:0 }}>
+
+                  {/* Left — Video */}
+                  <div style={{ background:"#060b18", minHeight:320, position:"relative" }}>
+                    {meetingInCall ? (
+                      <video ref={meetRemoteRef} autoPlay playsInline style={{ width:"100%", height:"100%", objectFit:"cover", minHeight:320, display:"block" }} />
+                    ) : (
+                      <div style={{ width:"100%", minHeight:320, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
+                        <div style={{ fontSize:42, opacity:.15 }}>📹</div>
+                        <div style={{ fontSize:13, color:"rgba(255,255,255,.3)" }}>
+                          {inMeetingQueue ? `You are #${queuePosition} in queue — Supremo will call you shortly` : "Waiting for call…"}
+                        </div>
+                      </div>
+                    )}
+                    {/* Local PiP */}
+                    {meetingInCall && (
+                      <div style={{ position:"absolute", bottom:10, right:10, width:100, height:70, borderRadius:8, overflow:"hidden", border:"2px solid rgba(0,212,255,.4)", background:"#000" }}>
+                        <video ref={meetLocalRef} autoPlay muted playsInline style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right — Info + Promise Score */}
+                  <div style={{ padding:"20px 18px", borderLeft:"1px solid rgba(255,255,255,.06)", display:"flex", flexDirection:"column", gap:16 }}>
+
+                    {/* Status */}
+                    <div style={{ padding:"12px 14px", background:"rgba(0,212,255,.05)", border:"1px solid rgba(0,212,255,.15)", borderRadius:10 }}>
+                      <div style={{ fontSize:10, color:"rgba(0,212,255,.7)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6, fontWeight:700 }}>Session Status</div>
+                      <div style={{ fontSize:13, color:"#fff", fontWeight:500 }}>
+                        {meetingInCall ? "🟢 In call with Supremo" : inMeetingQueue ? `⏳ Position #${queuePosition} in queue` : "Connecting…"}
+                      </div>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", marginTop:4 }}>{user?.name}</div>
+                    </div>
+
+                    {/* Promise Score form */}
+                    {meetingInCall && !scoreSubmitted && (
+                      <div style={{ padding:"14px 16px", background:"rgba(16,185,129,.06)", border:"1px solid rgba(16,185,129,.2)", borderRadius:10 }}>
+                        <div style={{ fontSize:10, color:"#10b981", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10, fontWeight:700 }}>📋 Submit Promise Score</div>
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                            <span style={{ fontSize:11, color:"rgba(255,255,255,.5)" }}>Self Rating</span>
+                            <span style={{ fontSize:18, fontWeight:700, color:"#10b981", fontFamily:"monospace" }}>{promiseScore}/100</span>
+                          </div>
+                          <input type="range" min={0} max={100} value={promiseScore}
+                            onChange={e => setPromiseScore(Number(e.target.value))}
+                            style={{ width:"100%", accentColor:"#10b981" }}
+                          />
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:"rgba(255,255,255,.25)", marginTop:2 }}>
+                            <span>0</span><span>50</span><span>100</span>
+                          </div>
+                        </div>
+                        <textarea
+                          placeholder="Add a comment (optional)…"
+                          value={promiseComment}
+                          onChange={e => setPromiseComment(e.target.value)}
+                          rows={2}
+                          style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.1)", borderRadius:7, color:"#fff", fontSize:12, padding:"7px 10px", resize:"none", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
+                        />
+                        <button onClick={submitPromiseScore}
+                          style={{ marginTop:8, width:"100%", padding:"9px", background:"linear-gradient(135deg,#10b981,#059669)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                          ✓ Submit Promise Score
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Score submitted confirmation */}
+                    {scoreSubmitted && (
+                      <div style={{ padding:"16px", background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.25)", borderRadius:10, textAlign:"center" }}>
+                        <div style={{ fontSize:28, marginBottom:6 }}>✅</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:"#10b981" }}>Score Submitted!</div>
+                        <div style={{ fontSize:12, color:"rgba(255,255,255,.5)", marginTop:4 }}>{promiseScore}/100 sent to Supremo</div>
+                        {promiseComment && <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", marginTop:4, fontStyle:"italic" }}>"{promiseComment}"</div>}
+                      </div>
+                    )}
+
+                    {/* Queue instructions */}
+                    {!meetingInCall && (
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,.35)", lineHeight:1.7, textAlign:"center", paddingTop:8 }}>
+                        Keep this panel open.<br/>
+                        Supremo will start the call when it's your turn.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+
           {/* ── LEFT SCOREBOARD ── */}
           <ScoreboardPanel
             user={user}
@@ -3370,6 +3613,21 @@ const StaffDashboard: React.FC = () => {
                   : "Your AI assistant powered by Claude"}
               </div>
             </div>
+
+
+            {/* ── JOIN LIVE REVIEW BANNER ── */}
+            {meetingSession && !inMeetingQueue && activeTab === "pending" && (
+              <div style={{ marginBottom:16, padding:"14px 18px", background:"linear-gradient(135deg,rgba(0,212,255,.08),rgba(99,102,241,.06))", border:"1px solid rgba(0,212,255,.2)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#00d4ff", marginBottom:3 }}>🎥 Live Review Session is Active</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,.45)" }}>Supremo has started a review session. Join the queue to be reviewed.</div>
+                </div>
+                <button onClick={() => { setShowMeetingPanel(true); joinMeetingQueue(); }}
+                  style={{ padding:"9px 20px", background:"linear-gradient(135deg,#00d4ff,#0ea5e9)", border:"none", borderRadius:8, color:"#000", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                  Join Queue
+                </button>
+              </div>
+            )}
 
             {/* ── NEON STAT CARDS (pending tab only) ── */}
             {activeTab === "pending" && (
