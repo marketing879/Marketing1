@@ -9,8 +9,7 @@ import {
 // VOICE MODULE  (inline — no external import needed)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const _API_BASE_VOICE = (process.env.REACT_APP_API_URL as string) ||
-  "https://roswalt-backend-production.up.railway.app";
+const _API_BASE_VOICE = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
 
 let _selectedVoice: string | null = null;
 const _lastIndex: Record<string, number> = {};
@@ -1176,7 +1175,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
       setAiMessages(prev => [...prev, { id:Date.now(), role:"assistant", text:"Network error. Please retry.", timestamp:new Date() }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiInput, liveTasks, voiceEnabled]);
+  }, [aiInput, tasks, voiceEnabled]);
 
   function toggleMic() {
     if (!recRef.current) return;
@@ -1524,6 +1523,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
         {/* ══ SIDEBAR ══ */}
         <aside className="sidebar">
           <div className="sidebar-label">Navigation</div>
+          <div style={{ overflowY:"auto", flex:1 }}>
           {NAV_ITEMS.map(item => (
             <div
               key={item.id}
@@ -1534,8 +1534,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
               <span>{item.label}</span>
             </div>
           ))}
-
-          <div style={{ flex:1 }} />
+          </div>
 
           {/* Jarvis mode in sidebar */}
           <div style={{ padding:"8px 6px", borderTop:"1px solid rgba(212,168,71,.15)", marginTop:8 }}>
