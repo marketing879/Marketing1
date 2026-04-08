@@ -1175,7 +1175,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
       setAiMessages(prev => [...prev, { id:Date.now(), role:"assistant", text:"Network error. Please retry.", timestamp:new Date() }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiInput, tasks, voiceEnabled]);
+  }, [aiInput, liveTasks, voiceEnabled]);
 
   function toggleMic() {
     if (!recRef.current) return;
