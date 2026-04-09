@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-
-// ── Types ────────────────────────────────────────────────────────────────────
+import { useNavigate } from 'react-router-dom';
 
 interface PromiseScore {
   _id?: string;
@@ -13,13 +12,9 @@ interface PromiseScore {
 }
 
 interface CommandCenterProps {
-  /** Pass currentUser from your UserContext */
   currentUser?: { _id: string; name: string; email: string };
-  /** Override API base; defaults to REACT_APP_API_URL env var */
   apiBase?: string;
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getWeekNumber(d: Date): number {
   const start = new Date(d.getFullYear(), 0, 1);
@@ -27,53 +22,76 @@ function getWeekNumber(d: Date): number {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function padTwo(n: number) { return String(n).padStart(2, '0'); }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-const MetricCard = ({
-  label, value, color,
-}: { label: string; value: string | number; color: string }) => (
-  <div className="bg-[#181c22] p-4 rounded-xl border border-[#424754]/10 hover:bg-[#1c2026] transition-all">
-    <div className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${color}`}>{label}</div>
-    <div className="text-2xl font-black text-[#dfe2eb]">{value}</div>
-  </div>
-);
-
-const OutcomeBadge = ({ outcome }: { outcome: PromiseScore['outcome'] }) => {
-  const map = {
-    met:     'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    missed:  'bg-rose-500/10    text-rose-400    border-rose-500/20',
-    pending: 'bg-amber-500/10   text-amber-400   border-amber-500/20',
-  };
-  return (
-    <span className={`px-2 py-1 rounded-full text-[10px] font-bold border uppercase ${map[outcome]}`}>
-      {outcome}
-    </span>
-  );
-};
-
-// ── Main Component ────────────────────────────────────────────────────────────
+const CSS = `
+@keyframes ccBlink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes ccPulse{0%,100%{border-left-color:#fabc45}50%{border-left-color:#5b3800}}
+.cc-root{display:flex;flex-direction:column;height:100vh;background:#02040a;color:#eef2ff;font-family:'DM Sans',sans-serif;overflow:hidden;}
+.cc-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;background:rgba(2,4,10,0.7);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;position:relative;z-index:10;}
+.cc-topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#d4a847,transparent);opacity:.4;}
+.cc-main{display:flex;flex:1;overflow:hidden;}
+.cc-left{width:40%;display:flex;flex-direction:column;border-right:1px solid rgba(212,168,71,0.2);padding:14px;gap:10px;background:rgba(2,4,10,0.3);}
+.cc-right{width:60%;display:flex;flex-direction:column;padding:14px;gap:10px;overflow-y:auto;background:rgba(4,8,20,0.2);}
+.cc-video-main{flex:1;border-radius:14px;overflow:hidden;border:2px solid rgba(99,102,241,0.25);background:#0d1117;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;}
+.cc-thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+.cc-thumb{aspect-ratio:16/9;border-radius:8px;background:rgba(16,22,36,0.8);border:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
+.cc-toolbar{background:rgba(16,22,36,0.8);backdrop-filter:blur(16px);border-radius:10px;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;border:1px solid rgba(255,255,255,0.07);flex-shrink:0;}
+.cc-tb-btn{width:30px;height:30px;border-radius:7px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8b9ab8;font-size:12px;transition:.15s;}
+.cc-tb-btn:hover{background:rgba(255,255,255,0.08);color:#eef2ff;}
+.cc-filters{display:flex;gap:7px;flex-wrap:wrap;}
+.cc-pill{background:rgba(16,22,36,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:4px 11px;font-size:11px;color:#8b9ab8;display:flex;align-items:center;gap:4px;cursor:pointer;}
+.cc-pill b{color:#eef2ff;font-weight:600;}
+.cc-banner{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(212,168,71,0.2);border-left:3px solid #fabc45;padding:9px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px;animation:ccPulse 3s ease-in-out infinite;flex-shrink:0;}
+.cc-select{background:#02040a;border:1px solid rgba(212,168,71,0.4);border-radius:7px;color:#fabc45;font-size:11px;padding:4px 9px;outline:none;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.cc-commit-btn{background:#fabc45;border:none;border-radius:7px;padding:5px 13px;font-size:11px;font-weight:700;color:#1a1200;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;transition:.15s;}
+.cc-commit-btn:hover{filter:brightness(1.1);}
+.cc-tabs{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0;}
+.cc-tab{padding:7px 15px;font-size:12px;color:#8b9ab8;cursor:pointer;border-bottom:2px solid transparent;transition:.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans',sans-serif;}
+.cc-tab.active{color:#fabc45;border-bottom-color:#fabc45;font-weight:600;}
+.cc-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;}
+.cc-metric{background:rgba(16,22,36,0.8);border-radius:10px;padding:9px 6px;border:1px solid rgba(255,255,255,0.07);text-align:center;transition:.2s;}
+.cc-metric:hover{border-color:rgba(212,168,71,0.2);}
+.cc-chart-row{display:flex;gap:9px;flex:1;min-height:0;}
+.cc-chart-box{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);padding:11px;flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden;}
+.cc-bar-row{display:flex;align-items:center;gap:6px;}
+.cc-bar-track{flex:1;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;}
+.cc-bar-fill{height:100%;border-radius:4px;}
+.cc-table-wrap{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;flex-shrink:0;}
+.cc-table{width:100%;border-collapse:collapse;font-size:11px;}
+.cc-table th{padding:7px 10px;color:#4a5568;font-weight:700;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(2,4,10,0.5);font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+.cc-table td{padding:6px 10px;color:#8b9ab8;border-bottom:1px solid rgba(255,255,255,0.04);}
+.cc-table tr:last-child td{border-bottom:none;}
+.cc-table tr:hover td{background:rgba(255,255,255,0.02);}
+.cc-badge{padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;}
+.cc-av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;margin-right:4px;}
+.cc-ps-hero{background:rgba(16,22,36,0.8);border-radius:14px;border:1px solid rgba(212,168,71,0.2);padding:16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cc-history{background:rgba(16,22,36,0.8);border-radius:14px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;flex:1;display:flex;flex-direction:column;min-height:0;}
+.cc-history-hdr{padding:9px 13px;font-size:10px;color:#4a5568;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(2,4,10,0.4);font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.cc-history-body{overflow-y:auto;flex:1;}
+.cc-history-row{display:flex;align-items:center;justify-content:space-between;padding:7px 13px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;gap:8px;}
+.cc-history-row:last-child{border-bottom:none;}
+.cc-history-row:hover{background:rgba(255,255,255,0.02);}
+.cc-empty{padding:28px;text-align:center;font-size:11px;color:#4a5568;line-height:1.8;}
+.cc-update-bar{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);padding:9px 13px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+`;
 
 const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) => {
-  const API = apiBase ?? process.env.REACT_APP_API_URL ?? '';
+  const navigate = useNavigate();
+  const API = apiBase ?? process.env.REACT_APP_API_URL ?? 'https://roswalt-backend-production.up.railway.app';
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab]         = useState<'overview' | 'promise'>('overview');
+  const [activeTab,         setActiveTab]         = useState<'overview' | 'promise'>('overview');
   const [promiseTabVisible, setPromiseTabVisible] = useState(false);
-  const [bannerVisible, setBannerVisible] = useState(true);
-  const [selectedScore, setSelectedScore] = useState<number>(0);
-  const [updateScore, setUpdateScore]     = useState<number>(0);
-  const [scores, setScores]               = useState<PromiseScore[]>([]);
-  const [loadingScores, setLoadingScores] = useState(false);
-  const [elapsed, setElapsed]             = useState(0);
+  const [bannerVisible,     setBannerVisible]     = useState(true);
+  const [selectedScore,     setSelectedScore]     = useState<number>(0);
+  const [updateScore,       setUpdateScore]       = useState<number>(0);
+  const [scores,            setScores]            = useState<PromiseScore[]>([]);
+  const [loadingScores,     setLoadingScores]     = useState(false);
+  const [elapsed,           setElapsed]           = useState(0);
 
-  // ── Live timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setElapsed(s => s + 1), 1000);
     return () => clearInterval(t);
@@ -81,7 +99,6 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
   const timerDisplay = `${padTwo(Math.floor(elapsed / 3600))}:${padTwo(Math.floor((elapsed % 3600) / 60))}:${padTwo(elapsed % 60)}`;
 
-  // ── API calls ──────────────────────────────────────────────────────────────
   const loadScores = useCallback(async () => {
     if (!currentUser?._id) return;
     setLoadingScores(true);
@@ -90,7 +107,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
       const data: PromiseScore[] = await res.json();
       setScores(data);
       if (data.length > 0) { setPromiseTabVisible(true); setBannerVisible(false); }
-    } catch (e) { console.error('Failed to load promise scores', e); }
+    } catch (e) { console.error(e); }
     finally { setLoadingScores(false); }
   }, [API, currentUser?._id]);
 
@@ -98,29 +115,20 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
   const saveScore = async (score: number) => {
     if (!currentUser?._id) return;
-    const now   = new Date();
-    const week  = getWeekNumber(now);
-    const body: Omit<PromiseScore, '_id'> = {
-      userId:    currentUser._id,
-      week,
-      weekLabel: `Week ${week}`,
-      score,
-      date:      now.toISOString(),
-      outcome:   'pending',
-    };
+    const now  = new Date();
+    const week = getWeekNumber(now);
     await fetch(`${API}/api/promise-score`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
+      body: JSON.stringify({ userId: currentUser._id, week, weekLabel: `Week ${week}`, score, date: now.toISOString(), outcome: 'pending' }),
     });
     await loadScores();
   };
 
   const markOutcome = async (entry: PromiseScore, outcome: 'met' | 'missed') => {
     await fetch(`${API}/api/promise-score/${entry.userId}/${entry.week}`, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ outcome }),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcome }),
     });
     await loadScores();
   };
@@ -132,445 +140,312 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     setActiveTab('promise');
   };
 
-  const handleCommitPanel = async () => {
-    await saveScore(updateScore);
-  };
-
-  // ── Derived ────────────────────────────────────────────────────────────────
-  const latestScore  = scores.length
-    ? [...scores].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-    : null;
-  const currentActual = 78; // TODO: replace with real score from your metrics API
+  const latestScore   = scores.length ? [...scores].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] : null;
+  const currentActual = 78;
   const targetScore   = latestScore ? Math.round(currentActual * (1 + latestScore.score / 100)) : null;
   const diff          = targetScore !== null ? currentActual - targetScore : null;
   const nextWeek      = getWeekNumber(new Date()) + 1;
+  const userInitials  = currentUser?.name?.slice(0, 2).toUpperCase() ?? 'SC';
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const PARTICIPANTS = [
+    { ini: 'JD', bg: 'rgba(31,111,235,0.2)',  c: '#afc6ff', name: 'James D.'  },
+    { ini: 'AM', bg: 'rgba(238,152,0,0.2)',   c: '#ffb95f', name: 'Anna M.'   },
+    { ini: 'PG', bg: 'rgba(34,197,94,0.2)',   c: '#4ade80', name: 'Pushkaraj' },
+    { ini: '+12',bg: 'rgba(99,102,241,0.15)', c: '#a78bfa', name: ''          },
+  ];
+
+  const METRICS = [
+    { label:'Approved',   value:24,    color:'#4ade80' },
+    { label:'Pending',    value:12,    color:'#fbbf24' },
+    { label:'Assigned',   value:48,    color:'#60a5fa' },
+    { label:'Avg Score',  value:'9.2', color:'#c4b5fd' },
+    { label:'Rework',     value:'03',  color:'#fb7185' },
+    { label:'In TAT',     value:'94%', color:'#2dd4bf' },
+    { label:'Out of TAT', value:'06%', color:'#f87171' },
+  ];
+
+  const BARS = [
+    { label:'Research',    val:'4.2h', pct:75, color:'#6366f1' },
+    { label:'Design Sync', val:'1.8h', pct:40, color:'#8b5cf6' },
+    { label:'Dev Review',  val:'5.1h', pct:90, color:'#afc6ff' },
+    { label:'Ad Copy',     val:'3.2h', pct:65, color:'#f59e0b' },
+    { label:'Floor Plan',  val:'3.6h', pct:72, color:'#f97316' },
+  ];
+
+  const TASKS = [
+    { task:'Zaiden Reel',      ini:'PG', ic:'#afc6ff', ib:'rgba(31,111,235,0.2)',  name:'Pushkaraj', st:'Approved', sc:'#4ade80', sb:'rgba(34,197,94,0.1)',    score:92, rw:0, dur:'3.5h', tat:'In TAT',  tc:'#4ade80' },
+    { task:'Property Ad Copy', ini:'SK', ic:'#fbbf24', ib:'rgba(245,158,11,0.2)', name:'Shreya K.', st:'Pending',  sc:'#fbbf24', sb:'rgba(245,158,11,0.1)',  score:74, rw:1, dur:'2.1h', tat:'In TAT',  tc:'#4ade80' },
+    { task:'Floor Plan',       ini:'AM', ic:'#4ade80', ib:'rgba(34,197,94,0.2)',   name:'Aarav M.',  st:'Assigned', sc:'#60a5fa', sb:'rgba(96,165,250,0.1)',  score:0,  rw:0, dur:'4.8h', tat:'Out TAT', tc:'#f87171' },
+    { task:'Instagram Reel',   ini:'VN', ic:'#c4b5fd', ib:'rgba(167,139,250,0.2)',name:'Varun N.',  st:'Approved', sc:'#4ade80', sb:'rgba(34,197,94,0.1)',    score:88, rw:2, dur:'5.2h', tat:'Out TAT', tc:'#f87171' },
+  ];
+
   return (
-    <div className="dark bg-[#10141a] text-[#dfe2eb] font-['Inter'] overflow-hidden h-screen flex flex-col">
+    <>
+      <style>{CSS}</style>
+      <div className="cc-root">
 
-      {/* ── Top Nav ── */}
-      <header className="bg-[#10141a] text-[#afc6ff] text-sm flex justify-between items-center w-full px-6 h-16 shrink-0 z-50 border-b border-[#c2c6d6]/20">
-        <div className="flex items-center gap-8">
-          <span className="text-xl font-black text-[#dfe2eb]">SmartCue</span>
-          <nav className="hidden md:flex gap-6">
-            {['Dashboard', 'Analytics', 'Team', 'Settings'].map(item => (
-              <a key={item}
-                className={`pb-1 transition-colors ${item === 'Dashboard'
-                  ? 'text-[#afc6ff] font-bold border-b-2 border-[#afc6ff]'
-                  : 'text-[#c2c6d6] hover:text-[#dfe2eb]'}`}
-                href="#">
-                {item}
-              </a>
-            ))}
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative bg-[#0a0e14] px-4 py-1.5 rounded-full flex items-center gap-2 border border-[#424754]/20">
-            <span className="material-symbols-outlined text-sm text-[#c2c6d6]">search</span>
-            <input className="bg-transparent border-none focus:ring-0 text-xs w-48 text-[#dfe2eb] outline-none"
-              placeholder="Search Command Center..." type="text" />
-          </div>
-          <button className="material-symbols-outlined text-[#c2c6d6] hover:text-[#afc6ff] p-2 rounded-full hover:bg-[#262a31]">notifications</button>
-          <button className="material-symbols-outlined text-[#c2c6d6] hover:text-[#afc6ff] p-2 rounded-full hover:bg-[#262a31]">videocam</button>
-          <div className="h-8 w-8 rounded-full bg-[#1f6feb] flex items-center justify-center text-xs font-bold text-white border border-[#424754]/30">
-            {currentUser?.name?.slice(0, 2).toUpperCase() ?? 'PG'}
-          </div>
-        </div>
-      </header>
-
-      {/* ── Main ── */}
-      <main className="flex-1 flex overflow-hidden">
-
-        {/* ── LEFT: Live Meet ── */}
-        <section className="w-[40%] flex flex-col bg-[#10141a] border-r border-[#fabc45]/30 relative h-full">
-
-          {/* Meet header */}
-          <div className="p-6 flex justify-between items-center">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <h2 className="text-lg font-bold tracking-tight text-[#dfe2eb]">Operations Alignment</h2>
+        {/* Topbar */}
+        <header className="cc-topbar">
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <button onClick={() => navigate('/supremo')} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#8b9ab8', fontSize:12, padding:'5px 12px', cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>← Back</button>
+            <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+              <div style={{ width:30, height:30, borderRadius:7, background:'linear-gradient(135deg,#b8860b,#d4a847,#f0c060)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:11, color:'#1a1200' }}>SC</div>
+              <div>
+                <div style={{ fontWeight:700, fontSize:13, color:'#f0c060', lineHeight:1 }}>SmartCue</div>
+                <div style={{ fontSize:9, color:'#8b9ab8' }}>Command Center</div>
               </div>
-              <span className="text-xs font-mono text-[#c2c6d6] uppercase tracking-widest mt-1">Live Feed • Private Channel</span>
             </div>
-            <div className="bg-[#262a31] px-3 py-1.5 rounded-lg border border-[#424754]/20 flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm text-[#afc6ff]">schedule</span>
-              <span className="text-sm font-mono font-medium">{timerDisplay}</span>
-            </div>
+            <nav style={{ display:'flex', gap:18, marginLeft:6 }}>
+              {['Dashboard','Analytics','Team','Settings'].map(item => (
+                <span key={item} style={{ fontSize:12, color: item === 'Dashboard' ? '#afc6ff' : '#8b9ab8', fontWeight: item === 'Dashboard' ? 600 : 400, cursor:'pointer' }}>{item}</span>
+              ))}
+            </nav>
           </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ background:'rgba(10,14,20,0.8)', borderRadius:20, padding:'5px 13px', border:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', gap:7 }}>
+              <span style={{ fontSize:11, color:'#4a5568' }}>🔍</span>
+              <input style={{ background:'transparent', border:'none', outline:'none', fontSize:11, color:'#eef2ff', width:150, fontFamily:'DM Sans,sans-serif' }} placeholder="Search Command Center..." />
+            </div>
+            <div style={{ width:30, height:30, borderRadius:'50%', background:'rgba(99,102,241,0.2)', border:'1px solid rgba(99,102,241,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#a5b4fc' }}>{userInitials}</div>
+          </div>
+        </header>
 
-          {/* Primary video tile */}
-          <div className="flex-1 px-6 pb-4 flex flex-col justify-center">
-            <div className="relative aspect-video rounded-xl overflow-hidden border-2 border-[#afc6ff]/40 shadow-[0_0_20px_rgba(175,198,255,0.2)]">
-              <div className="w-full h-full bg-[#1c2026] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3 opacity-60">
-                  <span className="material-symbols-outlined text-4xl text-[#afc6ff]">videocam</span>
-                  <span className="text-xs text-[#c2c6d6]">Camera feed</span>
+        <main className="cc-main">
+
+          {/* LEFT: Live Meet */}
+          <section className="cc-left">
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ width:8, height:8, borderRadius:'50%', background:'#22c55e', display:'inline-block', animation:'ccBlink 1.5s infinite' }} />
+                  <span style={{ fontWeight:700, fontSize:13, color:'#eef2ff' }}>Operations Alignment</span>
                 </div>
+                <div style={{ fontSize:9, color:'#4a5568', textTransform:'uppercase', letterSpacing:'.1em', marginTop:2 }}>Live Feed · Private Channel</div>
               </div>
-              <div className="absolute bottom-4 left-4 bg-[#10141a]/80 backdrop-blur-md px-3 py-1 rounded-md border border-[#424754]/30 flex items-center gap-2">
-                <span className="text-xs font-semibold text-[#dfe2eb]">Sarah Jenkins (CEO)</span>
-                <span className="material-symbols-outlined text-xs text-[#afc6ff]">mic</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Participant thumbnails */}
-          <div className="px-6 pb-24 grid grid-cols-4 gap-3">
-            {[
-              { initials: 'JD', bg: 'bg-[#1f6feb]/30', color: 'text-[#afc6ff]', name: 'James D.' },
-              { initials: 'AM', bg: 'bg-[#ee9800]/30', color: 'text-[#ffb95f]', name: 'Anna M.' },
-              { initials: 'PG', bg: 'bg-emerald-900/40', color: 'text-emerald-400', name: 'Pushkaraj' },
-              { initials: '+12', bg: 'bg-[#262a31]', color: 'text-[#fabc45]', name: '' },
-            ].map(({ initials, bg, color, name }) => (
-              <div key={initials} className="aspect-video rounded-lg overflow-hidden border border-[#424754]/20 relative flex flex-col items-center justify-center gap-1">
-                <div className={`w-8 h-8 rounded-full ${bg} flex items-center justify-center text-xs font-bold ${color}`}>{initials}</div>
-                {name && <span className="text-[8px] text-[#c2c6d6]">{name}</span>}
-              </div>
-            ))}
-          </div>
-
-          {/* Floating toolbar */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-[#1c2026]/80 backdrop-blur-xl rounded-full border border-[#424754]/20 shadow-2xl">
-            {['mic', 'videocam', 'present_to_all'].map(icon => (
-              <button key={icon} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[#31353c] transition-colors text-[#dfe2eb]">
-                <span className="material-symbols-outlined">{icon}</span>
-              </button>
-            ))}
-            <div className="w-px h-6 bg-[#424754]/30 mx-1" />
-            {['group', 'chat'].map(icon => (
-              <button key={icon} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[#31353c] transition-colors text-[#dfe2eb]">
-                <span className="material-symbols-outlined">{icon}</span>
-              </button>
-            ))}
-            <button className="ml-2 px-6 h-10 bg-red-700 rounded-full text-white font-bold text-sm tracking-wide hover:opacity-90 transition-opacity">
-              End
-            </button>
-          </div>
-        </section>
-
-        {/* ── RIGHT: Analytics ── */}
-        <section className="w-[60%] flex flex-col bg-[#10141a] overflow-y-auto">
-
-          {/* Filter pills */}
-          <div className="px-8 pt-8 pb-4 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex bg-[#1c2026] rounded-lg p-1 border border-[#424754]/10">
-                <button className="px-4 py-1.5 rounded-md text-xs font-bold text-[#fabc45] bg-[#10141a] shadow-sm">
-                  Week {getWeekNumber(new Date())}
-                </button>
-                <button className="px-4 py-1.5 rounded-md text-xs font-medium text-[#c2c6d6] hover:text-[#dfe2eb]">April 2026</button>
-              </div>
-              <div className="h-8 w-px bg-[#424754]/20" />
-              <div className="flex -space-x-2">
-                {['JD', 'AM', 'PG'].map((init, i) => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-[#10141a] bg-[#1f6feb] flex items-center justify-center text-[8px] font-bold text-white">
-                    {init}
-                  </div>
-                ))}
-                <button className="w-8 h-8 rounded-full border-2 border-[#10141a] bg-[#31353c] flex items-center justify-center text-[10px] text-[#c2c6d6] font-bold">+</button>
+              <div style={{ background:'rgba(16,22,36,0.8)', padding:'4px 10px', borderRadius:7, border:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:5 }}>
+                <span style={{ fontSize:11 }}>🕐</span>
+                <span style={{ fontSize:11, fontFamily:'monospace', fontWeight:600 }}>{timerDisplay}</span>
               </div>
             </div>
-            <button className="flex items-center gap-2 px-4 py-1.5 bg-[#262a31] rounded-lg text-xs font-medium border border-[#424754]/20 hover:bg-[#31353c] transition-colors text-[#dfe2eb]">
-              <span className="material-symbols-outlined text-sm">filter_list</span>
-              More Filters
-            </button>
-          </div>
 
-          {/* Promise Score Banner */}
-          {bannerVisible && (
-            <div className="px-8 py-4">
-              <div className="bg-[#1c2026] rounded-xl p-4 flex items-center justify-between border border-[#424754]/10 border-l-4 border-l-[#fabc45] shadow-lg shadow-black/20">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-[#996c00]/20 rounded-lg flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[#fabc45]">military_tech</span>
-                  </div>
-                  <span className="text-sm font-medium text-[#dfe2eb]">
-                    What would be your promise score for the next week?
+            <div className="cc-video-main">
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, opacity:.55 }}>
+                <div style={{ width:60, height:60, borderRadius:'50%', background:'rgba(31,111,235,0.2)', border:'2px solid rgba(31,111,235,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:700, color:'#afc6ff' }}>SJ</div>
+                <span style={{ fontSize:10, color:'#8b9ab8' }}>Sarah Jenkins (CEO)</span>
+              </div>
+              <div style={{ position:'absolute', bottom:8, left:8, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(8px)', padding:'3px 9px', borderRadius:5, fontSize:10, color:'#eef2ff', border:'1px solid rgba(255,255,255,0.1)' }}>Sarah Jenkins (CEO)</div>
+              <div style={{ position:'absolute', top:7, right:7, background:'rgba(31,111,235,0.12)', border:'1px solid rgba(31,111,235,0.25)', borderRadius:4, padding:'2px 6px', fontSize:9, color:'#afc6ff' }}>HD</div>
+            </div>
+
+            <div className="cc-thumbs">
+              {PARTICIPANTS.map(({ ini, bg, c, name }) => (
+                <div key={ini} className="cc-thumb">
+                  <div style={{ width:26, height:26, borderRadius:'50%', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:700, color:c }}>{ini}</div>
+                  {name && <span style={{ fontSize:8, color:'#4a5568' }}>{name}</span>}
+                </div>
+              ))}
+            </div>
+
+            <div className="cc-toolbar">
+              {['🎙','📹','🖥','👥','💬'].map((icon, i) => (
+                <div key={i} className="cc-tb-btn">{icon}</div>
+              ))}
+              <button style={{ marginLeft:4, background:'#dc2626', border:'none', borderRadius:7, padding:'0 14px', height:30, color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer' }}>End</button>
+            </div>
+          </section>
+
+          {/* RIGHT: Analytics */}
+          <section className="cc-right">
+
+            <div className="cc-filters">
+              <div className="cc-pill">📅 <b>Week {getWeekNumber(new Date())}</b></div>
+              <div className="cc-pill">📅 <b>April 2026</b></div>
+              <div className="cc-pill">👤 <b>All Users</b> ▾</div>
+            </div>
+
+            {bannerVisible && (
+              <div className="cc-banner">
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:34, height:34, background:'rgba(153,108,0,0.15)', borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center', fontSize:15 }}>🎖</div>
+                  <span style={{ fontSize:12, color:'#c2c6d6' }}>
+                    <span style={{ color:'#fabc45', fontWeight:600 }}>What would be your promise score</span> for the next week?
                   </span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <select
-                    className="bg-[#0a0e14] border border-[#424754]/30 text-xs rounded-lg px-3 py-1.5 text-[#dfe2eb] outline-none focus:border-[#fabc45]"
-                    value={selectedScore}
-                    onChange={e => setSelectedScore(Number(e.target.value))}
-                  >
-                    {[0, -1, -2, -3, -4, -5].map(v => (
-                      <option key={v} value={v}>{v}%</option>
-                    ))}
+                <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+                  <select className="cc-select" value={selectedScore} onChange={e => setSelectedScore(Number(e.target.value))}>
+                    {[0,-1,-2,-3,-4,-5].map(v => <option key={v} value={v}>{v}%</option>)}
                   </select>
-                  <button
-                    onClick={handleCommitBanner}
-                    className="bg-[#fabc45] text-[#422c00] px-6 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:brightness-110 transition-all shadow-md"
-                  >
-                    Commit
-                  </button>
+                  <button className="cc-commit-btn" onClick={handleCommitBanner}>Commit ✓</button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Tab Bar */}
-          <div className="px-8 border-b border-[#424754]/10 flex items-center justify-between">
-            <div className="flex gap-8">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`pb-4 text-sm font-bold relative transition-colors ${activeTab === 'overview' ? 'text-[#dfe2eb]' : 'text-[#c2c6d6] hover:text-[#dfe2eb]'}`}
-              >
-                Overview
-                {activeTab === 'overview' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#fabc45]" />}
-              </button>
+            <div className="cc-tabs">
+              <button className={`cc-tab${activeTab === 'overview' ? ' active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
               {promiseTabVisible && (
-                <button
-                  onClick={() => setActiveTab('promise')}
-                  className={`pb-4 text-sm font-medium relative transition-colors ${activeTab === 'promise' ? 'text-[#dfe2eb] font-bold' : 'text-[#c2c6d6] hover:text-[#dfe2eb]'}`}
-                >
-                  ⭐ Promise Score
-                  {activeTab === 'promise' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#fabc45]" />}
-                </button>
+                <button className={`cc-tab${activeTab === 'promise' ? ' active' : ''}`} onClick={() => setActiveTab('promise')}>⭐ Promise Score</button>
               )}
+              <span style={{ marginLeft:'auto', fontSize:9, color:'#4a5568', alignSelf:'center', fontFamily:'monospace', paddingRight:4 }}>Updated: just now</span>
             </div>
-            <div className="pb-4">
-              <span className="text-[10px] font-mono text-[#c2c6d6] uppercase tracking-tighter">Updated: just now</span>
-            </div>
-          </div>
 
-          {/* ── OVERVIEW TAB ── */}
-          {activeTab === 'overview' && (
-            <div className="p-8 space-y-8">
+            {/* OVERVIEW */}
+            {activeTab === 'overview' && (
+              <>
+                <div className="cc-metrics">
+                  {METRICS.map(({ label, value, color }) => (
+                    <div key={label} className="cc-metric">
+                      <div style={{ fontSize:8, fontWeight:700, color, textTransform:'uppercase', letterSpacing:'.07em', marginBottom:3 }}>{label}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:'#eef2ff', lineHeight:1 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
 
-              {/* 7 Metric Cards */}
-              <div className="grid grid-cols-7 gap-4">
-                <MetricCard label="Approved"   value={24}    color="text-emerald-400" />
-                <MetricCard label="Pending"    value={12}    color="text-amber-400" />
-                <MetricCard label="Assigned"   value={48}    color="text-blue-400" />
-                <MetricCard label="Avg Score"  value="9.2"   color="text-purple-400" />
-                <MetricCard label="Rework"     value="03"    color="text-rose-400" />
-                <MetricCard label="In TAT"     value="94%"   color="text-teal-400" />
-                <MetricCard label="Out of TAT" value="06%"   color="text-rose-500" />
-              </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-2 gap-8">
-                {/* Bar chart */}
-                <div className="bg-[#1c2026] p-6 rounded-xl border border-[#424754]/10">
-                  <h3 className="text-sm font-bold text-[#dfe2eb] mb-6 flex items-center gap-2">
-                    <span className="w-1 h-3 bg-[#afc6ff] rounded-full" />
-                    Task Completion Duration
-                  </h3>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Research Phase', val: '4.2h', pct: 75 },
-                      { label: 'Design Sync',    val: '1.8h', pct: 40 },
-                      { label: 'Dev Review',     val: '5.1h', pct: 90 },
-                    ].map(({ label, val, pct }) => (
-                      <div key={label} className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-medium text-[#c2c6d6]">
-                          <span>{label}</span><span>{val}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-[#10141a] rounded-full overflow-hidden">
-                          <div className="h-full bg-[#afc6ff] rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
+                <div className="cc-chart-row">
+                  <div className="cc-chart-box" style={{ flex:1.3 }}>
+                    <div style={{ fontSize:10, fontWeight:600, color:'#8b9ab8', display:'flex', alignItems:'center', gap:5 }}>
+                      <span style={{ width:3, height:10, background:'#afc6ff', borderRadius:2, display:'inline-block' }} />
+                      Task Completion Duration
+                    </div>
+                    {BARS.map(({ label, val, pct, color }) => (
+                      <div key={label} className="cc-bar-row">
+                        <span style={{ fontSize:9, color:'#4a5568', width:60, textAlign:'right', flexShrink:0 }}>{label}</span>
+                        <div className="cc-bar-track"><div className="cc-bar-fill" style={{ width:`${pct}%`, background:color }} /></div>
+                        <span style={{ fontSize:9, color:'#8b9ab8', width:26, flexShrink:0 }}>{val}</span>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* Donut */}
-                <div className="bg-[#1c2026] p-6 rounded-xl border border-[#424754]/10 flex flex-col">
-                  <h3 className="text-sm font-bold text-[#dfe2eb] mb-6 flex items-center gap-2">
-                    <span className="w-1 h-3 bg-[#fabc45] rounded-full" />
-                    In TAT vs Out of TAT
-                  </h3>
-                  <div className="flex-1 flex items-center justify-center gap-8">
-                    <div className="relative w-32 h-32">
-                      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none" stroke="#262a31" strokeWidth="3" />
-                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none" stroke="#14b8a6" strokeWidth="3"
-                          strokeDasharray="94, 100" strokeLinecap="round" />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-xl font-black text-[#dfe2eb]">94%</span>
-                        <span className="text-[8px] uppercase tracking-tighter text-[#c2c6d6]">Optimal</span>
-                      </div>
+                  <div className="cc-chart-box">
+                    <div style={{ fontSize:10, fontWeight:600, color:'#8b9ab8', display:'flex', alignItems:'center', gap:5 }}>
+                      <span style={{ width:3, height:10, background:'#fabc45', borderRadius:2, display:'inline-block' }} />
+                      In TAT vs Out of TAT
                     </div>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-teal-500" />
-                        <span className="text-[10px] text-[#c2c6d6]">On Schedule (TAT)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-rose-500" />
-                        <span className="text-[10px] text-[#c2c6d6]">Delayed</span>
+                    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:12 }}>
+                      <svg width="84" height="84" viewBox="0 0 90 90">
+                        <circle cx="45" cy="45" r="32" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
+                        <circle cx="45" cy="45" r="32" fill="none" stroke="#2dd4bf" strokeWidth="11" strokeDasharray="120 81" strokeLinecap="round" transform="rotate(-90 45 45)" />
+                        <circle cx="45" cy="45" r="32" fill="none" stroke="#f87171" strokeWidth="11" strokeDasharray="81 120" strokeDashoffset="-120" strokeLinecap="round" transform="rotate(-90 45 45)" />
+                        <text x="45" y="41" textAnchor="middle" fill="#eef2ff" fontSize="13" fontWeight="700">94%</text>
+                        <text x="45" y="53" textAnchor="middle" fill="#8b9ab8" fontSize="7">In TAT</text>
+                      </svg>
+                      <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                        {[{ c:'#2dd4bf', l:'On Schedule' }, { c:'#f87171', l:'Delayed' }].map(({ c, l }) => (
+                          <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:10, color:'#8b9ab8' }}>
+                            <span style={{ width:8, height:8, borderRadius:'50%', background:c, display:'inline-block' }} />{l}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Task Table */}
-              <div className="bg-[#1c2026] rounded-xl border border-[#424754]/10 overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#424754]/10 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-[#dfe2eb]">Recent Active Tasks</h3>
-                  <button className="text-xs font-bold text-[#afc6ff] hover:underline">View All</button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                <div className="cc-table-wrap">
+                  <div style={{ padding:'9px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontWeight:600, fontSize:12, color:'#eef2ff' }}>Recent Active Tasks</span>
+                    <span style={{ fontSize:11, color:'#6366f1', cursor:'pointer', fontWeight:600 }}>View All</span>
+                  </div>
+                  <table className="cc-table">
                     <thead>
-                      <tr className="bg-[#181c22] text-[#c2c6d6]">
-                        {['Task Name', 'Assigned To', 'Status', 'Score', 'Duration', 'TAT'].map(h => (
-                          <th key={h} className="px-6 py-3 font-bold uppercase tracking-widest">{h}</th>
-                        ))}
-                      </tr>
+                      <tr>{['Task','Assigned','Status','Score','Rework','Dur.','TAT'].map(h => <th key={h}>{h}</th>)}</tr>
                     </thead>
-                    <tbody className="divide-y divide-[#424754]/5">
-                      {[
-                        { task: 'UI: Command Panel', initials: 'JD', name: 'James D.', status: 'In Progress', statusColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', score: 9.8, dur: '04:12h', tat: 'OK',   tatColor: 'text-emerald-500' },
-                        { task: 'Backend Schema',    initials: 'AM', name: 'Anna M.',  status: 'Review',      statusColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',   score: 8.5, dur: '08:45h', tat: 'Late', tatColor: 'text-rose-500'    },
-                      ].map(row => (
-                        <tr key={row.task} className="hover:bg-[#262a31] transition-colors">
-                          <td className="px-6 py-4 font-medium text-[#dfe2eb]">{row.task}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-[#1f6feb]/30 flex items-center justify-center text-[8px] font-bold text-[#afc6ff]">{row.initials}</div>
-                              <span>{row.name}</span>
-                            </div>
+                    <tbody>
+                      {TASKS.map(row => (
+                        <tr key={row.task}>
+                          <td style={{ color:'#eef2ff', fontWeight:500 }}>{row.task}</td>
+                          <td>
+                            <span className="cc-av" style={{ width:17, height:17, background:row.ib, color:row.ic }}>{row.ini}</span>
+                            {row.name}
                           </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold border uppercase ${row.statusColor}`}>{row.status}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center font-mono">{row.score}</td>
-                          <td className="px-6 py-4 text-[#c2c6d6]">{row.dur}</td>
-                          <td className={`px-6 py-4 font-bold ${row.tatColor}`}>{row.tat}</td>
+                          <td><span className="cc-badge" style={{ background:row.sb, color:row.sc, border:`1px solid ${row.sc}33` }}>{row.st}</span></td>
+                          <td style={{ color: row.score > 0 ? '#4ade80' : '#4a5568', fontFamily:'monospace' }}>{row.score > 0 ? row.score : '—'}</td>
+                          <td>{row.rw}</td>
+                          <td>{row.dur}</td>
+                          <td style={{ color:row.tc, fontWeight:600 }}>{row.tat}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
-          )}
+              </>
+            )}
 
-          {/* ── PROMISE SCORE TAB ── */}
-          {activeTab === 'promise' && (
-            <div className="p-8 space-y-6">
-
-              {/* Hero card */}
-              {latestScore && (
-                <div className="bg-[#1c2026] rounded-xl border border-[#fabc45]/20 p-6 flex items-center justify-between">
-                  <div className="space-y-2">
-                    <div className="text-[10px] text-[#c2c6d6] uppercase tracking-widest">Latest commitment</div>
-                    <div className="text-5xl font-black text-[#fabc45]">{latestScore.score}%</div>
-                    <div className="text-xs text-[#c2c6d6]">
-                      Committed on {formatDate(latestScore.date)} — {latestScore.weekLabel}
+            {/* PROMISE SCORE */}
+            {activeTab === 'promise' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:10, flex:1, overflow:'hidden' }}>
+                {latestScore && (
+                  <div className="cc-ps-hero">
+                    <div>
+                      <div style={{ fontSize:9, color:'#4a5568', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:4 }}>Latest Commitment</div>
+                      <div style={{ fontSize:42, fontWeight:800, color:'#fabc45', lineHeight:1 }}>{latestScore.score}%</div>
+                      <div style={{ fontSize:10, color:'#8b9ab8', marginTop:4 }}>Committed {formatDate(latestScore.date)} — {latestScore.weekLabel}</div>
+                      {diff !== null && (
+                        <div style={{ marginTop:7, display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:7, background: diff >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(244,63,94,0.1)', fontSize:10, color: diff >= 0 ? '#4ade80' : '#fb7185', border:`1px solid ${diff >= 0 ? 'rgba(34,197,94,0.25)' : 'rgba(244,63,94,0.25)'}` }}>
+                          {diff >= 0 ? `↑ ${diff} pts above threshold` : `↓ ${Math.abs(diff)} pts below threshold`}
+                        </div>
+                      )}
                     </div>
-                    {diff !== null && (
-                      <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium ${diff >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        <span className="material-symbols-outlined text-sm">{diff >= 0 ? 'trending_up' : 'trending_down'}</span>
-                        {diff >= 0
-                          ? `You are ${diff} pts above your committed threshold`
-                          : `You are ${Math.abs(diff)} pts below your committed threshold`}
-                      </div>
-                    )}
-                  </div>
-                  {/* Arc gauge */}
-                  <div className="relative w-36 h-36">
-                    <svg className="w-full h-full" viewBox="0 0 90 90">
-                      <path d="M15 75 A40 40 0 1 1 75 75" fill="none" stroke="#262a31" strokeWidth="10" strokeLinecap="round" />
+                    <svg width="96" height="96" viewBox="0 0 90 90">
+                      <path d="M15 75 A40 40 0 1 1 75 75" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" strokeLinecap="round" />
                       <path d="M15 75 A40 40 0 1 1 75 75" fill="none" stroke="#fabc45" strokeWidth="10" strokeLinecap="round"
                         strokeDasharray={`${Math.round(((latestScore.score + 5) / 5) * 158)} 200`} />
-                      <text x="45" y="56" textAnchor="middle" fill="#fabc45" fontSize="13" fontWeight="600">{currentActual}</text>
-                      <text x="45" y="68" textAnchor="middle" fill="#8c90a0" fontSize="7">Current</text>
+                      <text x="45" y="55" textAnchor="middle" fill="#fabc45" fontSize="14" fontWeight="700">{currentActual}</text>
+                      <text x="45" y="67" textAnchor="middle" fill="#8b9ab8" fontSize="7">Current</text>
                     </svg>
-                    {targetScore !== null && (
-                      <div className="absolute bottom-1 left-0 right-0 text-center text-[9px] text-[#c2c6d6]">
-                        Target: {targetScore} ({latestScore.score}%)
-                      </div>
+                  </div>
+                )}
+
+                <div className="cc-history">
+                  <div className="cc-history-hdr">
+                    <span>Committed Promise Scores — All Weeks</span>
+                    <span style={{ color:'#6366f1', fontFamily:'monospace' }}>{scores.length} entries</span>
+                  </div>
+                  <div className="cc-history-body">
+                    {loadingScores ? (
+                      <div className="cc-empty">Loading history…</div>
+                    ) : scores.length === 0 ? (
+                      <div className="cc-empty">No promise scores committed yet.<br />Use the banner above to commit your first score.</div>
+                    ) : (
+                      [...scores].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(entry => (
+                        <div key={`${entry.week}-${entry.date}`} className="cc-history-row">
+                          <span style={{ color:'#eef2ff', fontWeight:500, width:56 }}>{entry.weekLabel}</span>
+                          <span style={{ color:'#4a5568', flex:1, fontSize:10 }}>{formatDate(entry.date)}</span>
+                          <span style={{ color:'#fabc45', fontWeight:700, width:30, textAlign:'center' }}>{entry.score}%</span>
+                          <span className="cc-badge" style={{
+                            background: entry.outcome==='met' ? 'rgba(34,197,94,0.1)' : entry.outcome==='missed' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)',
+                            color:      entry.outcome==='met' ? '#4ade80' : entry.outcome==='missed' ? '#fb7185' : '#fbbf24',
+                            border:    `1px solid ${entry.outcome==='met' ? 'rgba(34,197,94,0.25)' : entry.outcome==='missed' ? 'rgba(244,63,94,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                          }}>{entry.outcome}</span>
+                          {entry.outcome === 'pending' && (
+                            <div style={{ display:'flex', gap:4, marginLeft:4 }}>
+                              <button onClick={() => markOutcome(entry,'met')}    style={{ padding:'2px 6px', fontSize:9, background:'rgba(34,197,94,0.1)',  color:'#4ade80', border:'1px solid rgba(34,197,94,0.2)',  borderRadius:4, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Met</button>
+                              <button onClick={() => markOutcome(entry,'missed')} style={{ padding:'2px 6px', fontSize:9, background:'rgba(244,63,94,0.1)', color:'#fb7185', border:'1px solid rgba(244,63,94,0.2)', borderRadius:4, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Missed</button>
+                            </div>
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
-              )}
 
-              {/* History ledger */}
-              <div className="bg-[#1c2026] rounded-xl border border-[#424754]/10 overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#424754]/10 flex items-center justify-between bg-[#181c22]">
-                  <h3 className="text-sm font-bold text-[#dfe2eb]">Committed promise scores — all weeks</h3>
-                  <span className="text-[10px] text-[#c2c6d6] font-mono">{scores.length} entries</span>
-                </div>
-
-                {loadingScores ? (
-                  <div className="px-6 py-8 text-center text-xs text-[#c2c6d6]">Loading history…</div>
-                ) : scores.length === 0 ? (
-                  <div className="px-6 py-8 text-center text-xs text-[#c2c6d6]">
-                    No promise scores committed yet. Use the banner above to commit your first score.
+                <div className="cc-update-bar">
+                  <div>
+                    <div style={{ fontSize:11, color:'#eef2ff', fontWeight:500 }}>Commit promise score</div>
+                    <div style={{ fontSize:9, color:'#4a5568', marginTop:2 }}>For <span style={{ color:'#fabc45' }}>Week {nextWeek}</span></div>
                   </div>
-                ) : (
-                  <div className="divide-y divide-[#424754]/5 max-h-64 overflow-y-auto">
-                    {[...scores]
-                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                      .map(entry => (
-                        <div key={`${entry.week}-${entry.date}`} className="px-6 py-3 flex items-center justify-between hover:bg-[#262a31] transition-colors">
-                          <span className="text-sm text-[#dfe2eb] font-medium w-24">{entry.weekLabel}</span>
-                          <span className="text-xs text-[#c2c6d6] flex-1 px-4">{formatDate(entry.date)}</span>
-                          <span className="text-sm font-bold text-[#fabc45] w-12 text-center">{entry.score}%</span>
-                          <div className="flex items-center gap-2">
-                            <OutcomeBadge outcome={entry.outcome} />
-                            {/* Mark met/missed buttons for pending entries */}
-                            {entry.outcome === 'pending' && (
-                              <div className="flex gap-1 ml-2">
-                                <button
-                                  onClick={() => markOutcome(entry, 'met')}
-                                  className="px-2 py-0.5 text-[9px] bg-emerald-900/30 text-emerald-400 rounded border border-emerald-500/20 hover:bg-emerald-900/50 transition-colors"
-                                >Met</button>
-                                <button
-                                  onClick={() => markOutcome(entry, 'missed')}
-                                  className="px-2 py-0.5 text-[9px] bg-rose-900/30 text-rose-400 rounded border border-rose-500/20 hover:bg-rose-900/50 transition-colors"
-                                >Missed</button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                  <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+                    <select className="cc-select" value={updateScore} onChange={e => setUpdateScore(Number(e.target.value))}>
+                      {[0,-1,-2,-3,-4,-5].map(v => <option key={v} value={v}>{v}%</option>)}
+                    </select>
+                    <button className="cc-commit-btn" onClick={() => saveScore(updateScore)}>Commit ✓</button>
                   </div>
-                )}
-              </div>
-
-              {/* Commit next week */}
-              <div className="bg-[#1c2026] rounded-xl border border-[#424754]/10 p-4 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-xs font-medium text-[#dfe2eb]">Commit promise score</div>
-                  <div className="text-[10px] text-[#c2c6d6]">
-                    For <span className="text-[#fabc45]">Week {nextWeek}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <select
-                    className="bg-[#0a0e14] border border-[#424754]/30 text-xs rounded-lg px-3 py-1.5 text-[#dfe2eb] outline-none focus:border-[#fabc45]"
-                    value={updateScore}
-                    onChange={e => setUpdateScore(Number(e.target.value))}
-                  >
-                    {[0, -1, -2, -3, -4, -5].map(v => (
-                      <option key={v} value={v}>{v}%</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleCommitPanel}
-                    className="bg-[#fabc45] text-[#422c00] px-5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:brightness-110 transition-all"
-                  >
-                    Commit ✓
-                  </button>
                 </div>
               </div>
+            )}
 
-            </div>
-          )}
-
-        </section>
-      </main>
-    </div>
+          </section>
+        </main>
+      </div>
+    </>
   );
 };
 
