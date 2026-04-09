@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface PromiseScore {
   _id?: string;
   userId: string;
@@ -11,10 +13,36 @@ interface PromiseScore {
   outcome: 'pending' | 'met' | 'missed';
 }
 
+interface LiveTask {
+  _id: string;
+  title: string;
+  status: string;
+  assignedTo: string;
+  assignedToName?: string;
+  priority: string;
+  dueDate: string;
+  tatBreached: boolean;
+  exactDeadline?: string;
+  scoreData?: { percentScore?: number };
+  attachments?: any[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface LiveUser {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  isDoer?: boolean;
+}
+
 interface CommandCenterProps {
   currentUser?: { _id: string; name: string; email: string };
   apiBase?: string;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getWeekNumber(d: Date): number {
   const start = new Date(d.getFullYear(), 0, 1);
@@ -27,11 +55,31 @@ function formatDate(iso: string): string {
 
 function padTwo(n: number) { return String(n).padStart(2, '0'); }
 
+function initials(name: string): string {
+  return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  { bg: 'rgba(99,102,241,0.25)',  c: '#a5b4fc' },
+  { bg: 'rgba(34,197,94,0.2)',    c: '#4ade80' },
+  { bg: 'rgba(245,158,11,0.2)',   c: '#fbbf24' },
+  { bg: 'rgba(244,63,94,0.2)',    c: '#fb7185' },
+  { bg: 'rgba(14,165,233,0.2)',   c: '#38bdf8' },
+  { bg: 'rgba(168,85,247,0.2)',   c: '#d8b4fe' },
+  { bg: 'rgba(249,115,22,0.2)',   c: '#fb923c' },
+];
+
+function avatarColor(idx: number) { return AVATAR_COLORS[idx % AVATAR_COLORS.length]; }
+
+// ── CSS ───────────────────────────────────────────────────────────────────────
+
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @keyframes ccBlink{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes ccPulse{0%,100%{border-left-color:#fabc45}50%{border-left-color:#5b3800}}
+@keyframes ccSpin{to{transform:rotate(360deg)}}
 .cc-root{display:flex;flex-direction:column;height:100vh;background:#02040a;color:#eef2ff;font-family:'DM Sans',sans-serif;overflow:hidden;}
-.cc-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;background:rgba(2,4,10,0.7);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;position:relative;z-index:10;}
+.cc-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;background:rgba(2,4,10,0.85);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;position:relative;z-index:10;}
 .cc-topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#d4a847,transparent);opacity:.4;}
 .cc-main{display:flex;flex:1;overflow:hidden;}
 .cc-left{width:40%;display:flex;flex-direction:column;border-right:1px solid rgba(212,168,71,0.2);padding:14px;gap:10px;background:rgba(2,4,10,0.3);}
@@ -55,11 +103,11 @@ const CSS = `
 .cc-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;}
 .cc-metric{background:rgba(16,22,36,0.8);border-radius:10px;padding:9px 6px;border:1px solid rgba(255,255,255,0.07);text-align:center;transition:.2s;}
 .cc-metric:hover{border-color:rgba(212,168,71,0.2);}
-.cc-chart-row{display:flex;gap:9px;flex:1;min-height:0;}
+.cc-chart-row{display:flex;gap:9px;min-height:160px;}
 .cc-chart-box{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);padding:11px;flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden;}
 .cc-bar-row{display:flex;align-items:center;gap:6px;}
 .cc-bar-track{flex:1;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;}
-.cc-bar-fill{height:100%;border-radius:4px;}
+.cc-bar-fill{height:100%;border-radius:4px;transition:width .8s ease;}
 .cc-table-wrap{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;flex-shrink:0;}
 .cc-table{width:100%;border-collapse:collapse;font-size:11px;}
 .cc-table th{padding:7px 10px;color:#4a5568;font-weight:700;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(2,4,10,0.5);font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
@@ -67,7 +115,7 @@ const CSS = `
 .cc-table tr:last-child td{border-bottom:none;}
 .cc-table tr:hover td{background:rgba(255,255,255,0.02);}
 .cc-badge{padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;}
-.cc-av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;margin-right:4px;}
+.cc-av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;margin-right:4px;flex-shrink:0;}
 .cc-ps-hero{background:rgba(16,22,36,0.8);border-radius:14px;border:1px solid rgba(212,168,71,0.2);padding:16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .cc-history{background:rgba(16,22,36,0.8);border-radius:14px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;flex:1;display:flex;flex-direction:column;min-height:0;}
 .cc-history-hdr{padding:9px 13px;font-size:10px;color:#4a5568;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(2,4,10,0.4);font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
@@ -77,12 +125,29 @@ const CSS = `
 .cc-history-row:hover{background:rgba(255,255,255,0.02);}
 .cc-empty{padding:28px;text-align:center;font-size:11px;color:#4a5568;line-height:1.8;}
 .cc-update-bar{background:rgba(16,22,36,0.8);border-radius:12px;border:1px solid rgba(255,255,255,0.07);padding:9px 13px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cc-live-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:ccBlink 1.5s infinite;margin-right:5px;}
 `;
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+
+function statusColor(status: string): { sc: string; sb: string } {
+  switch (status) {
+    case 'approved':    return { sc: '#4ade80', sb: 'rgba(34,197,94,0.1)'    };
+    case 'completed':   return { sc: '#4ade80', sb: 'rgba(34,197,94,0.1)'    };
+    case 'in_progress': return { sc: '#60a5fa', sb: 'rgba(96,165,250,0.1)'   };
+    case 'pending':     return { sc: '#fbbf24', sb: 'rgba(245,158,11,0.1)'   };
+    case 'rework':      return { sc: '#fb923c', sb: 'rgba(249,115,22,0.1)'   };
+    default:            return { sc: '#8b9ab8', sb: 'rgba(139,154,184,0.08)' };
+  }
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) => {
   const navigate = useNavigate();
   const API = apiBase ?? process.env.REACT_APP_API_URL ?? 'https://roswalt-backend-production.up.railway.app';
 
+  // ── State ──────────────────────────────────────────────────────────────────
   const [activeTab,         setActiveTab]         = useState<'overview' | 'promise'>('overview');
   const [promiseTabVisible, setPromiseTabVisible] = useState(false);
   const [bannerVisible,     setBannerVisible]     = useState(true);
@@ -92,18 +157,63 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
   const [loadingScores,     setLoadingScores]     = useState(false);
   const [elapsed,           setElapsed]           = useState(0);
 
+  // Live data
+  const [tasks,       setTasks]       = useState<LiveTask[]>([]);
+  const [users,       setUsers]       = useState<LiveUser[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setElapsed(s => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
-
   const timerDisplay = `${padTwo(Math.floor(elapsed / 3600))}:${padTwo(Math.floor((elapsed % 3600) / 60))}:${padTwo(elapsed % 60)}`;
 
+  // ── Fetch live data ────────────────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    try {
+      const [tasksRes, usersRes] = await Promise.all([
+        fetch(`${API}/api/tasks`),
+        fetch(`${API}/api/users`).catch(() => null),
+      ]);
+      if (tasksRes.ok) {
+        const raw = await tasksRes.json();
+        const arr: any[] = Array.isArray(raw) ? raw : raw.tasks || [];
+        const now = new Date();
+        setTasks(arr.map((t: any) => ({
+          ...t,
+          _id: t._id || t.id,
+          tatBreached: t.tatBreached ?? (
+            t.status !== 'completed' && t.status !== 'approved' &&
+            t.exactDeadline && new Date(t.exactDeadline) < now
+          ),
+          assignedToName: t.assignedToName ||
+            (t.assignedTo ? t.assignedTo.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : ''),
+        })));
+      }
+      if (usersRes?.ok) {
+        const ud = await usersRes.json();
+        const ua: any[] = Array.isArray(ud) ? ud : ud.users || [];
+        if (ua.length > 0) setUsers(ua);
+      }
+      setLastRefresh(new Date());
+    } catch (e) { console.error('[CommandCenter] fetchData', e); }
+    finally { setLoadingData(false); }
+  }, [API]);
+
+  useEffect(() => {
+    fetchData();
+    const poll = setInterval(fetchData, 30_000);
+    return () => clearInterval(poll);
+  }, [fetchData]);
+
+  // ── Promise scores ─────────────────────────────────────────────────────────
   const loadScores = useCallback(async () => {
     if (!currentUser?._id) return;
     setLoadingScores(true);
     try {
-      const res = await fetch(`${API}/api/promise-score/${currentUser._id}`);
+      const res  = await fetch(`${API}/api/promise-score/${currentUser._id}`);
       const data: PromiseScore[] = await res.json();
       setScores(data);
       if (data.length > 0) { setPromiseTabVisible(true); setBannerVisible(false); }
@@ -140,51 +250,74 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     setActiveTab('promise');
   };
 
+  // ── Derived metrics ────────────────────────────────────────────────────────
+  const approved   = tasks.filter(t => t.status === 'approved').length;
+  const pending    = tasks.filter(t => t.status === 'pending').length;
+  const assigned   = tasks.filter(t => t.status !== 'approved' && t.status !== 'completed').length;
+  const rework     = tasks.filter(t => t.status === 'rework').length;
+  const inTat      = tasks.filter(t => !t.tatBreached).length;
+  const outTat     = tasks.filter(t => t.tatBreached).length;
+  const totalTasks = tasks.length;
+
+  const scoredTasks = tasks.filter(t => t.scoreData?.percentScore != null);
+  const avgScore    = scoredTasks.length
+    ? (scoredTasks.reduce((s, t) => s + (t.scoreData!.percentScore!), 0) / scoredTasks.length).toFixed(1)
+    : '—';
+
+  const inTatPct  = totalTasks ? Math.round((inTat / totalTasks) * 100) : 0;
+  const outTatPct = totalTasks ? Math.round((outTat / totalTasks) * 100) : 0;
+
+  // Per-user task duration (mock hours per task type since backend doesn't store duration yet)
+  const userMap = new Map<string, LiveUser>();
+  users.forEach(u => { userMap.set(u.email, u); userMap.set(u._id, u); });
+
+  // Recent tasks (last 10)
+  const recentTasks = [...tasks]
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || '').getTime() - new Date(a.updatedAt || a.createdAt || '').getTime())
+    .slice(0, 8);
+
+  // Promise score derived
   const latestScore   = scores.length ? [...scores].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] : null;
-  const currentActual = 78;
+  const currentActual = scoredTasks.length ? Math.round(scoredTasks.reduce((s, t) => s + t.scoreData!.percentScore!, 0) / scoredTasks.length) : 78;
   const targetScore   = latestScore ? Math.round(currentActual * (1 + latestScore.score / 100)) : null;
   const diff          = targetScore !== null ? currentActual - targetScore : null;
   const nextWeek      = getWeekNumber(new Date()) + 1;
   const userInitials  = currentUser?.name?.slice(0, 2).toUpperCase() ?? 'SC';
 
-  const PARTICIPANTS = [
-    { ini: 'JD', bg: 'rgba(31,111,235,0.2)',  c: '#afc6ff', name: 'James D.'  },
-    { ini: 'AM', bg: 'rgba(238,152,0,0.2)',   c: '#ffb95f', name: 'Anna M.'   },
-    { ini: 'PG', bg: 'rgba(34,197,94,0.2)',   c: '#4ade80', name: 'Pushkaraj' },
-    { ini: '+12',bg: 'rgba(99,102,241,0.15)', c: '#a78bfa', name: ''          },
-  ];
+  // Top 4 participants from users list
+  const participants = users.slice(0, 3).map((u, i) => ({
+    ini: initials(u.name), bg: avatarColor(i).bg, c: avatarColor(i).c, name: u.name.split(' ')[0],
+  }));
+  if (users.length > 3) participants.push({ ini: `+${users.length - 3}`, bg: 'rgba(99,102,241,0.15)', c: '#a78bfa', name: '' });
 
   const METRICS = [
-    { label:'Approved',   value:24,    color:'#4ade80' },
-    { label:'Pending',    value:12,    color:'#fbbf24' },
-    { label:'Assigned',   value:48,    color:'#60a5fa' },
-    { label:'Avg Score',  value:'9.2', color:'#c4b5fd' },
-    { label:'Rework',     value:'03',  color:'#fb7185' },
-    { label:'In TAT',     value:'94%', color:'#2dd4bf' },
-    { label:'Out of TAT', value:'06%', color:'#f87171' },
+    { label: 'Approved',   value: approved,              color: '#4ade80' },
+    { label: 'Pending',    value: pending,               color: '#fbbf24' },
+    { label: 'Assigned',   value: assigned,              color: '#60a5fa' },
+    { label: 'Avg Score',  value: avgScore,              color: '#c4b5fd' },
+    { label: 'Rework',     value: String(rework).padStart(2, '0'), color: '#fb7185' },
+    { label: 'In TAT',     value: `${inTatPct}%`,        color: '#2dd4bf' },
+    { label: 'Out of TAT', value: `${outTatPct}%`,       color: '#f87171' },
   ];
 
-  const BARS = [
-    { label:'Research',    val:'4.2h', pct:75, color:'#6366f1' },
-    { label:'Design Sync', val:'1.8h', pct:40, color:'#8b5cf6' },
-    { label:'Dev Review',  val:'5.1h', pct:90, color:'#afc6ff' },
-    { label:'Ad Copy',     val:'3.2h', pct:65, color:'#f59e0b' },
-    { label:'Floor Plan',  val:'3.6h', pct:72, color:'#f97316' },
+  // Bar chart: task counts by status as "duration proxy"
+  const statusGroups = [
+    { label: 'Approved',    val: approved,                                          pct: totalTasks ? Math.round((approved/totalTasks)*100)    : 0, color: '#4ade80' },
+    { label: 'In Progress', val: tasks.filter(t=>t.status==='in_progress').length,  pct: totalTasks ? Math.round((tasks.filter(t=>t.status==='in_progress').length/totalTasks)*100) : 0, color: '#60a5fa' },
+    { label: 'Pending',     val: pending,                                           pct: totalTasks ? Math.round((pending/totalTasks)*100)     : 0, color: '#fbbf24' },
+    { label: 'Rework',      val: rework,                                            pct: totalTasks ? Math.round((rework/totalTasks)*100)      : 0, color: '#fb923c' },
+    { label: 'Breached',    val: outTat,                                            pct: totalTasks ? Math.round((outTat/totalTasks)*100)      : 0, color: '#f87171' },
   ];
 
-  const TASKS = [
-    { task:'Zaiden Reel',      ini:'PG', ic:'#afc6ff', ib:'rgba(31,111,235,0.2)',  name:'Pushkaraj', st:'Approved', sc:'#4ade80', sb:'rgba(34,197,94,0.1)',    score:92, rw:0, dur:'3.5h', tat:'In TAT',  tc:'#4ade80' },
-    { task:'Property Ad Copy', ini:'SK', ic:'#fbbf24', ib:'rgba(245,158,11,0.2)', name:'Shreya K.', st:'Pending',  sc:'#fbbf24', sb:'rgba(245,158,11,0.1)',  score:74, rw:1, dur:'2.1h', tat:'In TAT',  tc:'#4ade80' },
-    { task:'Floor Plan',       ini:'AM', ic:'#4ade80', ib:'rgba(34,197,94,0.2)',   name:'Aarav M.',  st:'Assigned', sc:'#60a5fa', sb:'rgba(96,165,250,0.1)',  score:0,  rw:0, dur:'4.8h', tat:'Out TAT', tc:'#f87171' },
-    { task:'Instagram Reel',   ini:'VN', ic:'#c4b5fd', ib:'rgba(167,139,250,0.2)',name:'Varun N.',  st:'Approved', sc:'#4ade80', sb:'rgba(34,197,94,0.1)',    score:88, rw:2, dur:'5.2h', tat:'Out TAT', tc:'#f87171' },
-  ];
+  // Donut arc lengths
+  const inTatArc  = totalTasks ? Math.round((inTat / totalTasks) * 201) : 0;
 
   return (
     <>
       <style>{CSS}</style>
       <div className="cc-root">
 
-        {/* Topbar */}
+        {/* ── Topbar ── */}
         <header className="cc-topbar">
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <button onClick={() => navigate('/supremo')} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#8b9ab8', fontSize:12, padding:'5px 12px', cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>← Back</button>
@@ -197,7 +330,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
             </div>
             <nav style={{ display:'flex', gap:18, marginLeft:6 }}>
               {['Dashboard','Analytics','Team','Settings'].map(item => (
-                <span key={item} style={{ fontSize:12, color: item === 'Dashboard' ? '#afc6ff' : '#8b9ab8', fontWeight: item === 'Dashboard' ? 600 : 400, cursor:'pointer' }}>{item}</span>
+                <span key={item} style={{ fontSize:12, color: item==='Dashboard'?'#afc6ff':'#8b9ab8', fontWeight: item==='Dashboard'?600:400, cursor:'pointer' }}>{item}</span>
               ))}
             </nav>
           </div>
@@ -206,42 +339,61 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
               <span style={{ fontSize:11, color:'#4a5568' }}>🔍</span>
               <input style={{ background:'transparent', border:'none', outline:'none', fontSize:11, color:'#eef2ff', width:150, fontFamily:'DM Sans,sans-serif' }} placeholder="Search Command Center..." />
             </div>
+            <button onClick={fetchData} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:7, color:'#8b9ab8', fontSize:11, padding:'4px 10px', cursor:'pointer', fontFamily:'DM Sans,sans-serif' }} title="Refresh data">↺</button>
             <div style={{ width:30, height:30, borderRadius:'50%', background:'rgba(99,102,241,0.2)', border:'1px solid rgba(99,102,241,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#a5b4fc' }}>{userInitials}</div>
           </div>
         </header>
 
         <main className="cc-main">
 
-          {/* LEFT: Live Meet */}
+          {/* ── LEFT: Live Meet ── */}
           <section className="cc-left">
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ width:8, height:8, borderRadius:'50%', background:'#22c55e', display:'inline-block', animation:'ccBlink 1.5s infinite' }} />
+                  <span className="cc-live-dot" />
                   <span style={{ fontWeight:700, fontSize:13, color:'#eef2ff' }}>Operations Alignment</span>
                 </div>
                 <div style={{ fontSize:9, color:'#4a5568', textTransform:'uppercase', letterSpacing:'.1em', marginTop:2 }}>Live Feed · Private Channel</div>
               </div>
               <div style={{ background:'rgba(16,22,36,0.8)', padding:'4px 10px', borderRadius:7, border:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:5 }}>
                 <span style={{ fontSize:11 }}>🕐</span>
-                <span style={{ fontSize:11, fontFamily:'monospace', fontWeight:600 }}>{timerDisplay}</span>
+                <span style={{ fontSize:11, fontFamily:'JetBrains Mono,monospace', fontWeight:600 }}>{timerDisplay}</span>
               </div>
             </div>
 
             <div className="cc-video-main">
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, opacity:.55 }}>
-                <div style={{ width:60, height:60, borderRadius:'50%', background:'rgba(31,111,235,0.2)', border:'2px solid rgba(31,111,235,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:700, color:'#afc6ff' }}>SJ</div>
-                <span style={{ fontSize:10, color:'#8b9ab8' }}>Sarah Jenkins (CEO)</span>
+                <div style={{ width:60, height:60, borderRadius:'50%', background:'rgba(31,111,235,0.2)', border:'2px solid rgba(31,111,235,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:700, color:'#afc6ff' }}>
+                  {userInitials}
+                </div>
+                <span style={{ fontSize:10, color:'#8b9ab8' }}>{currentUser?.name || 'Supremo'}</span>
               </div>
-              <div style={{ position:'absolute', bottom:8, left:8, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(8px)', padding:'3px 9px', borderRadius:5, fontSize:10, color:'#eef2ff', border:'1px solid rgba(255,255,255,0.1)' }}>Sarah Jenkins (CEO)</div>
+              <div style={{ position:'absolute', bottom:8, left:8, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(8px)', padding:'3px 9px', borderRadius:5, fontSize:10, color:'#eef2ff', border:'1px solid rgba(255,255,255,0.1)' }}>
+                {currentUser?.name || 'Supremo'} · Speaking
+              </div>
               <div style={{ position:'absolute', top:7, right:7, background:'rgba(31,111,235,0.12)', border:'1px solid rgba(31,111,235,0.25)', borderRadius:4, padding:'2px 6px', fontSize:9, color:'#afc6ff' }}>HD</div>
             </div>
 
             <div className="cc-thumbs">
-              {PARTICIPANTS.map(({ ini, bg, c, name }) => (
-                <div key={ini} className="cc-thumb">
+              {participants.slice(0, 4).map(({ ini, bg, c, name }, i) => (
+                <div key={i} className="cc-thumb">
                   <div style={{ width:26, height:26, borderRadius:'50%', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:700, color:c }}>{ini}</div>
                   {name && <span style={{ fontSize:8, color:'#4a5568' }}>{name}</span>}
+                </div>
+              ))}
+            </div>
+
+            {/* Live stats strip */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
+              {[
+                { label:'Total Tasks', value: totalTasks, color:'#afc6ff' },
+                { label:'Breached',    value: outTat,     color:'#f87171' },
+                { label:'Team',        value: users.length, color:'#4ade80' },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background:'rgba(16,22,36,0.7)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:8, padding:'7px 8px', textAlign:'center' }}>
+                  <div style={{ fontSize:16, fontWeight:700, color, fontFamily:'JetBrains Mono,monospace', lineHeight:1 }}>{value}</div>
+                  <div style={{ fontSize:8, color:'#4a5568', textTransform:'uppercase', letterSpacing:'.06em', marginTop:3 }}>{label}</div>
                 </div>
               ))}
             </div>
@@ -254,13 +406,17 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
             </div>
           </section>
 
-          {/* RIGHT: Analytics */}
+          {/* ── RIGHT: Analytics ── */}
           <section className="cc-right">
 
             <div className="cc-filters">
               <div className="cc-pill">📅 <b>Week {getWeekNumber(new Date())}</b></div>
-              <div className="cc-pill">📅 <b>April 2026</b></div>
-              <div className="cc-pill">👤 <b>All Users</b> ▾</div>
+              <div className="cc-pill">📅 <b>{new Date().toLocaleString('default',{month:'long'})} {new Date().getFullYear()}</b></div>
+              <div className="cc-pill">👤 <b>All Users ({users.length})</b> ▾</div>
+              {loadingData
+                ? <div className="cc-pill" style={{ color:'#fbbf24' }}>⏳ Loading…</div>
+                : <div className="cc-pill" style={{ color:'#22c55e' }}><span className="cc-live-dot" style={{ marginRight:3 }} />Live · {lastRefresh.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+              }
             </div>
 
             {bannerVisible && (
@@ -281,14 +437,16 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
             )}
 
             <div className="cc-tabs">
-              <button className={`cc-tab${activeTab === 'overview' ? ' active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
+              <button className={`cc-tab${activeTab==='overview'?' active':''}`} onClick={() => setActiveTab('overview')}>Overview</button>
               {promiseTabVisible && (
-                <button className={`cc-tab${activeTab === 'promise' ? ' active' : ''}`} onClick={() => setActiveTab('promise')}>⭐ Promise Score</button>
+                <button className={`cc-tab${activeTab==='promise'?' active':''}`} onClick={() => setActiveTab('promise')}>⭐ Promise Score</button>
               )}
-              <span style={{ marginLeft:'auto', fontSize:9, color:'#4a5568', alignSelf:'center', fontFamily:'monospace', paddingRight:4 }}>Updated: just now</span>
+              <span style={{ marginLeft:'auto', fontSize:9, color:'#4a5568', alignSelf:'center', fontFamily:'monospace', paddingRight:4 }}>
+                {totalTasks} tasks · refreshed {lastRefresh.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+              </span>
             </div>
 
-            {/* OVERVIEW */}
+            {/* ── OVERVIEW ── */}
             {activeTab === 'overview' && (
               <>
                 <div className="cc-metrics">
@@ -304,13 +462,13 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                   <div className="cc-chart-box" style={{ flex:1.3 }}>
                     <div style={{ fontSize:10, fontWeight:600, color:'#8b9ab8', display:'flex', alignItems:'center', gap:5 }}>
                       <span style={{ width:3, height:10, background:'#afc6ff', borderRadius:2, display:'inline-block' }} />
-                      Task Completion Duration
+                      Task Status Distribution
                     </div>
-                    {BARS.map(({ label, val, pct, color }) => (
+                    {statusGroups.map(({ label, val, pct, color }) => (
                       <div key={label} className="cc-bar-row">
-                        <span style={{ fontSize:9, color:'#4a5568', width:60, textAlign:'right', flexShrink:0 }}>{label}</span>
-                        <div className="cc-bar-track"><div className="cc-bar-fill" style={{ width:`${pct}%`, background:color }} /></div>
-                        <span style={{ fontSize:9, color:'#8b9ab8', width:26, flexShrink:0 }}>{val}</span>
+                        <span style={{ fontSize:9, color:'#4a5568', width:64, textAlign:'right', flexShrink:0 }}>{label}</span>
+                        <div className="cc-bar-track"><div className="cc-bar-fill" style={{ width:`${Math.max(pct,2)}%`, background:color }} /></div>
+                        <span style={{ fontSize:9, color:'#8b9ab8', width:22, flexShrink:0 }}>{val}</span>
                       </div>
                     ))}
                   </div>
@@ -323,13 +481,15 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                     <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:12 }}>
                       <svg width="84" height="84" viewBox="0 0 90 90">
                         <circle cx="45" cy="45" r="32" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
-                        <circle cx="45" cy="45" r="32" fill="none" stroke="#2dd4bf" strokeWidth="11" strokeDasharray="120 81" strokeLinecap="round" transform="rotate(-90 45 45)" />
-                        <circle cx="45" cy="45" r="32" fill="none" stroke="#f87171" strokeWidth="11" strokeDasharray="81 120" strokeDashoffset="-120" strokeLinecap="round" transform="rotate(-90 45 45)" />
-                        <text x="45" y="41" textAnchor="middle" fill="#eef2ff" fontSize="13" fontWeight="700">94%</text>
+                        <circle cx="45" cy="45" r="32" fill="none" stroke="#2dd4bf" strokeWidth="11"
+                          strokeDasharray={`${inTatArc} ${201 - inTatArc}`} strokeLinecap="round" transform="rotate(-90 45 45)" />
+                        <circle cx="45" cy="45" r="32" fill="none" stroke="#f87171" strokeWidth="11"
+                          strokeDasharray={`${201 - inTatArc} ${inTatArc}`} strokeDashoffset={-inTatArc} strokeLinecap="round" transform="rotate(-90 45 45)" />
+                        <text x="45" y="41" textAnchor="middle" fill="#eef2ff" fontSize="13" fontWeight="700">{inTatPct}%</text>
                         <text x="45" y="53" textAnchor="middle" fill="#8b9ab8" fontSize="7">In TAT</text>
                       </svg>
                       <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                        {[{ c:'#2dd4bf', l:'On Schedule' }, { c:'#f87171', l:'Delayed' }].map(({ c, l }) => (
+                        {[{ c:'#2dd4bf', l:`On Schedule — ${inTat}` },{ c:'#f87171', l:`Delayed — ${outTat}` }].map(({ c, l }) => (
                           <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:10, color:'#8b9ab8' }}>
                             <span style={{ width:8, height:8, borderRadius:'50%', background:c, display:'inline-block' }} />{l}
                           </div>
@@ -341,35 +501,50 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
                 <div className="cc-table-wrap">
                   <div style={{ padding:'9px 12px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontWeight:600, fontSize:12, color:'#eef2ff' }}>Recent Active Tasks</span>
-                    <span style={{ fontSize:11, color:'#6366f1', cursor:'pointer', fontWeight:600 }}>View All</span>
+                    <span style={{ fontWeight:600, fontSize:12, color:'#eef2ff' }}>Recent Active Tasks
+                      {loadingData && <span style={{ marginLeft:8, fontSize:10, color:'#fbbf24' }}>Loading…</span>}
+                    </span>
+                    <span style={{ fontSize:10, color:'#4a5568' }}>{recentTasks.length} of {totalTasks}</span>
                   </div>
                   <table className="cc-table">
                     <thead>
-                      <tr>{['Task','Assigned','Status','Score','Rework','Dur.','TAT'].map(h => <th key={h}>{h}</th>)}</tr>
+                      <tr>{['Task','Assigned To','Status','Score','Rework','TAT'].map(h => <th key={h}>{h}</th>)}</tr>
                     </thead>
                     <tbody>
-                      {TASKS.map(row => (
-                        <tr key={row.task}>
-                          <td style={{ color:'#eef2ff', fontWeight:500 }}>{row.task}</td>
-                          <td>
-                            <span className="cc-av" style={{ width:17, height:17, background:row.ib, color:row.ic }}>{row.ini}</span>
-                            {row.name}
-                          </td>
-                          <td><span className="cc-badge" style={{ background:row.sb, color:row.sc, border:`1px solid ${row.sc}33` }}>{row.st}</span></td>
-                          <td style={{ color: row.score > 0 ? '#4ade80' : '#4a5568', fontFamily:'monospace' }}>{row.score > 0 ? row.score : '—'}</td>
-                          <td>{row.rw}</td>
-                          <td>{row.dur}</td>
-                          <td style={{ color:row.tc, fontWeight:600 }}>{row.tat}</td>
-                        </tr>
-                      ))}
+                      {recentTasks.map((task, idx) => {
+                        const user      = userMap.get(task.assignedTo);
+                        const name      = task.assignedToName || user?.name || task.assignedTo?.split('@')[0] || '—';
+                        const ini       = initials(name);
+                        const av        = avatarColor(idx);
+                        const { sc, sb } = statusColor(task.status);
+                        const score     = task.scoreData?.percentScore;
+                        const tatColor  = task.tatBreached ? '#f87171' : '#4ade80';
+                        return (
+                          <tr key={task._id}>
+                            <td style={{ color:'#eef2ff', fontWeight:500, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{task.title}</td>
+                            <td>
+                              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                                <span className="cc-av" style={{ width:17, height:17, background:av.bg, color:av.c }}>{ini}</span>
+                                <span style={{ maxWidth:80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</span>
+                              </div>
+                            </td>
+                            <td><span className="cc-badge" style={{ background:sb, color:sc, border:`1px solid ${sc}33` }}>{task.status.replace(/_/g,' ')}</span></td>
+                            <td style={{ color: score != null ? '#4ade80' : '#4a5568', fontFamily:'monospace' }}>{score != null ? score : '—'}</td>
+                            <td style={{ color:'#8b9ab8' }}>{(task as any).reworkCount ?? 0}</td>
+                            <td style={{ color:tatColor, fontWeight:600, fontSize:10 }}>{task.tatBreached ? 'Out TAT' : 'In TAT'}</td>
+                          </tr>
+                        );
+                      })}
+                      {recentTasks.length === 0 && !loadingData && (
+                        <tr><td colSpan={6} style={{ textAlign:'center', color:'#4a5568', padding:20 }}>No tasks found</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               </>
             )}
 
-            {/* PROMISE SCORE */}
+            {/* ── PROMISE SCORE ── */}
             {activeTab === 'promise' && (
               <div style={{ display:'flex', flexDirection:'column', gap:10, flex:1, overflow:'hidden' }}>
                 {latestScore && (
@@ -379,8 +554,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                       <div style={{ fontSize:42, fontWeight:800, color:'#fabc45', lineHeight:1 }}>{latestScore.score}%</div>
                       <div style={{ fontSize:10, color:'#8b9ab8', marginTop:4 }}>Committed {formatDate(latestScore.date)} — {latestScore.weekLabel}</div>
                       {diff !== null && (
-                        <div style={{ marginTop:7, display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:7, background: diff >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(244,63,94,0.1)', fontSize:10, color: diff >= 0 ? '#4ade80' : '#fb7185', border:`1px solid ${diff >= 0 ? 'rgba(34,197,94,0.25)' : 'rgba(244,63,94,0.25)'}` }}>
-                          {diff >= 0 ? `↑ ${diff} pts above threshold` : `↓ ${Math.abs(diff)} pts below threshold`}
+                        <div style={{ marginTop:7, display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:7, background: diff>=0?'rgba(34,197,94,0.1)':'rgba(244,63,94,0.1)', fontSize:10, color: diff>=0?'#4ade80':'#fb7185', border:`1px solid ${diff>=0?'rgba(34,197,94,0.25)':'rgba(244,63,94,0.25)'}` }}>
+                          {diff>=0 ? `↑ ${diff} pts above threshold` : `↓ ${Math.abs(diff)} pts below threshold`}
                         </div>
                       )}
                     </div>
@@ -389,7 +564,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                       <path d="M15 75 A40 40 0 1 1 75 75" fill="none" stroke="#fabc45" strokeWidth="10" strokeLinecap="round"
                         strokeDasharray={`${Math.round(((latestScore.score + 5) / 5) * 158)} 200`} />
                       <text x="45" y="55" textAnchor="middle" fill="#fabc45" fontSize="14" fontWeight="700">{currentActual}</text>
-                      <text x="45" y="67" textAnchor="middle" fill="#8b9ab8" fontSize="7">Current</text>
+                      <text x="45" y="67" textAnchor="middle" fill="#8b9ab8" fontSize="7">Avg Score</text>
                     </svg>
                   </div>
                 )}
@@ -411,13 +586,13 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                           <span style={{ color:'#4a5568', flex:1, fontSize:10 }}>{formatDate(entry.date)}</span>
                           <span style={{ color:'#fabc45', fontWeight:700, width:30, textAlign:'center' }}>{entry.score}%</span>
                           <span className="cc-badge" style={{
-                            background: entry.outcome==='met' ? 'rgba(34,197,94,0.1)' : entry.outcome==='missed' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)',
-                            color:      entry.outcome==='met' ? '#4ade80' : entry.outcome==='missed' ? '#fb7185' : '#fbbf24',
-                            border:    `1px solid ${entry.outcome==='met' ? 'rgba(34,197,94,0.25)' : entry.outcome==='missed' ? 'rgba(244,63,94,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                            background: entry.outcome==='met'?'rgba(34,197,94,0.1)':entry.outcome==='missed'?'rgba(244,63,94,0.1)':'rgba(245,158,11,0.1)',
+                            color:      entry.outcome==='met'?'#4ade80':entry.outcome==='missed'?'#fb7185':'#fbbf24',
+                            border:    `1px solid ${entry.outcome==='met'?'rgba(34,197,94,0.25)':entry.outcome==='missed'?'rgba(244,63,94,0.25)':'rgba(245,158,11,0.25)'}`,
                           }}>{entry.outcome}</span>
-                          {entry.outcome === 'pending' && (
+                          {entry.outcome==='pending' && (
                             <div style={{ display:'flex', gap:4, marginLeft:4 }}>
-                              <button onClick={() => markOutcome(entry,'met')}    style={{ padding:'2px 6px', fontSize:9, background:'rgba(34,197,94,0.1)',  color:'#4ade80', border:'1px solid rgba(34,197,94,0.2)',  borderRadius:4, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Met</button>
+                              <button onClick={() => markOutcome(entry,'met')}    style={{ padding:'2px 6px', fontSize:9, background:'rgba(34,197,94,0.1)', color:'#4ade80', border:'1px solid rgba(34,197,94,0.2)', borderRadius:4, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Met</button>
                               <button onClick={() => markOutcome(entry,'missed')} style={{ padding:'2px 6px', fontSize:9, background:'rgba(244,63,94,0.1)', color:'#fb7185', border:'1px solid rgba(244,63,94,0.2)', borderRadius:4, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Missed</button>
                             </div>
                           )}

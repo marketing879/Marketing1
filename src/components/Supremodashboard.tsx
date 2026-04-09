@@ -1728,7 +1728,6 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
     { id:"reports",         label:"Reports",           icon:"◉" },
     { id:"ai",              label:"SmartCue AI",       icon:"⊗" },
     { id:"intel",           label:"Intelligence",      icon:"◭" },
-    { id:"performance",     label:"Performance Review",icon:"🏆" },
     { id:"command-center",  label:"Command Center",    icon:"🎛" },
   ];
 
