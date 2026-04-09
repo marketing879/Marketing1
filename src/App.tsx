@@ -18,7 +18,7 @@ import { ChatRoom } from "./components/ChatRoom";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 
 // ── NEW: CommandCenter import ────────────────────────────────────────────────
-import CommandCenter from "./components/CommandCenter/Commandcenter";
+import CommandCenter from "./components/CommandCenter/CommandCenter";
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
