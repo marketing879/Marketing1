@@ -49,7 +49,7 @@ function formatDate(iso: string): string {
 }
 function padTwo(n: number) { return String(n).padStart(2, '0'); }
 function initials(name: string): string {
-  return (name||'').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 }
 
 const AV = [
@@ -75,7 +75,7 @@ function statusColor(s: string) {
 }
 
 // fetch with 10s timeout
-async function fetchWithTimeout(url: string, ms = 30000) {
+async function fetchWithTimeout(url: string, ms = 10000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -172,8 +172,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     setFetchError(null);
     try {
       const [tasksRes, usersRes] = await Promise.all([
-        fetchWithTimeout(`${API}/api/tasks`, 30000),
-        fetchWithTimeout(`${API}/api/users`, 30000).catch(() => null),
+        fetchWithTimeout(`${API}/api/tasks`, 10000),
+        fetchWithTimeout(`${API}/api/users`, 10000).catch(() => null),
       ]);
 
       if (tasksRes.ok) {
@@ -275,7 +275,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     .slice(0,8);
 
   const participants = [
-    ...users.slice(0,3).map((u,i)=>({ ini:initials(u.name||''), bg:av(i).bg, c:av(i).c, name:(u.name||'').split(' ')[0] })),
+    ...users.slice(0,3).map((u,i)=>({ ini:initials(u.name), bg:av(i).bg, c:av(i).c, name:u.name.split(' ')[0] })),
     ...(users.length>3 ? [{ ini:`+${users.length-3}`, bg:'rgba(99,102,241,0.15)', c:'#a78bfa', name:'' }] : []),
   ];
 
