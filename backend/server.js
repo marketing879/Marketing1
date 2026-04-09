@@ -37,6 +37,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 }
 
 const app        = express();
+const httpServer = createServer(app);
 
 httpServer.setTimeout(300_000);
 httpServer.keepAliveTimeout = 120_000;
@@ -68,7 +69,7 @@ const apiLimiter = rateLimit({
 
 const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
   message: { success: false, message: "Too many attempts. Please wait before trying again." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -186,8 +187,16 @@ const taskSchema = new mongoose.Schema({
   approvalStatus:  { type: String, default: "assigned" },
   completionNotes: { type: String },
   adminComments:   { type: String },
-  reminderCount:   { type: Number, default: 0 },
-  lastReminderAt:  { type: String, default: null },
+  reminderCount:        { type: Number,  default: 0    },
+  lastReminderAt:       { type: String,  default: null },
+  // ── Autopulse ────────────────────────────────────────────────────────────
+  isAutopulse:          { type: Boolean, default: false },
+  autopulseCycleDays:   { type: Number,  default: 7    },
+  autopulseParentId:    { type: String,  default: null },
+  autopulseGeneration:  { type: Number,  default: 0    },
+  autopulseScheduledFor:{ type: String,  default: null },
+  autopulseNextCreated: { type: Boolean, default: false },
+  autopulsePaused:      { type: Boolean, default: false },
 }, { timestamps: true, strict: false });
 
 taskSchema.index({ assignedBy: 1 });
@@ -202,7 +211,8 @@ const userSchema = new mongoose.Schema({
   phone:    { type: String, default: "" },
   password: { type: String, default: "" },
   avatar:   { type: String, default: "" },
-  isActive: { type: Boolean, default: true },
+  isActive:     { type: Boolean, default: true },
+  voiceEnabled: { type: Boolean, default: true },  // global voice toggle per user
 }, { timestamps: true, strict: false });
 
 const assistanceTicketSchema = new mongoose.Schema({
@@ -262,6 +272,21 @@ const chatPresenceSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: Date.now },
 }, { timestamps: true });
 
+
+// ── SystemSettings — singleton document, controls system-wide toggles ─────────
+const systemSettingsSchema = new mongoose.Schema(
+  {
+    _id:          { type: String, default: "singleton" },
+    voiceEnabled: { type: Boolean, default: false },  // OFF by default — Supremo controls this
+  },
+  { timestamps: true }
+);
+systemSettingsSchema.statics.getSingleton = async function () {
+  let doc = await this.findById("singleton");
+  if (!doc) doc = await this.create({ _id: "singleton", voiceEnabled: false });
+  return doc;
+};
+
 // ── Models (guard against OverwriteModelError on hot-reload) ─────────────────
 const Project          = mongoose.models.Project          || mongoose.model("Project",          projectSchema);
 const Task             = mongoose.models.Task             || mongoose.model("Task",             taskSchema);
@@ -270,6 +295,7 @@ const AssistanceTicket = mongoose.models.AssistanceTicket || mongoose.model("Ass
 const PushSub          = mongoose.models.PushSub          || mongoose.model("PushSub",          pushSubscriptionSchema);
 const ChatMessage      = mongoose.models.ChatMessage      || mongoose.model("ChatMessage",      chatMessageSchema);
 const ChatPresence     = mongoose.models.ChatPresence     || mongoose.model("ChatPresence",     chatPresenceSchema);
+const SystemSettings   = mongoose.models.SystemSettings   || mongoose.model("SystemSettings",   systemSettingsSchema);
 
 // ── In-memory fallbacks ───────────────────────────────────────────────────────
 let inMemoryProjects     = [];
@@ -410,11 +436,78 @@ async function runTATMonitor() {
       const reminderCount = (task.reminderCount ?? 0) + 1;
       const dashboardUrl  = process.env.FRONTEND_URL || "https://marketing1-delta.vercel.app";
 
-      if (doer?.phone) await sendWhatsApp(doer.phone,
-`⚠️ *TASK REMINDER #${reminderCount}* – Roswalt Realty\n\nHello *${doer.name}*,\n\nYour task is overdue:\n📋 *Task:* ${task.title}\n⏱ *Overdue by:* ${delayDuration}\n\n🔗 ${dashboardUrl}`);
+      // ── Send Smart Assist reminder via ChatRoom DM (replaces WhatsApp) ────
+      const taskId      = task.id || String(task._id);
+      const doerEmail   = (task.assignedTo  || "").toLowerCase();
+      const adminEmail  = (task.assignedBy  || "").toLowerCase();
+      const doerName    = doer?.name  || doerEmail.split("@")[0];
+      const adminName   = admin?.name || adminEmail.split("@")[0];
 
-      if (admin?.phone) await sendWhatsApp(admin.phone,
-`🔴 *TAT BREACH ALERT #${reminderCount}* – Roswalt Realty\n\nHello *${admin.name}*,\n\nTask assigned to ${doer?.name ?? task.assignedTo} is overdue:\n📋 *Task:* ${task.title}\n⏱ *Overdue by:* ${delayDuration}\n\n🔗 ${dashboardUrl}`);
+      // ── DM to doer — opens SmartAssist when clicked ──────────────────────
+      if (doerEmail) {
+        const dmChannelId = "dm_" + [doerEmail, adminEmail || doerEmail].sort().join("__");
+        const dmMsg = {
+          id:           `tat_doer_${taskId}_${Date.now()}`,
+          channelId:    dmChannelId,
+          authorId:     adminEmail || "system",
+          authorName:   adminName  || "SmartCue System",
+          authorRole:   "admin",
+          authorEmail:  adminEmail || "system",
+          authorAvatar: "",
+          author: {
+            id: adminEmail || "system", name: adminName || "SmartCue System",
+            role: "admin", email: adminEmail || "system", avatar: "",
+          },
+          type:          "system_notification",
+          notifType:     "task_reminder",
+          text:          `⏰ TAT Reminder #${reminderCount}: Your task "${task.title}" is overdue by ${delayDuration}. Please submit or provide a revised timeline.`,
+          taskId,
+          taskTitle:     task.title,
+          delayDuration,
+          reminderCount,
+          dueDate:       task.dueDate || "",
+          projectName:   "",
+          reactions:     {},
+          readBy:        [],
+          createdAt:     new Date().toISOString(),
+        };
+        await ChatMessage.create(dmMsg).catch(e => console.error("[TAT] DM to doer failed:", e.message));
+        io.to(`channel:${dmChannelId}`).emit("new_message", dmMsg);
+      }
+
+      // ── DM to admin — awareness notification ──────────────────────────────
+      if (adminEmail && adminEmail !== doerEmail) {
+        const adminDmChannelId = "dm_" + [adminEmail, adminEmail].sort().join("__");
+        // Use a system-wide notification channel for admin
+        const adminNotifChannel = `notif_admin_${adminEmail}`;
+        const adminMsg = {
+          id:           `tat_admin_${taskId}_${Date.now()}`,
+          channelId:    adminNotifChannel,
+          authorId:     "system",
+          authorName:   "SmartCue System",
+          authorRole:   "admin",
+          authorEmail:  "system",
+          authorAvatar: "",
+          author: {
+            id: "system", name: "SmartCue System",
+            role: "admin", email: "system", avatar: "",
+          },
+          type:          "system_notification",
+          notifType:     "task_reminder",
+          text:          `🔴 TAT Breach #${reminderCount}: "${task.title}" assigned to ${doerName} is overdue by ${delayDuration}.`,
+          taskId,
+          taskTitle:     task.title,
+          delayDuration,
+          reminderCount,
+          assignedToName:doerName,
+          dueDate:       task.dueDate || "",
+          reactions:     {},
+          readBy:        [],
+          createdAt:     new Date().toISOString(),
+        };
+        await ChatMessage.create(adminMsg).catch(e => console.error("[TAT] DM to admin failed:", e.message));
+        io.to(`channel:${adminNotifChannel}`).emit("new_message", adminMsg);
+      }
 
       await Task.findOneAndUpdate(
         { id: task.id || String(task._id) },
@@ -453,6 +546,119 @@ async function runTATMonitor() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AUTOPULSE CRON — runs every 6 hours, fires next recurring task instance
+// ─────────────────────────────────────────────────────────────────────────────
+async function runAutopulseCron() {
+  if (!dbReady()) { console.log("[Autopulse] Skipping — DB not ready"); return; }
+  try {
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    // Find all fully-approved autopulse tasks due for their next cycle
+    const dueTasks = await Task.find({
+      isAutopulse:          true,
+      autopulseNextCreated: false,
+      autopulsePaused:      { $ne: true },
+      autopulseScheduledFor:{ $lte: todayStr, $ne: null },
+      approvalStatus:       "superadmin-approved",  // only fully approved tasks spawn new cycles
+    }).lean();
+
+    if (dueTasks.length === 0) {
+      console.log("[Autopulse] No tasks due for recurrence today");
+      return;
+    }
+
+    const dashboardUrl = process.env.FRONTEND_URL || "https://marketing1-delta.vercel.app";
+
+    for (const task of dueTasks) {
+      const parentId   = task.autopulseParentId || task.id || String(task._id);
+      const generation = (task.autopulseGeneration ?? 0) + 1;
+      const newId      = String(Date.now()) + "_ap" + generation;
+      const now        = new Date().toISOString();
+      const cycleDays  = task.autopulseCycleDays ?? 7;
+
+      // New due date = today + cycleDays
+      const nextDue = new Date();
+      nextDue.setDate(nextDue.getDate() + cycleDays);
+      const nextDueStr = nextDue.toISOString().split("T")[0];
+
+      const newTask = {
+        id:                   newId,
+        title:                task.title,
+        description:          task.description,
+        status:               "pending",
+        approvalStatus:       "assigned",
+        priority:             task.priority,
+        dueDate:              nextDueStr,
+        assignedTo:           task.assignedTo,
+        assignedBy:           task.assignedBy,
+        projectId:            task.projectId,
+        timeSlot:             task.timeSlot     || "18:00",
+        purpose:              task.purpose      || "",
+        voiceNote:            task.voiceNote    || undefined,
+        isAutopulse:          true,
+        autopulseCycleDays:   cycleDays,
+        autopulseParentId:    parentId,
+        autopulseGeneration:  generation,
+        autopulseScheduledFor:null,
+        autopulseNextCreated: false,
+        autopulsePaused:      false,
+        history: [{
+          id:        "hist_ap_" + Date.now(),
+          timestamp: now,
+          action:    `Auto-assigned (Autopulse #${generation}) — recurring from "${task.title}"`,
+          by:        task.assignedBy ?? "system",
+          to:        task.assignedTo,
+        }],
+        createdAt: now,
+      };
+
+      await Task.create(newTask);
+
+      // Mark parent so cron won't fire again for this cycle
+      await Task.findOneAndUpdate(
+        { id: task.id || String(task._id) },
+        { $set: { autopulseNextCreated: true } }
+      );
+
+      // Push notification to doer
+      if (task.assignedTo) {
+        const dueDateFormatted = nextDue.toLocaleDateString("en-IN", {
+          day: "numeric", month: "short", year: "numeric"
+        });
+        await sendPushToUser(task.assignedTo, {
+          title: "⚡ Autopulse — New Recurring Task",
+          body:  `${task.title} · Due: ${dueDateFormatted}`,
+          url:   dashboardUrl,
+          taskId: newId,
+          tag:   `autopulse-${newId}`,
+          icon:  "/favicon.png",
+          type:  "task_assigned",
+        });
+      }
+
+      // Broadcast via socket so dashboard updates live
+      broadcastTaskNotification({
+        type:               "task_assigned",
+        taskId:             newId,
+        taskTitle:          task.title,
+        assignedTo:         task.assignedTo,
+        assignedBy:         task.assignedBy,
+        priority:           task.priority,
+        dueDate:            nextDueStr,
+        projectId:          task.projectId,
+        isAutopulse:        true,
+        autopulseGeneration:generation,
+      });
+
+      console.log(`[Autopulse] Created instance #${generation} of "${task.title}" -> ${task.assignedTo} (due ${nextDueStr})`);
+    }
+  } catch (err) {
+    console.error("[Autopulse] Cron error:", err.message);
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MIDDLEWARE HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 const requireRole = (...roles) => (req, res, next) => {
@@ -481,10 +687,14 @@ const upload  = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: "No file provided." });
-    const b64     = req.file.buffer.toString("base64");
-    const dataUri = `data:${req.file.mimetype};base64,${b64}`;
-    const folder  = req.body?.folder || "smartcue";
-    const result  = await cloudinary.uploader.upload(dataUri, { folder, resource_type: "auto" });
+    const folder = req.body?.folder || "smartcue";
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder, resource_type: "auto", timeout: 600000 },
+        (error, result) => { if (error) reject(error); else resolve(result); }
+      );
+      stream.end(req.file.buffer);
+    });
     res.json({ success: true, url: result.secure_url, public_id: result.public_id });
   } catch (err) {
     console.error("[Cloudinary] Upload failed:", err.message);
@@ -562,7 +772,7 @@ app.get("/api/tasks", async (req, res) => {
             { assignedTo: { $regex: new RegExp("^" + callerEmail + "$", "i") } }
           ] }
         : {};
-    const tasks      = await Task.find(filter).select("-attachments -scoreData").sort({ createdAt: -1 }).lean();
+    const tasks      = await Task.find(filter).select("-attachments").sort({ createdAt: -1 }).lean();
     const normalized = tasks.map(t => { if (!t.id) t.id = String(t._id); return t; });
     res.json(normalized);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -596,6 +806,28 @@ app.post("/api/tasks", async (req, res) => {
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
+
+// GET single task by ID — returns full document including attachments, scoreData, completionNotes
+app.get("/api/tasks/:id", async (req, res) => {
+  try {
+    let t = await Task.findOne({ id: req.params.id }).lean();
+    if (!t) t = await Task.findById(req.params.id).lean();
+    if (!t) return res.status(404).json({ message: "Task not found." });
+    if (!t.id) t.id = String(t._id);
+    res.json(t);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// GET single task by ID — returns full document including attachments, scoreData, completionNotes
+app.get("/api/tasks/:id", async (req, res) => {
+  try {
+    let t = await Task.findOne({ id: req.params.id }).lean();
+    if (!t) t = await Task.findById(req.params.id).lean();
+    if (!t) return res.status(404).json({ message: "Task not found." });
+    if (!t.id) t.id = String(t._id);
+    res.json(t);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
 // ⚠️ /all MUST stay above /:id
 app.delete("/api/tasks/all", async (req, res) => {
   try {
@@ -606,7 +838,7 @@ app.delete("/api/tasks/all", async (req, res) => {
 
 app.put("/api/tasks/:id", async (req, res) => {
   try {
-    let t = await Task.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true });
+    let t = await Task.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true, runValidators: false });
     if (!t) t = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
     if (!t) return res.status(404).json({ message: "Task not found." });
     const obj = t.toObject();
@@ -637,6 +869,20 @@ app.put("/api/tasks/:id", async (req, res) => {
       }
       if (newStatus === "rejected") {
         if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "↩ Task Needs Rework", body: `${obj.title} — check admin comments.` });
+      }
+
+      // ── Autopulse: schedule next instance when superadmin fully approves ──
+      if (newStatus === "superadmin-approved" && obj.isAutopulse && !obj.autopulseNextCreated) {
+        const cycleDays = obj.autopulseCycleDays ?? 7;
+        const approvedAt = new Date();
+        const scheduledFor = new Date(approvedAt);
+        scheduledFor.setDate(scheduledFor.getDate() + cycleDays);
+        const scheduledForISO = scheduledFor.toISOString().split("T")[0];
+        await Task.findOneAndUpdate(
+          { id: obj.id },
+          { $set: { autopulseScheduledFor: scheduledForISO, autopulseNextCreated: false } }
+        );
+        console.log(`[Autopulse] Scheduled next instance of "${obj.title}" for ${scheduledForISO}`);
       }
     }
     res.json(obj);
@@ -775,10 +1021,46 @@ app.delete("/api/users/:id", async (req, res) => {
 app.get("/api/tickets", async (req, res) => {
   try {
     if (dbReady()) {
-      const tickets = await AssistanceTicket.find().sort({ createdAt: -1 }).lean();
-      return res.json(tickets.map(t => ({ ...t, id: t.id || String(t._id) })));
+      const tickets = await AssistanceTicket.find().sort({ raisedAt: -1 }).lean();
+      const normalized = tickets.map(t => ({ ...t, id: t.id || String(t._id) }));
+      return res.json(normalized);
     }
     res.json([]);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// POST /api/tickets/dedup-cleanup — one-time cleanup: keeps newest ticket per taskId,
+// marks all older duplicates as resolved so they stop showing in admin queue
+app.post("/api/tickets/dedup-cleanup", async (req, res) => {
+  try {
+    if (!dbReady()) return res.status(503).json({ message: "DB not ready" });
+    const tickets = await AssistanceTicket.find({
+      status: { $nin: ["resolved", "rejected", "superadmin-approved", "admin-approved"] }
+    }).sort({ raisedAt: -1 }).lean();
+
+    // Group by taskId
+    const byTask = {};
+    tickets.forEach(t => {
+      const key = t.taskId || String(t._id);
+      if (!byTask[key]) byTask[key] = [];
+      byTask[key].push(t);
+    });
+
+    let cleaned = 0;
+    for (const [taskId, group] of Object.entries(byTask)) {
+      if (group.length <= 1) continue;
+      // Keep first (newest due to sort), mark rest as resolved
+      const duplicates = group.slice(1);
+      for (const dup of duplicates) {
+        await AssistanceTicket.findOneAndUpdate(
+          { id: dup.id || String(dup._id) },
+          { $set: { status: "resolved", adminComment: "Auto-resolved: duplicate ticket" } }
+        );
+        cleaned++;
+      }
+    }
+    console.log(`[Dedup] Cleaned ${cleaned} duplicate tickets`);
+    res.json({ success: true, cleaned, message: `Resolved ${cleaned} duplicate tickets` });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -797,7 +1079,7 @@ app.post("/api/tickets", async (req, res) => {
 app.put("/api/tickets/:id", async (req, res) => {
   try {
     if (dbReady()) {
-      let t = await AssistanceTicket.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true });
+      let t = await AssistanceTicket.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true, runValidators: false });
       if (!t) t = await AssistanceTicket.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
       if (!t) return res.status(404).json({ message: "Ticket not found." });
       return res.json({ ...t.toObject(), id: t.id || String(t._id) });
@@ -997,6 +1279,16 @@ app.post("/api/score-content", async (req, res) => {
         return res.status(400).json({ success: false, message: "Image data is empty after processing. Please re-upload." });
       }
 
+      // ── SIZE GUARD: reject images over ~5MB ──────────────────────────────
+      if (data.length > 6_900_000) {
+        const sizeMB = (data.length * 0.75 / 1_048_576).toFixed(1);
+        console.warn(`[score-content] Image too large: ${data.length} chars (~${sizeMB}MB). Rejecting.`);
+        return res.status(400).json({
+          success: false,
+          message: `Image is too large (${sizeMB}MB). Please compress the image to under 5MB and re-upload.`,
+        });
+      }
+
       // Detect media type from magic bytes
       const header = Buffer.from(data.slice(0, 16), "base64");
       let media_type = block.source.media_type || "image/jpeg";
@@ -1018,7 +1310,7 @@ app.post("/api/score-content", async (req, res) => {
     const message = await callAnthropicWithRetry(() =>
       anthropic.messages.create({
         model:      "claude-haiku-4-5-20251001",
-        max_tokens: 8000,   // ← INCREASED from 4000: prevents JSON truncation
+        max_tokens: Math.min(16000, 6000 + imageCount * 3000),
         temperature: 0,
         system:     systemPrompt,
         messages:   [{ role: "user", content: userContent }],
@@ -1205,6 +1497,37 @@ app.get("/api/activity", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SYSTEM SETTINGS — voice toggle (controlled by Supremo only via frontend)
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/settings/voice", async (req, res) => {
+  try {
+    if (!dbReady()) return res.json({ voiceEnabled: false });
+    const settings = await SystemSettings.getSingleton();
+    res.json({ voiceEnabled: settings.voiceEnabled });
+  } catch (err) {
+    console.error("[Settings] GET /voice error:", err.message);
+    res.status(500).json({ error: "Failed to retrieve voice setting" });
+  }
+});
+
+app.patch("/api/settings/voice", async (req, res) => {
+  const { voiceEnabled } = req.body;
+  if (typeof voiceEnabled !== "boolean")
+    return res.status(400).json({ error: "voiceEnabled must be a boolean" });
+  try {
+    if (!dbReady()) return res.json({ voiceEnabled });
+    const settings = await SystemSettings.getSingleton();
+    settings.voiceEnabled = voiceEnabled;
+    await settings.save();
+    console.log(`[Settings] System voice set to: ${voiceEnabled}`);
+    res.json({ voiceEnabled: settings.voiceEnabled });
+  } catch (err) {
+    console.error("[Settings] PATCH /voice error:", err.message);
+    res.status(500).json({ error: "Failed to update voice setting" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HEALTH
 // ─────────────────────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
@@ -1352,6 +1675,44 @@ app.post("/api/chat/meeting", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // SOCKET.IO
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEETING QUEUE — in-memory (per session)
+// ─────────────────────────────────────────────────────────────────────────────
+const meetingQueue    = {};  // sessionId → [{ userId, userName, email, socketId, joinedAt }]
+const supremoSockets  = {};  // sessionId → socketId of supremo
+
+
+// GET /api/meeting/active-session — staff polls this to discover active sessions
+app.get("/api/meeting/active-session", (req, res) => {
+  // Return the first active session (there's typically only one)
+  const sessionId = Object.keys(supremoSockets)[0] || null;
+  if (!sessionId) return res.json({ active: false });
+  const queue = meetingQueue[sessionId] || [];
+  res.json({ active: true, sessionId, queueLength: queue.length });
+});
+
+// REST fallback — GET /api/meeting/queue?sessionId=xxx
+app.get("/api/meeting/queue", (req, res) => {
+  const { sessionId } = req.query;
+  if (!sessionId) return res.json([]);
+  res.json(meetingQueue[sessionId] || []);
+});
+
+// REST — POST /api/meeting/promise-score
+app.post("/api/meeting/promise-score", express.json(), async (req, res) => {
+  try {
+    const { sessionId, userId, userName, email, score, comment } = req.body;
+    const entry = { userId, userName, email, score: Number(score), comment: comment || "", submittedAt: new Date().toISOString() };
+    // Broadcast to supremo
+    const supSocket = supremoSockets[sessionId];
+    if (supSocket) io.to(supSocket).emit("meeting:promise-score", entry);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 io.on("connection", (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
@@ -1432,6 +1793,86 @@ io.on("connection", (socket) => {
     socket.to(`channel:${channelId}`).emit("call_ended", { channelId });
   });
 
+
+  // ── MEETING: Supremo starts session ─────────────────────────────────────
+  socket.on("meeting:supremo-start", ({ sessionId, name }) => {
+    supremoSockets[sessionId] = socket.id;
+    meetingQueue[sessionId]   = [];
+    socket.join(`meeting:${sessionId}`);
+    // Broadcast to ALL connected sockets so staff know a session is live
+    socket.broadcast.emit("meeting:session-started", { sessionId, supremoName: name });
+    console.log(`[Meeting] Supremo started session: ${sessionId}`);
+  });
+
+  // ── MEETING: Staff joins queue ────────────────────────────────────────────
+  socket.on("meeting:join-queue", ({ sessionId, userId, userName, email }) => {
+    if (!meetingQueue[sessionId]) meetingQueue[sessionId] = [];
+    // Remove if already in queue
+    meetingQueue[sessionId] = meetingQueue[sessionId].filter(e => e.userId !== userId);
+    const entry = { userId, userName, email, socketId: socket.id, joinedAt: new Date().toISOString() };
+    meetingQueue[sessionId].push(entry);
+    socket.data.meetingSession = sessionId;
+    socket.join(`meeting:${sessionId}`);
+    // Notify supremo
+    const supSocket = supremoSockets[sessionId];
+    if (supSocket) io.to(supSocket).emit("meeting:queue-update", meetingQueue[sessionId]);
+    // Confirm to staff
+    socket.emit("meeting:queue-joined", { position: meetingQueue[sessionId].length });
+    console.log(`[Meeting] ${userName} joined queue for session ${sessionId}`);
+  });
+
+  // ── MEETING: Staff leaves queue ───────────────────────────────────────────
+  socket.on("meeting:leave-queue", ({ sessionId, userId }) => {
+    if (meetingQueue[sessionId]) {
+      meetingQueue[sessionId] = meetingQueue[sessionId].filter(e => e.userId !== userId);
+      const supSocket = supremoSockets[sessionId];
+      if (supSocket) io.to(supSocket).emit("meeting:queue-update", meetingQueue[sessionId]);
+    }
+    socket.emit("meeting:queue-left");
+  });
+
+  // ── MEETING: WebRTC offer (supremo → staff) ───────────────────────────────
+  socket.on("meeting:offer", ({ to, offer, sessionId }) => {
+    const entry = (meetingQueue[sessionId] || []).find(e => e.userId === to);
+    if (entry?.socketId) io.to(entry.socketId).emit("meeting:offer", { from: socket.id, offer, sessionId });
+  });
+
+  // ── MEETING: WebRTC answer (staff → supremo) ──────────────────────────────
+  socket.on("meeting:answer", ({ to, answer }) => {
+    io.to(to).emit("meeting:answer", answer);
+  });
+
+  // ── MEETING: ICE candidates ───────────────────────────────────────────────
+  socket.on("meeting:ice-candidate", ({ to, candidate, sessionId }) => {
+    // `to` can be a socketId (supremo sends userId, we resolve; staff sends supremo socketId directly)
+    const entry = meetingQueue[sessionId]
+      ? (meetingQueue[sessionId].find(e => e.userId === to) || null)
+      : null;
+    const targetSocket = entry ? entry.socketId : to;
+    if (targetSocket) io.to(targetSocket).emit("meeting:ice-candidate", { candidate });
+  });
+
+  // ── MEETING: Promise score (staff submits) ────────────────────────────────
+  socket.on("meeting:promise-score", ({ sessionId, userId, userName, email, score, comment }) => {
+    const entry = { userId, userName, email, score: Number(score), comment: comment || "", submittedAt: new Date().toISOString() };
+    const supSocket = supremoSockets[sessionId];
+    if (supSocket) io.to(supSocket).emit("meeting:promise-score", entry);
+    socket.emit("meeting:score-submitted");
+  });
+
+  // ── MEETING: End call ──────────────────────────────────────────────────────
+  socket.on("meeting:end-call", ({ sessionId }) => {
+    io.to(`meeting:${sessionId}`).emit("meeting:call-ended");
+  });
+
+  // ── MEETING: Supremo ends session ─────────────────────────────────────────
+  socket.on("meeting:supremo-end", ({ sessionId }) => {
+    io.to(`meeting:${sessionId}`).emit("meeting:session-ended");
+    delete meetingQueue[sessionId];
+    delete supremoSockets[sessionId];
+    console.log(`[Meeting] Session ended: ${sessionId}`);
+  });
+
   socket.on("disconnect", async () => {
     const user = socket.data.user;
     if (user?.email) {
@@ -1501,6 +1942,7 @@ httpServer.listen(PORT, () => {
   console.log("  POST                 /api/score-content");
   console.log("  POST                 /api/chat  (SmartCue AI)");
   console.log("  POST                 /api/tts");
+  console.log("  GET/PATCH            /api/settings/voice");
   console.log("  GET                  /health");
   console.log("=".repeat(60));
   console.log("ElevenLabs:", process.env.ELEVEN_LABS_API_KEY ? "✔" : "✗ Missing");
@@ -1519,5 +1961,12 @@ httpServer.listen(PORT, () => {
     console.log("⏱  TAT monitor started");
     runTATMonitor();
     setInterval(runTATMonitor, 14_400_000);
+
+    // ── Autopulse cron — runs every 6 hours (21_600_000ms) ─────────────────
+    console.log("⚡ Autopulse cron started");
+    runAutopulseCron();
+    setInterval(runAutopulseCron, 21_600_000);
   }, 5_000);
 });
+
+
