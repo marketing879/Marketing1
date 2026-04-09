@@ -172,7 +172,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     setFetchError(null);
     try {
       const [tasksRes, usersRes] = await Promise.all([
-        fetchWithTimeout(`${API}/api/tasks`, 10000),
+        fetchWithTimeout(`${API}/api/tasks`, 20000),
         fetchWithTimeout(`${API}/api/users`, 10000).catch(() => null),
       ]);
 
