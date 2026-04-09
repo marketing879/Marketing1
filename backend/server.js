@@ -45,10 +45,10 @@ httpServer.keepAliveTimeout = 120_000;
 // ── ALLOWED ORIGINS ───────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   "https://marketing1-delta.vercel.app",
-  "https://www.roswaltsmartcue.com",
   "https://roswaltsmartcue.com",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
+  "https://www.roswaltsmartcue.com",
+  "http://localhost:3000",
+];
 
 // ── SOCKET.IO ─────────────────────────────────────────────────────────────────
 const io = new SocketServer(httpServer, {
@@ -247,7 +247,7 @@ const chatMessageSchema = new mongoose.Schema({
   authorRole:   { type: String, required: true },
   authorAvatar: { type: String, default: "" },
   authorEmail:  { type: String, default: "" },
-  type:         { type: String, enum: ["text", "sticker", "gif", "meeting", "voice", "emoji"], default: "text" },
+  type:         { type: String, enum: ["text", "sticker", "gif", "meeting", "voice", "emoji", "system_notification"], default: "text" },
   text:         { type: String, default: "" },
   gif:          { type: String },
   meeting: {
@@ -1713,6 +1713,43 @@ app.post("/api/meeting/promise-score", express.json(), async (req, res) => {
   }
 });
 
+// ── PROMISE SCORE ─────────────────────────────────────────────────────────────
+const promiseScoreSchema = new mongoose.Schema({
+  userId:    { type: String, required: true, index: true },
+  week:      { type: Number, required: true },
+  weekLabel: { type: String, default: "" },
+  score:     { type: Number, default: 0 },
+  date:      { type: String, default: "" },
+  outcome:   { type: String, enum: ["pending", "met", "missed"], default: "pending" },
+}, { timestamps: true });
+promiseScoreSchema.index({ userId: 1, week: 1 }, { unique: true });
+const PromiseScore = mongoose.models.PromiseScore || mongoose.model("PromiseScore", promiseScoreSchema);
+
+app.get("/api/promise-score/:userId", async (req, res) => {
+  try { res.json(await PromiseScore.find({ userId: req.params.userId }).sort({ week: -1 }).lean()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/promise-score", express.json(), async (req, res) => {
+  try {
+    const { userId, week, weekLabel, score, date, outcome } = req.body;
+    const doc = await PromiseScore.findOneAndUpdate(
+      { userId, week },
+      { userId, week, weekLabel, score: Number(score), date, outcome: outcome || "pending" },
+      { upsert: true, new: true }
+    );
+    res.json(doc);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.patch("/api/promise-score/:userId/:week", express.json(), async (req, res) => {
+  try {
+    const doc = await PromiseScore.findOneAndUpdate(
+      { userId: req.params.userId, week: Number(req.params.week) },
+      { outcome: req.body.outcome },
+      { new: true }
+    );
+    res.json(doc || { error: "not found" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 io.on("connection", (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
