@@ -15,3 +15,5 @@ public/videos/
 .env.production
 build/
 .vercel/
+.vercel
+.env*.local
