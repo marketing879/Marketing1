@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "../contexts/UserContext";
+import { useNavigate } from "react-router-dom";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
@@ -1689,6 +1690,7 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
 
   const currentUserName = (appUser?.role === "supremo" || !appUser?.name || appUser?.name === "Supremo") ? "Pankaj Bhelsekar" : (appUser?.name || "Pankaj Bhelsekar");
   const currentUserInitials = initials(currentUserName);
+  const navigate = useNavigate();
 
   const activeTasks = liveTasks.map(t => ({
         id: t._id, title: t.title, status: t.status, priority: t.priority,
@@ -1717,16 +1719,17 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
   const dateStr = now.toLocaleDateString("en-GB", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
 
   const NAV_ITEMS = [
-    { id:"overview",   label:"Overview",          icon:"⊟" },
-    { id:"tasks",      label:"Task Management",   icon:"☑" },
-    { id:"analytics",  label:"Live Analytics",    icon:"📈" },
-    { id:"autopulse",  label:"Autopulse",         icon:"⚡" },
-    { id:"activity",   label:"Activity Feed",     icon:"⚡" },
-    { id:"team",       label:"Team Members",      icon:"◎" },
-    { id:"reports",    label:"Reports",           icon:"◉" },
-    { id:"ai",         label:"SmartCue AI",       icon:"⊗" },
-    { id:"intel",      label:"Intelligence",      icon:"◭" },
-    { id:"performance",label:"Performance Review",icon:"🏆" },
+    { id:"overview",        label:"Overview",          icon:"⊟" },
+    { id:"tasks",           label:"Task Management",   icon:"☑" },
+    { id:"analytics",       label:"Live Analytics",    icon:"📈" },
+    { id:"autopulse",       label:"Autopulse",         icon:"⚡" },
+    { id:"activity",        label:"Activity Feed",     icon:"⚡" },
+    { id:"team",            label:"Team Members",      icon:"◎" },
+    { id:"reports",         label:"Reports",           icon:"◉" },
+    { id:"ai",              label:"SmartCue AI",       icon:"⊗" },
+    { id:"intel",           label:"Intelligence",      icon:"◭" },
+    { id:"performance",     label:"Performance Review",icon:"🏆" },
+    { id:"command-center",  label:"Command Center",    icon:"🎛" },
   ];
 
   return (
@@ -1852,7 +1855,13 @@ Be concise (max 120 words). Speak professionally like a command-center AI.`;
             <div
               key={item.id}
               className={`nav-item${activeTab === item.id ? " active" : ""}`}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                if (item.id === "command-center") {
+                  navigate("/command-center");
+                } else {
+                  setActiveTab(item.id);
+                }
+              }}
             >
               <span className="nav-icon">{item.icon}</span>
               <span>{item.label}</span>

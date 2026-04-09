@@ -17,6 +17,9 @@ import SupremoDashboard from "./components/Supremodashboard";
 import { ChatRoom } from "./components/ChatRoom";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 
+// ── NEW: CommandCenter import ────────────────────────────────────────────────
+import CommandCenter from "./components/CommandCenter/Commandcenter";
+
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
   role: "staff" | "admin" | "superadmin" | "supremo";
@@ -87,13 +90,22 @@ const AppRoutes: React.FC = () => {
       />
 
       {/* ── CHAT — all authenticated roles ──────────────────────────────── */}
-      {/* Access via: navigate('/chat') or <Link to="/chat"> from any dashboard */}
       <Route
         path="/chat"
         element={
           <AuthedRoute>
             <ChatRoom />
           </AuthedRoute>
+        }
+      />
+
+      {/* ── COMMAND CENTER — supremo only ────────────────────────────────── */}
+      <Route
+        path="/command-center"
+        element={
+          <ProtectedRoute role="supremo">
+            <CommandCenter currentUser={user ? { _id: user.id, name: user.name, email: user.email } : undefined} />
+          </ProtectedRoute>
         }
       />
 
