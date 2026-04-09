@@ -104,7 +104,7 @@ const AppRoutes: React.FC = () => {
         path="/command-center"
         element={
           <ProtectedRoute role="supremo">
-            <CommandCenter currentUser={user ?? undefined} apiBase={process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app"} />
+            <CommandCenter currentUser={user ? { _id: user.id || (user as any)._id || "", name: user.name || "", email: user.email || "" } : undefined} apiBase={process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app"} />
           </ProtectedRoute>
         }
       />
