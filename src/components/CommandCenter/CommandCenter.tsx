@@ -49,7 +49,7 @@ function formatDate(iso: string): string {
 }
 function padTwo(n: number) { return String(n).padStart(2, '0'); }
 function initials(name: string): string {
-  return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  return (name||'').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 }
 
 const AV = [
@@ -275,7 +275,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     .slice(0,8);
 
   const participants = [
-    ...users.slice(0,3).map((u,i)=>({ ini:initials(u.name), bg:av(i).bg, c:av(i).c, name:u.name.split(' ')[0] })),
+    ...users.slice(0,3).map((u,i)=>({ ini:initials(u.name||''), bg:av(i).bg, c:av(i).c, name:(u.name||'').split(' ')[0] })),
     ...(users.length>3 ? [{ ini:`+${users.length-3}`, bg:'rgba(99,102,241,0.15)', c:'#a78bfa', name:'' }] : []),
   ];
 
