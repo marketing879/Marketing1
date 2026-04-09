@@ -75,7 +75,7 @@ function statusColor(s: string) {
 }
 
 // fetch with 10s timeout
-async function fetchWithTimeout(url: string, ms = 10000) {
+async function fetchWithTimeout(url: string, ms = 30000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -172,8 +172,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     setFetchError(null);
     try {
       const [tasksRes, usersRes] = await Promise.all([
-        fetchWithTimeout(`${API}/api/tasks`, 20000),
-        fetchWithTimeout(`${API}/api/users`, 10000).catch(() => null),
+        fetchWithTimeout(`${API}/api/tasks`, 30000),
+        fetchWithTimeout(`${API}/api/users`, 30000).catch(() => null),
       ]);
 
       if (tasksRes.ok) {
