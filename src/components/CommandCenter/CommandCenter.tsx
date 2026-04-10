@@ -172,6 +172,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
   const [micMuted, setMicMuted]                   = useState(false);
   const [camOff, setCamOff]                       = useState(false);
   const localVidRef  = useRef<HTMLVideoElement>(null);
+  const [roleUpdating, setRoleUpdating]           = useState<string|null>(null);
+  const [roleMsg, setRoleMsg]                     = useState<{id:string;ok:boolean;text:string}|null>(null);
 
   const currentWeek  = getWeekNumber(new Date());
   const currentMonth = new Date().getMonth();
@@ -241,6 +243,22 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     if(localVidRef.current?.srcObject)(localVidRef.current.srcObject as MediaStream).getTracks().forEach(t=>t.stop());
     if(localVidRef.current)localVidRef.current.srcObject=null;
     setCallingUser(null); setInCall(false);
+  };
+
+  const updateRole = async (user: LiveUser, newRole: string) => {
+    setRoleUpdating(user._id);
+    try {
+      const res = await fetch(`${API}/api/users/${user._id}/role`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u._id === user._id ? { ...u, role: newRole } : u));
+        setRoleMsg({ id: user._id, ok: true, text: `${user.name.split(' ')[0]} is now ${newRole}` });
+        setTimeout(() => setRoleMsg(null), 3000);
+      } else { setRoleMsg({ id: user._id, ok: false, text: 'Update failed' }); setTimeout(() => setRoleMsg(null), 3000); }
+    } catch(e) { setRoleMsg({ id: user._id, ok: false, text: 'Network error' }); setTimeout(() => setRoleMsg(null), 3000); }
+    finally { setRoleUpdating(null); }
   };
 
   const userMap = new Map<string, LiveUser>();
@@ -742,7 +760,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                   </div>
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}>
                     <thead>
-                      <tr>{['Member','Tasks','Done','Rework','Breach','Avg Score'].map(h=>(
+                      <tr>{['Member','Tasks','Done','Rework','Breach','Avg Score','Role'].map(h=>(
                         <th key={h} style={{padding:'5px 8px',color:'#4a5568',fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',fontSize:9,textTransform:'uppercase',letterSpacing:'.5px'}}>{h}</th>
                       ))}</tr>
                     </thead>
@@ -775,6 +793,19 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                             <td style={{padding:'6px 8px',color:rw>0?'#fb923c':'#4a5568',fontFamily:'monospace'}}>{rw}</td>
                             <td style={{padding:'6px 8px',color:br>0?'#f87171':'#4ade80',fontFamily:'monospace'}}>{br}</td>
                             <td style={{padding:'6px 8px',color:avg?Number(avg)>=85?'#4ade80':'#f87171':'#4a5568',fontFamily:'monospace',fontWeight:600}}>{avg?`${avg}%`:'—'}</td>
+                            <td style={{padding:'6px 8px'}} onClick={e=>e.stopPropagation()}>
+                              {roleUpdating===u._id
+                                ? <span style={{fontSize:9,color:'#fbbf24'}}>Updating…</span>
+                                : roleMsg?.id===u._id
+                                  ? <span style={{fontSize:9,color:roleMsg.ok?'#4ade80':'#f87171'}}>{roleMsg.text}</span>
+                                  : <div style={{display:'flex',gap:4}}>
+                                      {['staff','admin'].filter(r=>r!==u.role).map(r=>(
+                                        <button key={r} onClick={()=>updateRole(u,r)} style={{padding:'2px 8px',fontSize:9,fontWeight:600,borderRadius:4,border:'none',cursor:'pointer',background:r==='admin'?'rgba(212,168,71,0.15)':'rgba(99,102,241,0.15)',color:r==='admin'?'#f0c060':'#a5b4fc',textTransform:'capitalize'}}>→ {r}</button>
+                                      ))}
+                                      <span style={{padding:'2px 7px',fontSize:9,fontWeight:700,borderRadius:4,background:u.role==='admin'?'rgba(212,168,71,0.1)':'rgba(99,102,241,0.1)',color:u.role==='admin'?'#f0c060':'#a5b4fc',border:'1px solid '+(u.role==='admin'?'rgba(212,168,71,0.3)':'rgba(99,102,241,0.3)')}}>{u.role}</span>
+                                    </div>
+              }
+                            </td>
                           </tr>
                         );
                       })}
