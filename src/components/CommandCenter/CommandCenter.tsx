@@ -632,7 +632,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                                 <td style={{color:'#eef2ff',fontWeight:500,maxWidth:155,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={task.title}>{task.title}</td>
                                 <td><div style={{display:'flex',alignItems:'center',gap:4}}><span className="cc-av" style={{width:18,height:18,background:col.bg,color:col.c}}>{ini}</span><span style={{maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span></div></td>
                                 <td><span className="cc-badge" style={{background:sb,color:sc,border:`1px solid ${sc}33`}}>{task.status.replace(/_/g,' ')}</span></td>
-                                <td style={{color:score!=null?(score>=70?'#4ade80':score>=50?'#fbbf24':'#fb7185'):'#4a5568',fontFamily:'monospace',fontWeight:score!=null?600:400}}>{score!=null?score:'—'}</td>
+                                <td style={{color:score!=null?(score>=85?'#4ade80':'#f87171'):'#4a5568',fontFamily:'monospace',fontWeight:score!=null?600:400}}>{score!=null?score:'—'}</td>
                                 <td><span style={{color:task.tatBreached?'#f87171':'#4ade80',fontWeight:600,fontSize:10,background:task.tatBreached?'rgba(244,63,94,0.08)':'rgba(34,197,94,0.08)',padding:'2px 6px',borderRadius:4}}>{task.tatBreached?'Out TAT':'In TAT'}</span></td>
                               </tr>
                             );
@@ -767,14 +767,14 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                             <td style={{padding:'6px 8px'}}>
                               <div style={{display:'flex',alignItems:'center',gap:5}}>
                                 <div style={{width:36,height:4,background:'rgba(255,255,255,0.04)',borderRadius:2,overflow:'hidden'}}>
-                                  <div style={{height:'100%',width:`${pct}%`,background:pct>=70?'#4ade80':pct>=50?'#fbbf24':'#f87171',borderRadius:2}}/>
+                                  <div style={{height:'100%',width:`${pct}%`,background:pct>=85?'#4ade80':'#f87171',borderRadius:2}}/>
                                 </div>
-                                <span style={{color:pct>=70?'#4ade80':pct>=50?'#fbbf24':'#f87171',fontFamily:'monospace'}}>{done}</span>
+                                <span style={{color:pct>=85?'#4ade80':'#f87171',fontFamily:'monospace'}}>{done}</span>
                               </div>
                             </td>
                             <td style={{padding:'6px 8px',color:rw>0?'#fb923c':'#4a5568',fontFamily:'monospace'}}>{rw}</td>
                             <td style={{padding:'6px 8px',color:br>0?'#f87171':'#4ade80',fontFamily:'monospace'}}>{br}</td>
-                            <td style={{padding:'6px 8px',color:avg?Number(avg)>=70?'#4ade80':Number(avg)>=50?'#fbbf24':'#f87171':'#4a5568',fontFamily:'monospace',fontWeight:600}}>{avg?`${avg}%`:'—'}</td>
+                            <td style={{padding:'6px 8px',color:avg?Number(avg)>=85?'#4ade80':'#f87171':'#4a5568',fontFamily:'monospace',fontWeight:600}}>{avg?`${avg}%`:'—'}</td>
                           </tr>
                         );
                       })}
