@@ -378,7 +378,7 @@ Return this exact JSON:
     docUserContent.push({ type: "text", text: textPayload });
 
     // ── Step 4: Call the backend ──────────────────────────────────────────
-    const docResponse = await fetch("https://roswalt-backend-production.up.railway.app/api/score-content", {
+    const docResponse = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt: docSystemPrompt, userContent: docUserContent }),
@@ -510,7 +510,7 @@ Return this exact JSON:
 
   let response: Response;
   try {
-    response = await fetch("https://roswalt-backend-production.up.railway.app/api/score-content", {
+    response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt, userContent }),
@@ -1970,7 +1970,7 @@ const StaffDashboard: React.FC = () => {
   const meetRemoteRef = useRef<HTMLVideoElement>(null);
   const meetPcRef     = useRef<RTCPeerConnection|null>(null);
   const meetSockRef   = useRef<any>(null);
-  const meetApiBase   = "https://roswalt-backend-production.up.railway.app";
+  const meetApiBase   = "https://adaptable-patience-production-45da.up.railway.app";
 
 
 
@@ -2030,7 +2030,7 @@ const StaffDashboard: React.FC = () => {
     // Poll for active session every 8s
     const pollSession = setInterval(async () => {
       try {
-        const r = await fetch("https://roswalt-backend-production.up.railway.app/api/meeting/active-session");
+        const r = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/meeting/active-session");
         if (r.ok) {
           const d = await r.json();
           if (d.active && d.sessionId) { setMeetingSession(d.sessionId); }
@@ -2040,7 +2040,7 @@ const StaffDashboard: React.FC = () => {
     }, 8000);
 
     // Check immediately on mount
-    fetch("https://roswalt-backend-production.up.railway.app/api/meeting/active-session")
+    fetch("https://adaptable-patience-production-45da.up.railway.app/api/meeting/active-session")
       .then(r => r.json()).then(d => { if (d.active && d.sessionId) setMeetingSession(d.sessionId); }).catch(() => {});
 
     return () => { s.disconnect(); clearInterval(pollSession); };
@@ -2275,7 +2275,7 @@ const StaffDashboard: React.FC = () => {
     }
     setDraftingTask(taskId);
     try {
-      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/draft-notes", {
+      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/draft-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, notes: completionNotes }),
@@ -2317,7 +2317,7 @@ const StaffDashboard: React.FC = () => {
         contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
-      const response = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
+      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, contentArray }),
@@ -3474,52 +3474,98 @@ const StaffDashboard: React.FC = () => {
         <main className="sd-main">
           <div className={`sd-toast ${successMsg ? "visible" : "hidden"}`}>{successMsg}</div>
 
-          {/* ── LIVE REVIEW MEETING PANEL ── */}
+          {/* ── LIVE REVIEW MEETING PANEL — side drawer, keeps dashboard visible ── */}
           {showMeetingPanel && (
-            <div style={{ position:"fixed", inset:0, zIndex:950, background:"rgba(0,0,0,.85)", backdropFilter:"blur(12px)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <div style={{ background:"rgba(8,14,28,.97)", border:"1px solid rgba(0,212,255,.25)", borderRadius:20, width:820, maxWidth:"95vw", overflow:"hidden", boxShadow:"0 32px 80px rgba(0,0,0,.7)" }}>
+            <div style={{ position:"fixed", top:0, right:0, bottom:0, zIndex:950, width:420, background:"rgba(6,10,22,0.97)", borderLeft:"1px solid rgba(0,212,255,.2)", backdropFilter:"blur(20px)", display:"flex", flexDirection:"column", boxShadow:"-20px 0 60px rgba(0,0,0,.6)", overflow:"hidden" }}>
 
                 {/* Header */}
-                <div style={{ padding:"16px 22px", borderBottom:"1px solid rgba(255,255,255,.07)", display:"flex", alignItems:"center", justifyContent:"space-between", background:"linear-gradient(90deg,rgba(0,212,255,.06),transparent)" }}>
+                <div style={{ padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,.07)", display:"flex", alignItems:"center", justifyContent:"space-between", background:"linear-gradient(90deg,rgba(0,212,255,.06),transparent)", flexShrink:0 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                     <span style={{ width:9, height:9, borderRadius:"50%", background:"#ef4444", animation:"blink 1.5s infinite", display:"inline-block" }} />
-                    <span style={{ fontWeight:700, fontSize:15, color:"#fff" }}>🎥 Live Review Session</span>
-                    {meetingInCall && <span style={{ fontSize:11, color:"rgba(0,212,255,.7)", fontFamily:"monospace" }}>— In Call</span>}
+                    <span style={{ fontWeight:700, fontSize:14, color:"#fff" }}>🎥 Live Review</span>
+                    {meetingInCall && <span style={{ fontSize:10, color:"rgba(0,212,255,.7)", fontFamily:"monospace" }}>In Call</span>}
                   </div>
-                  {!meetingInCall && (
-                    <button onClick={leaveMeetingQueue} style={{ background:"rgba(244,63,94,.1)", border:"1px solid rgba(244,63,94,.25)", color:"#f43f5e", padding:"5px 14px", borderRadius:7, fontSize:12, cursor:"pointer", fontWeight:600 }}>
-                      Leave Queue
-                    </button>
-                  )}
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    {!meetingInCall && (
+                      <button onClick={leaveMeetingQueue} style={{ background:"rgba(244,63,94,.1)", border:"1px solid rgba(244,63,94,.25)", color:"#f43f5e", padding:"4px 12px", borderRadius:7, fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                        Leave
+                      </button>
+                    )}
+                    {meetingInCall && (
+                      <button onClick={() => { endMeetingCall(); setShowMeetingPanel(false); }} style={{ background:"rgba(244,63,94,.15)", border:"1px solid rgba(244,63,94,.3)", color:"#f43f5e", padding:"4px 12px", borderRadius:7, fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                        End Call
+                      </button>
+                    )}
+                    <button onClick={() => setShowMeetingPanel(false)} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", color:"#7e84a3", width:26, height:26, borderRadius:6, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                  </div>
                 </div>
 
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:0 }}>
+                <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"auto" }}>
 
-                  {/* Left — Video */}
-                  <div style={{ background:"#060b18", minHeight:320, position:"relative" }}>
+                  {/* Video */}
+                  <div style={{ background:"#060b18", height:220, position:"relative", flexShrink:0 }}>
                     {meetingInCall ? (
-                      <video ref={meetRemoteRef} autoPlay playsInline style={{ width:"100%", height:"100%", objectFit:"cover", minHeight:320, display:"block" }} />
+                      <video ref={meetRemoteRef} autoPlay playsInline style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
                     ) : (
-                      <div style={{ width:"100%", minHeight:320, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
-                        <div style={{ fontSize:42, opacity:.15 }}>📹</div>
-                        <div style={{ fontSize:13, color:"rgba(255,255,255,.3)" }}>
-                          {inMeetingQueue ? `You are #${queuePosition} in queue — Supremo will call you shortly` : "Waiting for call…"}
+                      <div style={{ width:"100%", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
+                        <div style={{ fontSize:36, opacity:.15 }}>📹</div>
+                        <div style={{ fontSize:12, color:"rgba(255,255,255,.3)", textAlign:"center", padding:"0 20px" }}>
+                          {inMeetingQueue ? `You are #${queuePosition} in queue` : "Waiting for Supremo to call you…"}
                         </div>
                       </div>
                     )}
                     {/* Local PiP */}
                     {meetingInCall && (
-                      <div style={{ position:"absolute", bottom:10, right:10, width:100, height:70, borderRadius:8, overflow:"hidden", border:"2px solid rgba(0,212,255,.4)", background:"#000" }}>
+                      <div style={{ position:"absolute", bottom:8, right:8, width:90, height:62, borderRadius:7, overflow:"hidden", border:"2px solid rgba(0,212,255,.4)", background:"#000" }}>
                         <video ref={meetLocalRef} autoPlay muted playsInline style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                       </div>
                     )}
+                    {/* Your name label */}
+                    <div style={{ position:"absolute", bottom:8, left:8, background:"rgba(0,0,0,.7)", padding:"2px 8px", borderRadius:4, fontSize:10, color:"#eef0ff" }}>
+                      You
+                    </div>
                   </div>
 
+                  {/* Dashboard overview strip — visible during call */}
+                  {meetingInCall && (
+                    <div style={{ padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,.06)", background:"rgba(0,212,255,.03)", flexShrink:0 }}>
+                      <div style={{ fontSize:9, color:"rgba(0,212,255,.7)", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:700, marginBottom:8 }}>📊 Your Live Stats</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
+                        {[
+                          { l:"Tasks", v:assignedTasks.length, c:"#00d4ff" },
+                          { l:"Pending", v:pendingTasks.length, c:"#f5c518" },
+                          { l:"Delayed", v:delayedTasks.length, c:"#ff3366" },
+                          { l:"Completed", v:completedTasks.length, c:"#00ff88" },
+                          { l:"Frozen", v:frozenTasks.length, c:"#b06af3" },
+                          { l:"Tickets", v:ticketsRaised.length, c:"#ff9500" },
+                        ].map(({ l, v, c }) => (
+                          <div key={l} style={{ background:"rgba(255,255,255,.03)", border:`1px solid ${c}22`, borderRadius:7, padding:"6px 8px", textAlign:"center" }}>
+                            <div style={{ fontSize:16, fontWeight:800, color:c, fontFamily:"'Space Grotesk',sans-serif", lineHeight:1 }}>{v}</div>
+                            <div style={{ fontSize:8, color:"#7e84a3", textTransform:"uppercase", letterSpacing:"0.5px", marginTop:2 }}>{l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Recent pending tasks */}
+                      {pendingTasks.slice(0,3).length > 0 && (
+                        <div style={{ marginTop:10 }}>
+                          <div style={{ fontSize:9, color:"#7e84a3", textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:5 }}>Active Tasks</div>
+                          {pendingTasks.slice(0,3).map(t => (
+                            <div key={t.id} style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                              <div style={{ width:5, height:5, borderRadius:"50%", background: isDelayed(t)?"#ff3366":"#f5c518", flexShrink:0 }} />
+                              <span style={{ fontSize:10, color:"#c8ccdd", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</span>
+                              <span style={{ fontSize:9, color:"#7e84a3", flexShrink:0 }}>{t.dueDate ? new Date(t.dueDate).toLocaleDateString("en-IN",{day:"numeric",month:"short"}) : ""}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Right — Info + Promise Score */}
-                  <div style={{ padding:"20px 18px", borderLeft:"1px solid rgba(255,255,255,.06)", display:"flex", flexDirection:"column", gap:16 }}>
+                  <div style={{ padding:"16px 18px", display:"flex", flexDirection:"column", gap:14, flex:1 }}>
 
                     {/* Status */}
-                    <div style={{ padding:"12px 14px", background:"rgba(0,212,255,.05)", border:"1px solid rgba(0,212,255,.15)", borderRadius:10 }}>
+                    <div style={{ padding:"10px 12px", background:"rgba(0,212,255,.05)", border:"1px solid rgba(0,212,255,.15)", borderRadius:10 }}>
                       <div style={{ fontSize:10, color:"rgba(0,212,255,.7)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6, fontWeight:700 }}>Session Status</div>
                       <div style={{ fontSize:13, color:"#fff", fontWeight:500 }}>
                         {meetingInCall ? "🟢 In call with Supremo" : inMeetingQueue ? `⏳ Position #${queuePosition} in queue` : "Connecting…"}
@@ -3570,14 +3616,13 @@ const StaffDashboard: React.FC = () => {
 
                     {/* Queue instructions */}
                     {!meetingInCall && (
-                      <div style={{ fontSize:12, color:"rgba(255,255,255,.35)", lineHeight:1.7, textAlign:"center", paddingTop:8 }}>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,.35)", lineHeight:1.7, textAlign:"center", paddingTop:8 }}>
                         Keep this panel open.<br/>
-                        Supremo will start the call when it's your turn.
+                        Supremo will call you when it's your turn.
                       </div>
                     )}
                   </div>
                 </div>
-              </div>
             </div>
           )}
 
@@ -4827,23 +4872,39 @@ const TaskCard: React.FC<TaskCardProps> = ({
       {(task as any).isFrozen && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(6,10,21,0.72)",
-          backdropFilter: "blur(4px)",
+          background: "rgba(4,6,18,0.88)",
+          backdropFilter: "blur(6px)",
           borderRadius: "inherit",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           gap: 10, padding: 20,
-          border: "1px solid rgba(176,106,243,0.3)",
+          border: "1px solid rgba(176,106,243,0.35)",
         }}>
           <div style={{ fontSize: 28 }}>🔒</div>
           <div style={{ fontSize: 13, fontWeight: 800, color: "#b06af3", fontFamily: "'Space Grotesk', sans-serif", textAlign: "center" }}>
-            Task Frozen — Pending Admin Approval
+            Task Frozen
           </div>
-          <div style={{ fontSize: 11, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 280 }}>
-            An assistance ticket for this task has been submitted to your admin.
-            You cannot submit this task until the ticket is approved and the task is unfrozen.
+          {/* Task name */}
+          <div style={{ background: "rgba(176,106,243,0.08)", border: "1px solid rgba(176,106,243,0.2)", borderRadius: 8, padding: "7px 14px", textAlign: "center", maxWidth: 280 }}>
+            <div style={{ fontSize: 9, color: "#b06af3", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 3 }}>Task</div>
+            <div style={{ fontSize: 12, color: "#eef0ff", fontWeight: 700, lineHeight: 1.4 }}>{task.title}</div>
+          </div>
+          {/* Assigned by */}
+          {assigner && (
+            <div style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "6px 12px" }}>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(176,106,243,0.2)", border: "1px solid rgba(176,106,243,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#b06af3", flexShrink: 0 }}>
+                {assigner.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: "#7e84a3", textTransform: "uppercase", letterSpacing: "0.5px" }}>Assigned by</div>
+                <div style={{ fontSize: 11, color: "#eef0ff", fontWeight: 600 }}>{assigner.name}</div>
+              </div>
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: "#7e84a3", textAlign: "center", lineHeight: 1.6, maxWidth: 240 }}>
+            Ticket submitted — waiting for admin to approve before you can continue.
           </div>
           <div style={{
-            padding: "6px 14px",
+            padding: "5px 12px",
             background: "rgba(176,106,243,0.1)", border: "1px solid rgba(176,106,243,0.3)",
             borderRadius: 8, fontSize: 10, color: "#b06af3", fontWeight: 700,
             textTransform: "uppercase" as const, letterSpacing: "0.5px",
