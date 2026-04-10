@@ -284,6 +284,14 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     meetSockRef.current = sock;
     sock.connect();
 
+    // Register Supremo's email for WebRTC answer routing
+    sock.on('connect', () => {
+      if (currentUser?.email) {
+        sock.emit('meeting:register', { email: currentUser.email, name: currentUser.name });
+        console.log('[Meet] Supremo registered:', currentUser.email);
+      }
+    });
+
     sock.on('meeting:join-queue', (entry: any) => {
       setMeetQueue(prev => {
         if (prev.find(p => p.userId === entry.userId)) return prev;
@@ -1103,4 +1111,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// 20:14:06
+// 20:17:58
