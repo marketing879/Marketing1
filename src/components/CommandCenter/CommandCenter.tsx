@@ -510,7 +510,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                             <span style={{color:'#eef2ff'}}>{u.name}</span>
                           </div>
                           <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                            {uA&&<span style={{fontSize:9,color:'#4ade80',fontFamily:'monospace'}}>{uA}%</span>}
+                            {uA&&<span style={{fontSize:9,color:Number(uA)>=85?'#4ade80':'#f87171',fontFamily:'monospace'}}>{uA}%</span>}
                             <span style={{fontSize:9,color:'#4a5568'}}>{uT.length}t</span>
                           </div>
                         </div>
@@ -532,7 +532,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,rgba(212,168,71,0.2),rgba(99,102,241,0.2))',border:'1px solid rgba(212,168,71,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#f0c060',flexShrink:0}}>{initials(selectedUserObj.name||'')}</div>
                 <div><div style={{fontSize:11,color:'#eef2ff',fontWeight:600}}>{selectedUserObj.name}</div><div style={{fontSize:9,color:'#8b9ab8',marginTop:1}}>{userScoredTasks.length} scored · {filteredTasks.length} total</div></div>
                 <div style={{marginLeft:'auto',textAlign:'right'}}>
-                  <div style={{fontSize:22,fontWeight:800,color:'#4ade80',fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{userAvgScore}%</div>
+                  <div style={{fontSize:22,fontWeight:800,color:Number(userAvgScore)>=85?'#4ade80':'#f87171',fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{userAvgScore}%</div>
                   <div style={{fontSize:9,color:'#4a5568',marginTop:2}}>Avg Score</div>
                 </div>
               </div>
