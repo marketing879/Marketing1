@@ -1071,7 +1071,6 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 🛑 End Session
               </button>
             </div>
-            </div>
           </div>
         )}
 
@@ -1082,4 +1081,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// deploy 19:10:27
+// deploy 19:12:18
