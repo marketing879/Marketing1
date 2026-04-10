@@ -537,7 +537,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,opacity:.7}}>
                   {/* Show local camera in main area when in meet call */}
                   {meetInCall && localStream ? (
-                    <video ref={meetLocalRef} autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover',position:'absolute',inset:0}}/>
+                    <video autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover',position:'absolute',inset:0}}
+                      ref={el => { if(el && localStream) el.srcObject = localStream; }}/>
                   ) : (
                     <>
                       <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(31,111,235,0.25),rgba(99,102,241,0.25))',border:'2px solid rgba(99,102,241,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'#afc6ff'}}>{userInitials}</div>
@@ -1013,7 +1014,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
             {/* Video area */}
             <div style={{height:200,background:'#060b18',position:'relative',flexShrink:0}}>
               {meetInCall?(
-                <video ref={meetRemoteRef} autoPlay playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                <video autoPlay playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}
+                  ref={el => { if(el && remoteStream) el.srcObject = remoteStream; }}/>
               ):(
                 <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8}}>
                   <div style={{fontSize:32,opacity:.15}}>📹</div>
@@ -1023,7 +1025,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 </div>
               )}
               {meetInCall&&<div style={{position:'absolute',bottom:8,right:8,width:80,height:54,borderRadius:6,overflow:'hidden',border:'2px solid rgba(99,102,241,0.4)',background:'#000'}}>
-                <video ref={meetLocalRef} autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                <video autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover'}}
+                  ref={el => { if(el && localStream) el.srcObject = localStream; }}/>
               </div>}
               {meetInCall&&meetCallee&&<div style={{position:'absolute',top:8,left:8,background:'rgba(0,0,0,0.8)',padding:'3px 9px',borderRadius:4,fontSize:10,color:'#eef2ff',border:'1px solid rgba(34,197,94,0.3)',display:'flex',alignItems:'center',gap:4}}>
                 <span style={{width:5,height:5,borderRadius:'50%',background:'#22c55e',animation:'ccBlink .8s infinite',display:'inline-block'}}/>{meetCallee.userName}
@@ -1100,4 +1103,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// 20:00:29
+// 20:14:06
