@@ -175,6 +175,21 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
   const [roleUpdating, setRoleUpdating]           = useState<string|null>(null);
   const [roleMsg, setRoleMsg]                     = useState<{id:string;ok:boolean;text:string}|null>(null);
 
+  // ── Meeting session state ────────────────────────────────────────────────
+  const [sessionActive,   setSessionActive]   = useState(false);
+  const [sessionId,       setSessionId]       = useState<string|null>(null);
+  const [meetQueue,       setMeetQueue]       = useState<{userId:string;userName:string;email:string}[]>([]);
+  const [meetInCall,      setMeetInCall]      = useState(false);
+  const [meetCallee,      setMeetCallee]      = useState<{userId:string;userName:string;email:string}|null>(null);
+  const [meetStarting,    setMeetStarting]    = useState(false);
+  const meetSockRef       = useRef<any>(null);
+  const meetPcRef         = useRef<RTCPeerConnection|null>(null);
+  const meetLocalRef      = useRef<HTMLVideoElement>(null);
+  const meetRemoteRef     = useRef<HTMLVideoElement>(null);
+  const [localStream,     setLocalStream]     = useState<MediaStream|null>(null);
+  const [remoteStream,    setRemoteStream]    = useState<MediaStream|null>(null);
+  const [showMeetPanel,   setShowMeetPanel]   = useState(false);
+
   const currentWeek  = getWeekNumber(new Date());
   const currentMonth = new Date().getMonth();
 
@@ -259,6 +274,88 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
       } else { setRoleMsg({ id: user._id, ok: false, text: 'Update failed' }); setTimeout(() => setRoleMsg(null), 3000); }
     } catch(e) { setRoleMsg({ id: user._id, ok: false, text: 'Network error' }); setTimeout(() => setRoleMsg(null), 3000); }
     finally { setRoleUpdating(null); }
+  };
+
+  // ── Meeting socket setup ────────────────────────────────────────────────
+  useEffect(() => {
+    const io = (window as any).io;
+    if (!io) return;
+    const sock = io(API, { transports:['websocket','polling'], autoConnect:false });
+    meetSockRef.current = sock;
+    sock.connect();
+
+    sock.on('meeting:join-queue', (entry: any) => {
+      setMeetQueue(prev => {
+        if (prev.find(p => p.userId === entry.userId)) return prev;
+        return [...prev, entry];
+      });
+    });
+    sock.on('meeting:leave-queue', ({ userId }: any) => {
+      setMeetQueue(prev => prev.filter(p => p.userId !== userId));
+    });
+    sock.on('meeting:answer', async ({ answer }: any) => {
+      try { await meetPcRef.current?.setRemoteDescription(answer); } catch {}
+    });
+    sock.on('meeting:ice-candidate', async ({ candidate }: any) => {
+      try { await meetPcRef.current?.addIceCandidate(candidate); } catch {}
+    });
+    sock.on('meeting:call-ended', () => { endMeetCall(); });
+
+    return () => { sock.disconnect(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [API]);
+
+  useEffect(() => { if (meetLocalRef.current  && localStream)  meetLocalRef.current.srcObject  = localStream;  }, [localStream]);
+  useEffect(() => { if (meetRemoteRef.current && remoteStream) meetRemoteRef.current.srcObject = remoteStream; }, [remoteStream]);
+
+  const startSession = async () => {
+    setMeetStarting(true);
+    try {
+      const sid = `session_${Date.now()}`;
+      await fetch(`${API}/api/meeting/start`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ sessionId: sid, supremoName: currentUser?.name || 'Supremo' }),
+      });
+      setSessionId(sid);
+      setSessionActive(true);
+      setShowMeetPanel(true);
+      meetSockRef.current?.emit('meeting:supremo-start', { sessionId: sid, supremoName: currentUser?.name });
+    } catch(e) { console.error(e); }
+    finally { setMeetStarting(false); }
+  };
+
+  const endSession = async () => {
+    meetSockRef.current?.emit('meeting:session-ended', { sessionId });
+    await fetch(`${API}/api/meeting/end`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId }) });
+    endMeetCall();
+    setSessionActive(false); setSessionId(null); setMeetQueue([]); setShowMeetPanel(false);
+  };
+
+  const callQueuedUser = async (callee: {userId:string;userName:string;email:string}) => {
+    if (!meetSockRef.current || meetInCall) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      setLocalStream(stream);
+      const pc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }] });
+      meetPcRef.current = pc;
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      const rs = new MediaStream();
+      pc.ontrack = e => { e.streams[0].getTracks().forEach(t => rs.addTrack(t)); setRemoteStream(new MediaStream(rs.getTracks())); };
+      pc.onicecandidate = e => { if (e.candidate) meetSockRef.current.emit('meeting:ice-candidate', { to: callee.userId, candidate: e.candidate }); };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      meetSockRef.current.emit('meeting:offer', { to: callee.userId, offer, sessionId, from: currentUser?.email });
+      setMeetCallee(callee);
+      setMeetInCall(true);
+      setMeetQueue(prev => prev.filter(p => p.userId !== callee.userId));
+    } catch(e) { console.error('[Meet] WebRTC error', e); }
+  };
+
+  const endMeetCall = () => {
+    meetPcRef.current?.close(); meetPcRef.current = null;
+    localStream?.getTracks().forEach(t => t.stop());
+    setLocalStream(null); setRemoteStream(null);
+    setMeetInCall(false); setMeetCallee(null);
   };
 
   const userMap = new Map<string, LiveUser>();
@@ -470,7 +567,9 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
               <div className="cc-tb-btn">🖥</div><div className="cc-tb-btn">👥</div><div className="cc-tb-btn">💬</div>
               {inCall
                 ?<button onClick={endCall} style={{marginLeft:4,background:'linear-gradient(135deg,#dc2626,#ef4444)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(220,38,38,0.4)'}}>End Call</button>
-                :<button style={{marginLeft:4,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:7,padding:'0 12px',height:30,color:'#8b9ab8',fontSize:11,cursor:'pointer'}}>End</button>
+                :sessionActive
+                  ?<button onClick={endSession} style={{marginLeft:4,background:'linear-gradient(135deg,#dc2626,#ef4444)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}}>End Session</button>
+                  :<button onClick={startSession} disabled={meetStarting} style={{marginLeft:4,background:meetStarting?'rgba(99,102,241,0.15)':'linear-gradient(135deg,#4f46e5,#7c3aed)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(99,102,241,0.4)'}}>{meetStarting?'Starting…':'🎥 Start Session'}</button>
               }
             </div>
           </section>
@@ -878,6 +977,104 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
             )}
           </section>
         </main>
+
+        {/* ── LIVE SESSION PANEL ── floats as side panel when active */}
+        {showMeetPanel && sessionActive && (
+          <div style={{position:'fixed',top:52,right:0,bottom:0,width:340,background:'rgba(4,8,22,0.98)',borderLeft:'1px solid rgba(99,102,241,0.25)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',zIndex:200,boxShadow:'-12px 0 40px rgba(0,0,0,0.5)'}}>
+            {/* Header */}
+            <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'linear-gradient(90deg,rgba(99,102,241,0.08),transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'ccBlink 1s infinite'}}/>
+                <span style={{fontWeight:700,fontSize:13,color:'#eef2ff'}}>Live Session</span>
+                {meetInCall&&<span style={{fontSize:10,color:'#4ade80',fontFamily:'monospace'}}>· In Call</span>}
+              </div>
+              <button onClick={()=>setShowMeetPanel(false)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',color:'#8b9ab8',width:24,height:24,borderRadius:5,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            </div>
+
+            {/* Video area */}
+            <div style={{height:200,background:'#060b18',position:'relative',flexShrink:0}}>
+              {meetInCall?(
+                <video ref={meetRemoteRef} autoPlay playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+              ):(
+                <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8}}>
+                  <div style={{fontSize:32,opacity:.15}}>📹</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.3)',textAlign:'center',padding:'0 16px'}}>
+                    {meetQueue.length>0?'Click a queued member to start the call':'Waiting for staff to join the queue…'}
+                  </div>
+                </div>
+              )}
+              {meetInCall&&<div style={{position:'absolute',bottom:8,right:8,width:80,height:54,borderRadius:6,overflow:'hidden',border:'2px solid rgba(99,102,241,0.4)',background:'#000'}}>
+                <video ref={meetLocalRef} autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              </div>}
+              {meetInCall&&meetCallee&&<div style={{position:'absolute',top:8,left:8,background:'rgba(0,0,0,0.8)',padding:'3px 9px',borderRadius:4,fontSize:10,color:'#eef2ff',border:'1px solid rgba(34,197,94,0.3)',display:'flex',alignItems:'center',gap:4}}>
+                <span style={{width:5,height:5,borderRadius:'50%',background:'#22c55e',animation:'ccBlink .8s infinite',display:'inline-block'}}/>{meetCallee.userName}
+              </div>}
+            </div>
+
+            {/* Queue + All Staff */}
+            <div style={{flex:1,overflow:'auto',padding:'12px',display:'flex',flexDirection:'column',gap:10}}>
+
+              {/* Joined Queue */}
+              <div>
+                <div style={{fontSize:9,color:'#4a5568',textTransform:'uppercase',letterSpacing:'.08em',fontWeight:700,marginBottom:6,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span>⏳ In Queue ({meetQueue.length})</span>
+                  {meetInCall&&<button onClick={endMeetCall} style={{padding:'3px 10px',background:'rgba(244,63,94,0.12)',border:'1px solid rgba(244,63,94,0.3)',borderRadius:5,color:'#f87171',fontSize:9,cursor:'pointer',fontWeight:700}}>End Call</button>}
+                </div>
+                {meetQueue.length===0?(
+                  <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)',borderRadius:8,fontSize:10,color:'#4a5568',textAlign:'center'}}>
+                    Waiting for staff to join…
+                  </div>
+                ):meetQueue.map((member,i)=>(
+                  <div key={member.userId} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(34,197,94,0.07)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:8,marginBottom:5}}>
+                    <div style={{width:28,height:28,borderRadius:'50%',background:'rgba(34,197,94,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#4ade80',flexShrink:0}}>{initials(member.userName)}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:10,color:'#eef2ff',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{member.userName}</div>
+                      <div style={{fontSize:8,color:'#22c55e'}}>Ready to connect</div>
+                    </div>
+                    {!meetInCall&&<button onClick={()=>callQueuedUser(member)} style={{padding:'4px 9px',background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'none',borderRadius:5,color:'#fff',fontSize:9,fontWeight:700,cursor:'pointer'}}>📞 Call</button>}
+                  </div>
+                ))}
+              </div>
+
+              {/* All Staff — Supremo can call anyone directly */}
+              <div>
+                <div style={{fontSize:9,color:'#4a5568',textTransform:'uppercase',letterSpacing:'.08em',fontWeight:700,marginBottom:6}}>
+                  👥 All Staff Members
+                </div>
+                {users.filter(u=>u.role==='staff'||u.role==='admin').map((u,i)=>{
+                  const isInCall = meetInCall && meetCallee?.email===u.email;
+                  const isQueued = meetQueue.some(m=>m.email===u.email);
+                  const uTasks  = tasks.filter(t=>t.assignedTo?.toLowerCase()===u.email?.toLowerCase());
+                  const uDone   = uTasks.filter(t=>t.status==='approved'||t.status==='completed').length;
+                  const uSc     = uTasks.filter(t=>t.scoreData?.percentScore!=null).map(t=>t.scoreData!.percentScore!);
+                  const uAvg    = uSc.length?Math.round(uSc.reduce((a,b)=>a+b,0)/uSc.length):null;
+                  return (
+                    <div key={u._id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',marginBottom:4,background:isInCall?'rgba(34,197,94,0.08)':isQueued?'rgba(99,102,241,0.07)':'rgba(255,255,255,0.02)',border:`1px solid ${isInCall?'rgba(34,197,94,0.3)':isQueued?'rgba(99,102,241,0.2)':'rgba(255,255,255,0.05)'}`,borderRadius:7}}>
+                      <div style={{width:26,height:26,borderRadius:'50%',background:av(i).bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:av(i).c,flexShrink:0}}>{initials(u.name||'')}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:10,color:'#eef2ff',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</div>
+                        <div style={{fontSize:8,color:'#4a5568'}}>{uDone}/{uTasks.length} done{uAvg!=null?` · ${uAvg}%`:''}</div>
+                      </div>
+                      {isInCall
+                        ?<span style={{fontSize:9,color:'#4ade80',fontWeight:700,flexShrink:0}}>● In Call</span>
+                        :<button disabled={meetInCall&&!isInCall} onClick={()=>callQueuedUser({userId:u._id,userName:u.name,email:u.email})}
+                          style={{padding:'4px 9px',background:meetInCall?'rgba(255,255,255,0.03)':'rgba(99,102,241,0.15)',border:`1px solid ${meetInCall?'rgba(255,255,255,0.06)':'rgba(99,102,241,0.3)'}`,borderRadius:5,color:meetInCall?'#4a5568':'#a5b4fc',fontSize:9,fontWeight:700,cursor:meetInCall?'not-allowed':'pointer',flexShrink:0}}>
+                          {isQueued?'📞 Call Now':'📞 Call'}
+                        </button>
+                      }
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button onClick={endSession} style={{width:'100%',marginTop:4,padding:'9px',background:'linear-gradient(135deg,rgba(220,38,38,0.15),rgba(239,68,68,0.1))',border:'1px solid rgba(244,63,94,0.3)',borderRadius:8,color:'#f87171',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                🛑 End Session
+              </button>
+            </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   );
@@ -885,4 +1082,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// deploy 18:50:12
+// deploy 19:10:27
