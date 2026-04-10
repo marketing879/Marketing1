@@ -1982,6 +1982,18 @@ const StaffDashboard: React.FC = () => {
     meetSockRef.current = s;
     s.connect();
 
+    // Register this staff member's email with the socket server for routing
+    s.on("connect", () => {
+      if (user?.email) {
+        s.emit("meeting:register", { email: user.email, name: user.name });
+        console.log("[Meeting] Registered email:", user.email);
+      }
+    });
+    // Register immediately if already connected
+    if (s.connected && user?.email) {
+      s.emit("meeting:register", { email: user.email, name: user.name });
+    }
+
     s.on("meeting:offer", async ({ from, offer, sessionId }: any) => {
       setMeetingSession(sessionId);
       setMeetingInCall(true);
@@ -5208,4 +5220,4 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
-// 19:45:52
+// 20:00:29

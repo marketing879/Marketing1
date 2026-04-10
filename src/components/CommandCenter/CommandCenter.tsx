@@ -334,17 +334,19 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
   const callQueuedUser = async (callee: {userId:string;userName:string;email:string}) => {
     if (!meetSockRef.current || meetInCall) return;
     try {
+      console.log('[Meet] Calling:', callee.email);
       const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      console.log('[Meet] Camera stream obtained');
       setLocalStream(stream);
       const pc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }] });
       meetPcRef.current = pc;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       const rs = new MediaStream();
       pc.ontrack = e => { e.streams[0].getTracks().forEach(t => rs.addTrack(t)); setRemoteStream(new MediaStream(rs.getTracks())); };
-      pc.onicecandidate = e => { if (e.candidate) meetSockRef.current.emit('meeting:ice-candidate', { to: callee.userId, candidate: e.candidate }); };
+      pc.onicecandidate = e => { if (e.candidate) meetSockRef.current.emit('meeting:ice-candidate', { to: callee.email, candidate: e.candidate }); };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      meetSockRef.current.emit('meeting:offer', { to: callee.userId, offer, sessionId, from: currentUser?.email });
+      meetSockRef.current.emit('meeting:offer', { to: callee.email, offer, sessionId, from: currentUser?.email });
       setMeetCallee(callee);
       setMeetInCall(true);
       setMeetQueue(prev => prev.filter(p => p.userId !== callee.userId));
@@ -533,12 +535,19 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 </>
               ):(
                 <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,opacity:.7}}>
-                  <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(31,111,235,0.25),rgba(99,102,241,0.25))',border:'2px solid rgba(99,102,241,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'#afc6ff'}}>{userInitials}</div>
-                  <span style={{fontSize:10,color:'#8b9ab8'}}>{currentUser?.name||'Supremo'}</span>
-                  {sessionActive
-                    ?<span style={{fontSize:9,color:'#22c55e',display:'flex',alignItems:'center',gap:4}}><span style={{width:5,height:5,borderRadius:'50%',background:'#22c55e',animation:'ccBlink 1s infinite',display:'inline-block'}}/>Session active — click a staff thumbnail or use the panel →</span>
+                  {/* Show local camera in main area when in meet call */}
+                  {meetInCall && localStream ? (
+                    <video ref={meetLocalRef} autoPlay muted playsInline style={{width:'100%',height:'100%',objectFit:'cover',position:'absolute',inset:0}}/>
+                  ) : (
+                    <>
+                      <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(31,111,235,0.25),rgba(99,102,241,0.25))',border:'2px solid rgba(99,102,241,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'#afc6ff'}}>{userInitials}</div>
+                      <span style={{fontSize:10,color:'#8b9ab8'}}>{currentUser?.name||'Supremo'}</span>
+                    </>
+                  )}
+                  {!meetInCall && (sessionActive
+                    ?<span style={{fontSize:9,color:'#22c55e',display:'flex',alignItems:'center',gap:4}}><span style={{width:5,height:5,borderRadius:'50%',background:'#22c55e',animation:'ccBlink 1s infinite',display:'inline-block'}}/>Session active — use the panel → to call staff</span>
                     :<button onClick={startSession} style={{padding:'6px 14px',background:'linear-gradient(135deg,#4f46e5,#7c3aed)',border:'none',borderRadius:7,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 10px rgba(99,102,241,0.4)'}}>🎥 Start Session</button>
-                  }
+                  )}
                 </div>
               )}
               <div style={{position:'absolute',top:7,right:7,background:'rgba(31,111,235,0.15)',border:'1px solid rgba(31,111,235,0.3)',borderRadius:4,padding:'2px 6px',fontSize:9,color:'#afc6ff'}}>HD</div>
@@ -1091,4 +1100,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// 19:45:52
+// 20:00:29
