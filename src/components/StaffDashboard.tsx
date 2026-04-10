@@ -2066,6 +2066,8 @@ const StaffDashboard: React.FC = () => {
       userName: user.name,
       email: user.email,
     });
+    setInMeetingQueue(true);
+    setShowMeetingPanel(true);
   }
 
   function leaveMeetingQueue() {
@@ -3465,6 +3467,15 @@ const StaffDashboard: React.FC = () => {
               </div>
             </div>
             <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePicChange} />
+            {/* Live session indicator in navbar */}
+            {meetingSession && (
+              <button
+                onClick={() => { if (!inMeetingQueue) joinMeetingQueue(); else setShowMeetingPanel(true); }}
+                style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", background: inMeetingQueue ? "rgba(16,185,129,.12)" : "rgba(0,212,255,.1)", border:`1px solid ${inMeetingQueue ? "rgba(16,185,129,.35)" : "rgba(0,212,255,.35)"}`, borderRadius:8, cursor:"pointer", color: inMeetingQueue ? "#10b981" : "#00d4ff", fontSize:11, fontWeight:700, fontFamily:"inherit" }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background: inMeetingQueue ? "#10b981" : "#ef4444", display:"inline-block", animation:"badgePulse 1s ease-in-out infinite" }} />
+                {meetingInCall ? "In Call" : inMeetingQueue ? "In Queue" : "🎥 Join Review"}
+              </button>
+            )}
             <button className="sd-logout" onClick={handleLogout} title="Sign Out">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
@@ -3660,16 +3671,39 @@ const StaffDashboard: React.FC = () => {
             </div>
 
 
-            {/* ── JOIN LIVE REVIEW BANNER ── */}
-            {meetingSession && !inMeetingQueue && activeTab === "pending" && (
-              <div style={{ marginBottom:16, padding:"14px 18px", background:"linear-gradient(135deg,rgba(0,212,255,.08),rgba(99,102,241,.06))", border:"1px solid rgba(0,212,255,.2)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, color:"#00d4ff", marginBottom:3 }}>🎥 Live Review Session is Active</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,.45)" }}>Supremo has started a review session. Join the queue to be reviewed.</div>
+            {/* ── JOIN LIVE REVIEW BANNER — visible on ALL tabs ── */}
+            {meetingSession && !showMeetingPanel && (
+              <div style={{ marginBottom:16, padding:"12px 18px", background:"linear-gradient(135deg,rgba(0,212,255,.12),rgba(99,102,241,.08))", border:"1px solid rgba(0,212,255,.35)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, animation:"badgePulse 2s ease-in-out infinite" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ width:10, height:10, borderRadius:"50%", background:"#ef4444", display:"inline-block", animation:"badgePulse 1s ease-in-out infinite", flexShrink:0 }} />
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:"#00d4ff", marginBottom:2 }}>🎥 Live Review Session is Active</div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,.5)" }}>
+                      {inMeetingQueue ? `You are in the queue — Supremo will call you shortly` : "Supremo has started a review session. Join now to be reviewed."}
+                    </div>
+                  </div>
                 </div>
-                <button onClick={() => { setShowMeetingPanel(true); joinMeetingQueue(); }}
-                  style={{ padding:"9px 20px", background:"linear-gradient(135deg,#00d4ff,#0ea5e9)", border:"none", borderRadius:8, color:"#000", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-                  Join Queue
+                <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                  {inMeetingQueue ? (
+                    <button onClick={() => setShowMeetingPanel(true)}
+                      style={{ padding:"9px 18px", background:"rgba(0,212,255,.15)", border:"1px solid rgba(0,212,255,.4)", borderRadius:8, color:"#00d4ff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      Open Panel
+                    </button>
+                  ) : (
+                    <button onClick={() => { joinMeetingQueue(); }}
+                      style={{ padding:"9px 20px", background:"linear-gradient(135deg,#00d4ff,#0ea5e9)", border:"none", borderRadius:8, color:"#000", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      Join Queue
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Re-open panel button when in queue but panel closed */}
+            {inMeetingQueue && !showMeetingPanel && (
+              <div style={{ marginBottom:16, padding:"10px 18px", background:"rgba(16,185,129,.07)", border:"1px solid rgba(16,185,129,.25)", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+                <div style={{ fontSize:12, color:"#10b981", fontWeight:600 }}>⏳ You are in the review queue</div>
+                <button onClick={() => setShowMeetingPanel(true)} style={{ padding:"6px 14px", background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:7, color:"#10b981", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                  Open Call Panel
                 </button>
               </div>
             )}
