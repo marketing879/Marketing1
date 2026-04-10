@@ -532,10 +532,13 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                   )}
                 </>
               ):(
-                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,opacity:.55}}>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,opacity:.7}}>
                   <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(31,111,235,0.25),rgba(99,102,241,0.25))',border:'2px solid rgba(99,102,241,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'#afc6ff'}}>{userInitials}</div>
                   <span style={{fontSize:10,color:'#8b9ab8'}}>{currentUser?.name||'Supremo'}</span>
-                  <span style={{fontSize:9,color:'#4a5568'}}>Click participant to connect</span>
+                  {sessionActive
+                    ?<span style={{fontSize:9,color:'#22c55e',display:'flex',alignItems:'center',gap:4}}><span style={{width:5,height:5,borderRadius:'50%',background:'#22c55e',animation:'ccBlink 1s infinite',display:'inline-block'}}/>Session active — click a staff thumbnail or use the panel →</span>
+                    :<button onClick={startSession} style={{padding:'6px 14px',background:'linear-gradient(135deg,#4f46e5,#7c3aed)',border:'none',borderRadius:7,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 10px rgba(99,102,241,0.4)'}}>🎥 Start Session</button>
+                  }
                 </div>
               )}
               <div style={{position:'absolute',top:7,right:7,background:'rgba(31,111,235,0.15)',border:'1px solid rgba(31,111,235,0.3)',borderRadius:4,padding:'2px 6px',fontSize:9,color:'#afc6ff'}}>HD</div>
@@ -543,11 +546,18 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
             <div className="cc-thumbs">
               {(participants.length>0?participants:[{user:null as any,ini:'...',bg:'rgba(99,102,241,0.1)',c:'#a5b4fc',name:''}]).slice(0,4).map(({user,ini,bg,c,name},i)=>(
-                <div key={i} className={`cc-thumb${inCall&&callingUser?._id===user?._id?' calling':''}`}
-                  onClick={()=>user&&(inCall&&callingUser?._id===user._id?endCall():startCall(user))}>
+                <div key={i} className={`cc-thumb${meetInCall&&meetCallee?.email===user?.email?' calling':''}`}
+                  title={user?`Call ${name} via session`:''}
+                  onClick={()=>{
+                    if(!user) return;
+                    if(!sessionActive){ setShowMeetPanel(true); startSession(); return; }
+                    setShowMeetPanel(true);
+                    if(!meetInCall) callQueuedUser({userId:user._id,userName:user.name,email:user.email});
+                  }}>
                   <div style={{width:26,height:26,borderRadius:'50%',background:bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:c}}>{ini}</div>
                   {name&&<span style={{fontSize:8,color:'#4a5568'}}>{name}</span>}
-                  {user&&inCall&&callingUser?._id===user._id&&<div style={{position:'absolute',top:3,right:3,width:6,height:6,borderRadius:'50%',background:'#22c55e',animation:'ccBlink .8s infinite'}}/>}
+                  {user&&meetInCall&&meetCallee?.email===user.email&&<div style={{position:'absolute',top:3,right:3,width:6,height:6,borderRadius:'50%',background:'#22c55e',animation:'ccBlink .8s infinite'}}/>}
+                  {!sessionActive&&user&&<div style={{position:'absolute',bottom:3,fontSize:7,color:'rgba(99,102,241,0.7)'}}>Start</div>}
                 </div>
               ))}
             </div>
@@ -569,7 +579,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 ?<button onClick={endCall} style={{marginLeft:4,background:'linear-gradient(135deg,#dc2626,#ef4444)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(220,38,38,0.4)'}}>End Call</button>
                 :sessionActive
                   ?<button onClick={endSession} style={{marginLeft:4,background:'linear-gradient(135deg,#dc2626,#ef4444)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}}>End Session</button>
-                  :<button onClick={startSession} disabled={meetStarting} style={{marginLeft:4,background:meetStarting?'rgba(99,102,241,0.15)':'linear-gradient(135deg,#4f46e5,#7c3aed)',border:'none',borderRadius:7,padding:'0 12px',height:30,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(99,102,241,0.4)'}}>{meetStarting?'Starting…':'🎥 Start Session'}</button>
+                  :<button onClick={()=>{startSession();}} disabled={meetStarting} style={{marginLeft:4,background:meetStarting?'rgba(99,102,241,0.15)':'linear-gradient(135deg,#4f46e5,#7c3aed)',border:'none',borderRadius:7,padding:'0 16px',height:32,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 12px rgba(99,102,241,0.5)',animation:meetStarting?'none':'ccGlow 2s ease-in-out infinite'}}>{meetStarting?'Starting…':'🎥 Start Session'}</button>
               }
             </div>
           </section>
@@ -1081,4 +1091,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// deploy 19:15:31
+// deploy 19:23:28
