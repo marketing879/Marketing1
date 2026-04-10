@@ -2068,6 +2068,7 @@ const StaffDashboard: React.FC = () => {
     });
     setInMeetingQueue(true);
     setShowMeetingPanel(true);
+    setQueuePosition(1);
   }
 
   function leaveMeetingQueue() {
@@ -3521,7 +3522,7 @@ const StaffDashboard: React.FC = () => {
                       <div style={{ width:"100%", height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
                         <div style={{ fontSize:36, opacity:.15 }}>📹</div>
                         <div style={{ fontSize:12, color:"rgba(255,255,255,.3)", textAlign:"center", padding:"0 20px" }}>
-                          {inMeetingQueue ? `You are #${queuePosition} in queue` : "Waiting for Supremo to call you…"}
+                          {inMeetingQueue ? `You are in the queue` : "Waiting for Supremo to call you…"}
                         </div>
                       </div>
                     )}
@@ -3579,7 +3580,7 @@ const StaffDashboard: React.FC = () => {
                     <div style={{ padding:"10px 12px", background:"rgba(0,212,255,.05)", border:"1px solid rgba(0,212,255,.15)", borderRadius:10 }}>
                       <div style={{ fontSize:10, color:"rgba(0,212,255,.7)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6, fontWeight:700 }}>Session Status</div>
                       <div style={{ fontSize:13, color:"#fff", fontWeight:500 }}>
-                        {meetingInCall ? "🟢 In call with Supremo" : inMeetingQueue ? `⏳ Position #${queuePosition} in queue` : "Connecting…"}
+                        {meetingInCall ? "🟢 In call with Supremo" : inMeetingQueue ? `⏳ In queue — Supremo will call you` : "Connecting…"}
                       </div>
                       <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", marginTop:4 }}>{user?.name}</div>
                     </div>
@@ -5207,4 +5208,4 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 export default StaffDashboard;
-// deploy 18:55:47
+// deploy 19:28:14
