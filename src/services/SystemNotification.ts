@@ -4,7 +4,7 @@
 // Replaces WhatsApp — all notifications now route through SmartCue ChatRoom.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const API = "https://adaptable-patience-production-45da.up.railway.app";
+const API = "https://api.roswaltsmartcue.com";
 
 // Identical formula to ChatContext_final — both ends must produce the same id
 const getDMChannelId = (idA: string, idB: string) =>

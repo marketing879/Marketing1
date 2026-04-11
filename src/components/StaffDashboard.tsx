@@ -378,7 +378,7 @@ Return this exact JSON:
     docUserContent.push({ type: "text", text: textPayload });
 
     // ── Step 4: Call the backend ──────────────────────────────────────────
-    const docResponse = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+    const docResponse = await fetch("https://api.roswaltsmartcue.com/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt: docSystemPrompt, userContent: docUserContent }),
@@ -510,7 +510,7 @@ Return this exact JSON:
 
   let response: Response;
   try {
-    response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/score-content", {
+    response = await fetch("https://api.roswaltsmartcue.com/api/score-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt, userContent }),
@@ -1970,7 +1970,7 @@ const StaffDashboard: React.FC = () => {
   const meetRemoteRef = useRef<HTMLVideoElement>(null);
   const meetPcRef     = useRef<RTCPeerConnection|null>(null);
   const meetSockRef   = useRef<any>(null);
-  const meetApiBase   = "https://adaptable-patience-production-45da.up.railway.app";
+  const meetApiBase   = "https://api.roswaltsmartcue.com";
 
 
 
@@ -2042,7 +2042,7 @@ const StaffDashboard: React.FC = () => {
     // Poll for active session every 8s
     const pollSession = setInterval(async () => {
       try {
-        const r = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/meeting/active-session");
+        const r = await fetch("https://api.roswaltsmartcue.com/api/meeting/active-session");
         if (r.ok) {
           const d = await r.json();
           if (d.active && d.sessionId) { setMeetingSession(d.sessionId); }
@@ -2052,7 +2052,7 @@ const StaffDashboard: React.FC = () => {
     }, 8000);
 
     // Check immediately on mount
-    fetch("https://adaptable-patience-production-45da.up.railway.app/api/meeting/active-session")
+    fetch("https://api.roswaltsmartcue.com/api/meeting/active-session")
       .then(r => r.json()).then(d => { if (d.active && d.sessionId) setMeetingSession(d.sessionId); }).catch(() => {});
 
     return () => { s.disconnect(); clearInterval(pollSession); };
@@ -2290,7 +2290,7 @@ const StaffDashboard: React.FC = () => {
     }
     setDraftingTask(taskId);
     try {
-      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/draft-notes", {
+      const response = await fetch("https://api.roswaltsmartcue.com/api/draft-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, notes: completionNotes }),
@@ -2332,7 +2332,7 @@ const StaffDashboard: React.FC = () => {
         contentArray.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } });
       }
 
-      const response = await fetch("https://adaptable-patience-production-45da.up.railway.app/api/review-attachments", {
+      const response = await fetch("https://api.roswaltsmartcue.com/api/review-attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, contentArray }),

@@ -4,7 +4,7 @@ import { useUser } from "../contexts/UserContext";
 import { ChatUser, UserRole } from "../types/chat";
 import { ChatRoom } from "./ChatRoom";
 
-const API = "https://adaptable-patience-production-45da.up.railway.app";
+const API = "https://api.roswaltsmartcue.com";
 
 const getDMChannelId = (idA: string, idB: string) =>
   "dm_" + [idA, idB].sort().join("__");

@@ -132,7 +132,7 @@ const ChatRoomInner: React.FC = () => {
 
   useEffect(() => {
     if (!appUser?.email) return;
-    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${encodeURIComponent(appUser.email)}`)
+    fetch(`https://api.roswaltsmartcue.com/api/users/${encodeURIComponent(appUser.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data && !data.chatOnboarded) setShowOnboard(true); })
       .catch(() => {});
@@ -141,7 +141,7 @@ const ChatRoomInner: React.FC = () => {
   const completeOnboard = useCallback(() => {
     setShowOnboard(false);
     if (!appUser?.email) return;
-    fetch(`https://adaptable-patience-production-45da.up.railway.app/api/users/${encodeURIComponent(appUser.email)}`, {
+    fetch(`https://api.roswaltsmartcue.com/api/users/${encodeURIComponent(appUser.email)}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatOnboarded: true }),
     }).catch(() => {});
@@ -624,7 +624,7 @@ const ChatRoomInner: React.FC = () => {
           onClose={() => setSmartAssistTicket(null)}
           onSubmit={async (payload) => {
             const ticket = smartAssistTicket!;
-            const API = "https://adaptable-patience-production-45da.up.railway.app";
+            const API = "https://api.roswaltsmartcue.com";
 
             // ── 1. PATCH the task with revised date on backend ────────────
             try {

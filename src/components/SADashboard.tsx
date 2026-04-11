@@ -60,7 +60,7 @@ interface ReviewResult {
   timestamp: string;
 }
 
-const BACKEND = "https://roswalt-backend-production.up.railway.app";
+const BACKEND = "https://api.roswaltsmartcue.com";
 
 // ── Color palette (matches AdminDashboard G object) ─────────────────────────
 const G = {
@@ -620,7 +620,7 @@ const SADashboard: React.FC = () => {
         if (photo.startsWith("data:")) { const m = photo.match(/data:([^;]+);base64,(.+)/); if (m) { mime = m[1]; base64 = m[2]; } }
         contentArray.push({ type:"image", source:{ type:"base64", media_type:mime, data:base64 } });
       }
-      const res = await fetch("https://roswalt-backend-production.up.railway.app/api/review-attachments", {
+      const res = await fetch("https://api.roswaltsmartcue.com/api/review-attachments", {
         method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ taskId: selectedTask?.id, contentArray }),
       });
@@ -2216,7 +2216,7 @@ const SADashboard: React.FC = () => {
                             onClick={e => {
                               e.stopPropagation();
                               if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
-                              fetch(`https://roswalt-backend-production.up.railway.app/api/projects/${project._id || project.id}`, { method: "DELETE" })
+                              fetch(`https://api.roswaltsmartcue.com/api/projects/${project._id || project.id}`, { method: "DELETE" })
                                 .then(r => r.json())
                                 .then(() => { showSuccess(`✓ Project "${project.name}" deleted`); window.location.reload(); })
                                 .catch(() => showSuccess("✕ Failed to delete project"));
@@ -2894,7 +2894,7 @@ const SADashboard: React.FC = () => {
                     <p className="sa-page-sub">Complete portal audit trail · {(activityLog as any[]).length} total events</p>
                   </div>
                   <button
-                    onClick={() => { if (window.confirm("Clear all activity logs? This cannot be undone.")) { fetch("https://roswalt-backend-production.up.railway.app/api/activity", { method: "DELETE" }).then(() => window.location.reload()); } }}
+                    onClick={() => { if (window.confirm("Clear all activity logs? This cannot be undone.")) { fetch("https://api.roswaltsmartcue.com/api/activity", { method: "DELETE" }).then(() => window.location.reload()); } }}
                     style={{ padding:"8px 16px", background:"rgba(255,51,102,0.08)", border:"1px solid rgba(255,51,102,0.25)", borderRadius:10, color:"#ff3366", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                     <Trash2 size={12} /> Clear Log
                   </button>

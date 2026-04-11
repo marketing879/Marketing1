@@ -4,7 +4,7 @@ import io from "socket.io-client";
 
 type SocketInstance = ReturnType<typeof io>;
 
-const API = "https://adaptable-patience-production-45da.up.railway.app";
+const API = "https://api.roswaltsmartcue.com";
 
 // ── Notification sound — plays a soft chime when a system notification arrives ─
 const playNotifSound = () => {

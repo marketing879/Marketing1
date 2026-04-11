@@ -6,7 +6,7 @@
 //   4. Real-time socket.io task_notification events (for online users)
 //   5. Showing notifications for all roles based on the event type
 
-const API = "https://adaptable-patience-production-45da.up.railway.app";
+const API = "https://api.roswaltsmartcue.com";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface TaskNotificationEvent {

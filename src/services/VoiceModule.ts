@@ -19,7 +19,7 @@ type VoiceEvent =
 // ── Backend Config ────────────────────────────────────────────────────────────
 const API_BASE =
   process.env.REACT_APP_API_URL ||
-  "https://adaptable-patience-production-45da.up.railway.app";
+  "https://api.roswaltsmartcue.com";
 
 const TTS_SECRET = process.env.REACT_APP_TTS_SECRET ?? "";
 

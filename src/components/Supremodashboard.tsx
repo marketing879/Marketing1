@@ -10,7 +10,7 @@ import {
 // VOICE MODULE  (inline — no external import needed)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const _API_BASE_VOICE = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
+const _API_BASE_VOICE = process.env.REACT_APP_API_URL || "https://api.roswaltsmartcue.com";
 
 let _selectedVoice: string | null = null;
 const _lastIndex: Record<string, number> = {};
@@ -242,7 +242,7 @@ interface PulseTick { time: string; completed: number; inProgress: number; pendi
 
 const API_BASE =
   process.env.REACT_APP_API_URL ||
-  "https://adaptable-patience-production-45da.up.railway.app";
+  "https://api.roswaltsmartcue.com";
 
 
 

@@ -16,7 +16,7 @@ import {
   requestNotificationPermission,
 } from "../services/NotificationService";
 
-const SOCKET_URL = "https://adaptable-patience-production-45da.up.railway.app";
+const SOCKET_URL = "https://api.roswaltsmartcue.com";
 
 interface User {
   email: string;

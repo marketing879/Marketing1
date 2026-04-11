@@ -3,7 +3,7 @@
 // Cloudinary). Returns the secure CDN URL on success, or throws on failure.
 // Large files (videos, PDFs) are supported up to 200MB with a 10-minute timeout.
 
-const API = process.env.REACT_APP_API_URL || "https://roswalt-backend-production.up.railway.app";
+const API = process.env.REACT_APP_API_URL || "https://api.roswaltsmartcue.com";
 
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 

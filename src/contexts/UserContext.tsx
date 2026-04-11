@@ -8,7 +8,7 @@ declare const process: {
 
 const API_URL =
   process.env.REACT_APP_API_URL ||
-  "https://adaptable-patience-production-45da.up.railway.app";
+  "https://api.roswaltsmartcue.com";
 
 // ── CHANGE 1: Added "supremo" to the Role type ───────────────────────────────
 export type Role = "staff" | "admin" | "superadmin" | "supremo";

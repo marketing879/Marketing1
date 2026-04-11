@@ -145,7 +145,7 @@ const CSS = `
 
 const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) => {
   const navigate = useNavigate();
-  const API = apiBase ?? process.env.REACT_APP_API_URL ?? 'https://adaptable-patience-production-45da.up.railway.app';
+  const API = apiBase ?? process.env.REACT_APP_API_URL ?? 'https://api.roswaltsmartcue.com';
 
   const [activeTab, setActiveTab]               = useState<'overview'|'analytics'|'promise'>('overview');
   const [promiseTabVisible, setPromiseTabVisible] = useState(false);
