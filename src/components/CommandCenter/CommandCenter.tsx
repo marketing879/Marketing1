@@ -176,6 +176,8 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
   const [roleMsg, setRoleMsg]                     = useState<{id:string;ok:boolean;text:string}|null>(null);
 
   // ── Meeting session state ────────────────────────────────────────────────
+  const [panelMinimized,  setPanelMinimized]  = useState(false);
+  const [flashScore,      setFlashScore]      = useState<{name:string;score:number}|null>(null);
   const [sessionActive,   setSessionActive]   = useState(false);
   const [sessionId,       setSessionId]       = useState<string|null>(null);
   const [meetQueue,       setMeetQueue]       = useState<{userId:string;userName:string;email:string}[]>([]);
@@ -308,6 +310,10 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
       try { await meetPcRef.current?.addIceCandidate(candidate); } catch {}
     });
     sock.on('meeting:call-ended', () => { endMeetCall(); });
+    sock.on('meeting:promise-score', ({ userName, score }: any) => {
+      setFlashScore({ name: userName, score });
+      setTimeout(() => setFlashScore(null), 8000);
+    });
 
     return () => { sock.disconnect(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,6 +429,23 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
     return {day:`${d.getDate()}/${d.getMonth()+1}`,completed:dt.filter(t=>t.status==='approved'||t.status==='completed').length,rework:dt.filter(t=>t.status==='rework').length,pending:dt.filter(t=>t.status==='pending').length};
   });
   const wormMax=Math.max(1,...wormData.map(d=>Math.max(d.completed,d.rework,d.pending)));
+
+  // ── Promise score week comparison ────────────────────────────────────────
+  const psWeeks = Array.from(new Set(scores.map(s=>s.week))).sort((a,b)=>b-a);
+  const psWkCurrent = selectedWeek!=='all' ? Number(selectedWeek) : currentWeek;
+  const psWkPrev    = psWkCurrent - 1;
+  const psThis = scores.filter(s=>s.week===psWkCurrent);
+  const psPrev = scores.filter(s=>s.week===psWkPrev);
+  const psThisAvg = psThis.length ? Math.round(psThis.reduce((a,b)=>a+b.score,0)/psThis.length) : null;
+  const psPrevAvg = psPrev.length ? Math.round(psPrev.reduce((a,b)=>a+b.score,0)/psPrev.length) : null;
+  // Build per-day promise score trend (last 14 days)
+  const psTrend = Array.from({length:14},(_,i)=>{
+    const d=new Date(now2); d.setDate(d.getDate()-(13-i));
+    const ds=d.toISOString().slice(0,10);
+    const dayScores=scores.filter(s=>s.date.slice(0,10)===ds);
+    return { day:`${d.getDate()}/${d.getMonth()+1}`, avg: dayScores.length?Math.round(dayScores.reduce((a,b)=>a+b.score,0)/dayScores.length):0 };
+  });
+  const psTrendMax = Math.max(1,...psTrend.map(d=>d.avg));
   const W=560; const H=80;
   const mkPath=(vals:number[],color:string)=>{
     if(!vals.length)return null;
@@ -495,6 +518,14 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
               : <span style={{fontSize:10,color:'#22c55e',display:'flex',alignItems:'center',gap:4}}><span style={{width:6,height:6,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'ccBlink 1.5s infinite'}}/>Live · {lastRefresh.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
             }
             <button onClick={fetchData} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:7,color:'#8b9ab8',fontSize:11,padding:'4px 10px',cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>↺</button>
+            {/* Flash score indicator */}
+            {flashScore&&(
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 12px',background:'linear-gradient(135deg,rgba(212,168,71,0.2),rgba(99,102,241,0.15))',border:'1px solid rgba(212,168,71,0.4)',borderRadius:8,animation:'ccFadeIn .3s ease'}}>
+                <span style={{fontSize:9,color:'#f0c060',fontWeight:700,textTransform:'uppercase'}}>⭐ {flashScore.name.split(' ')[0]}</span>
+                <span style={{fontSize:18,fontWeight:900,color:flashScore.score>=0?'#4ade80':'#f87171',fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{flashScore.score>0?'+':''}{flashScore.score}</span>
+                <span style={{fontSize:9,color:'#8b9ab8'}}>promise</span>
+              </div>
+            )}
             <div style={{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(168,85,247,0.3))',border:'1px solid rgba(99,102,241,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#a5b4fc'}}>{userInitials}</div>
           </div>
         </header>
@@ -531,7 +562,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                     <div className="cc-call-overlay">
                       <div style={{fontSize:9,color:'#f0c060',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>📊 {callingUser.name.split(' ')[0]}'s Live Stats</div>
                       <div style={{display:'flex',gap:14}}>
-                        {[{l:'Tasks',v:calleeStats.total,c:'#afc6ff'},{l:'Done',v:calleeStats.done,c:'#4ade80'},{l:'Breach',v:calleeStats.breach,c:'#f87171'},{l:'Score',v:calleeStats.avg!=null?`${calleeStats.avg}%`:'—',c:'#f0c060'}].map(({l,v,c})=>(
+                        {[{l:'Tasks',v:calleeStats.total,c:'#afc6ff'},{l:'Done',v:calleeStats.done,c:'#4ade80'},{l:'Breach',v:calleeStats.breach,c:'#f87171'},{l:'Score',v:calleeStats.avg!=null?calleeStats.avg:'—',c:calleeStats.avg!=null&&calleeStats.avg>=85?'#4ade80':'#f87171'}].map(({l,v,c})=>(
                           <div key={l} style={{textAlign:'center'}}>
                             <div style={{fontSize:16,fontWeight:700,color:c,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{v}</div>
                             <div style={{fontSize:8,color:'#4a5568',textTransform:'uppercase',marginTop:2}}>{l}</div>
@@ -655,7 +686,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                             <span style={{color:'#eef2ff'}}>{u.name}</span>
                           </div>
                           <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                            {uA&&<span style={{fontSize:9,color:Number(uA)>=85?'#4ade80':'#f87171',fontFamily:'monospace'}}>{uA}%</span>}
+                            {uA&&<span style={{fontSize:9,color:Number(uA)>=85?'#4ade80':'#f87171',fontFamily:'monospace'}}>{uA}</span>}
                             <span style={{fontSize:9,color:'#4a5568'}}>{uT.length}t</span>
                           </div>
                         </div>
@@ -677,7 +708,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,rgba(212,168,71,0.2),rgba(99,102,241,0.2))',border:'1px solid rgba(212,168,71,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#f0c060',flexShrink:0}}>{initials(selectedUserObj.name||'')}</div>
                 <div><div style={{fontSize:11,color:'#eef2ff',fontWeight:600}}>{selectedUserObj.name}</div><div style={{fontSize:9,color:'#8b9ab8',marginTop:1}}>{userScoredTasks.length} scored · {filteredTasks.length} total</div></div>
                 <div style={{marginLeft:'auto',textAlign:'right'}}>
-                  <div style={{fontSize:22,fontWeight:800,color:Number(userAvgScore)>=85?'#4ade80':'#f87171',fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{userAvgScore}%</div>
+                  <div style={{fontSize:22,fontWeight:800,color:Number(userAvgScore)>=85?'#4ade80':'#f87171',fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{userAvgScore}</div>
                   <div style={{fontSize:9,color:'#4a5568',marginTop:2}}>Avg Score</div>
                 </div>
               </div>
@@ -879,6 +910,54 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                   </div>
                 </div>
 
+                {/* Promise Score Worm Chart */}
+                <div className="cc-analytics-card">
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                    <div style={{fontSize:11,fontWeight:600,color:'#eef2ff',display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{width:3,height:12,background:'linear-gradient(180deg,#f0c060,#d4a847)',borderRadius:2,display:'inline-block'}}/>
+                      Promise Score — Wk {psWkPrev} vs Wk {psWkCurrent}
+                    </div>
+                    <div style={{display:'flex',gap:10,fontSize:9,color:'#4a5568'}}>
+                      <span style={{display:'flex',alignItems:'center',gap:3}}><span style={{width:10,height:3,background:'rgba(212,168,71,0.8)',display:'inline-block',borderRadius:1}}/>Wk {psWkCurrent}</span>
+                      <span style={{display:'flex',alignItems:'center',gap:3}}><span style={{width:10,height:3,background:'rgba(99,102,241,0.7)',display:'inline-block',borderRadius:1}}/>Wk {psWkPrev}</span>
+                    </div>
+                  </div>
+                  {/* This vs Last week summary */}
+                  <div style={{display:'flex',gap:8,marginBottom:8}}>
+                    {[
+                      {label:`Wk ${psWkCurrent} Avg`,value:psThisAvg!=null?psThisAvg:'—',color:'#f0c060'},
+                      {label:`Wk ${psWkPrev} Avg`, value:psPrevAvg!=null?psPrevAvg:'—',color:'#818cf8'},
+                      {label:'Δ Change', value:psThisAvg!=null&&psPrevAvg!=null?(psThisAvg-psPrevAvg>0?`+${psThisAvg-psPrevAvg}`:psThisAvg-psPrevAvg):'—', color:psThisAvg!=null&&psPrevAvg!=null?(psThisAvg>=psPrevAvg?'#4ade80':'#f87171'):'#4a5568'},
+                    ].map(({label,value,color})=>(
+                      <div key={label} style={{flex:1,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'8px',textAlign:'center'}}>
+                        <div style={{fontSize:16,fontWeight:800,color,fontFamily:'JetBrains Mono,monospace',lineHeight:1}}>{value}</div>
+                        <div style={{fontSize:8,color:'#4a5568',marginTop:3,textTransform:'uppercase',letterSpacing:'.05em'}}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 14-day trend line */}
+                  <div style={{height:60,position:'relative'}}>
+                    <svg width="100%" height="60" viewBox={`0 0 560 60`} preserveAspectRatio="none">
+                      {(()=>{
+                        const pts=psTrend.map((d,i)=>[i*(560/(psTrend.length-1||1)),60-(d.avg/psTrendMax)*50-4]);
+                        const line=pts.map((p,i)=>i===0?`M${p[0].toFixed(1)},${p[1].toFixed(1)}`:`L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+                        const fill=[...pts,[560,60],[0,60]].map((p,i)=>i===0?`M${(p[0] as number).toFixed(1)},${(p[1] as number).toFixed(1)}`:`L${(p[0] as number).toFixed(1)},${(p[1] as number).toFixed(1)}`).join(' ')+'Z';
+                        return <g>
+                          <path d={fill} fill="#f0c060" fillOpacity="0.06"/>
+                          <path d={line} fill="none" stroke="#f0c060" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          {pts.map((p,i)=>psTrend[i].avg>0&&<circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="#f0c060" opacity="0.8"/>)}
+                        </g>;
+                      })()}
+                    </svg>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',marginTop:2}}>
+                    {psTrend.filter((_,i)=>i%2===0).map(d=>(
+                      <span key={d.day} style={{fontSize:8,color:'#4a5568'}}>{d.day}</span>
+                    ))}
+                  </div>
+                  {scores.length===0&&<div style={{fontSize:10,color:'#4a5568',textAlign:'center',padding:'8px 0'}}>No promise scores committed yet</div>}
+                </div>
+
                 {/* Team performance table */}
                 <div className="cc-analytics-card">
                   <div style={{fontSize:11,fontWeight:600,color:'#eef2ff',marginBottom:4,display:'flex',alignItems:'center',gap:6}}>
@@ -919,7 +998,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                             </td>
                             <td style={{padding:'6px 8px',color:rw>0?'#fb923c':'#4a5568',fontFamily:'monospace'}}>{rw}</td>
                             <td style={{padding:'6px 8px',color:br>0?'#f87171':'#4ade80',fontFamily:'monospace'}}>{br}</td>
-                            <td style={{padding:'6px 8px',color:avg?Number(avg)>=85?'#4ade80':'#f87171':'#4a5568',fontFamily:'monospace',fontWeight:600}}>{avg?`${avg}%`:'—'}</td>
+                            <td style={{padding:'6px 8px',color:avg?Number(avg)>=85?'#4ade80':'#f87171':'#4a5568',fontFamily:'monospace',fontWeight:600}}>{avg||'—'}</td>
                             <td style={{padding:'6px 8px'}} onClick={e=>e.stopPropagation()}>
                               {roleUpdating===u._id
                                 ? <span style={{fontSize:9,color:'#fbbf24'}}>Updating…</span>
@@ -1010,15 +1089,23 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
         {showMeetPanel && sessionActive && (
           <div style={{position:'fixed',top:52,right:0,bottom:0,width:340,background:'rgba(4,8,22,0.98)',borderLeft:'1px solid rgba(99,102,241,0.25)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',zIndex:200,boxShadow:'-12px 0 40px rgba(0,0,0,0.5)'}}>
             {/* Header */}
-            <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'linear-gradient(90deg,rgba(99,102,241,0.08),transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'linear-gradient(90deg,rgba(99,102,241,0.08),transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',display:'inline-block',animation:'ccBlink 1s infinite'}}/>
                 <span style={{fontWeight:700,fontSize:13,color:'#eef2ff'}}>Live Session</span>
                 {meetInCall&&<span style={{fontSize:10,color:'#4ade80',fontFamily:'monospace'}}>· In Call</span>}
               </div>
-              <button onClick={()=>setShowMeetPanel(false)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',color:'#8b9ab8',width:24,height:24,borderRadius:5,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>setPanelMinimized(m=>!m)} title={panelMinimized?'Expand':'Minimize'}
+                  style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',color:'#8b9ab8',width:24,height:24,borderRadius:5,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {panelMinimized?'▲':'▼'}
+                </button>
+                <button onClick={()=>setShowMeetPanel(false)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',color:'#8b9ab8',width:24,height:24,borderRadius:5,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+              </div>
             </div>
 
+            {/* Body — hidden when minimized */}
+            {!panelMinimized && <>
             {/* Video area */}
             <div style={{height:200,background:'#060b18',position:'relative',flexShrink:0}}>
               {meetInCall?(
@@ -1083,7 +1170,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                       <div style={{width:26,height:26,borderRadius:'50%',background:av(i).bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:av(i).c,flexShrink:0}}>{initials(u.name||'')}</div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:10,color:'#eef2ff',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</div>
-                        <div style={{fontSize:8,color:'#4a5568'}}>{uDone}/{uTasks.length} done{uAvg!=null?` · ${uAvg}%`:''}</div>
+                        <div style={{fontSize:8,color:'#4a5568'}}>{uDone}/{uTasks.length} done{uAvg!=null?` · Avg:${uAvg}`:''}</div>
                       </div>
                       {isInCall
                         ?<span style={{fontSize:9,color:'#4ade80',fontWeight:700,flexShrink:0}}>● In Call</span>
@@ -1101,6 +1188,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
                 🛑 End Session
               </button>
             </div>
+            </>}
           </div>
         )}
 
@@ -1111,4 +1199,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// 20:17:58
+// 12:19:39
