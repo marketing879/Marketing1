@@ -1087,7 +1087,7 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
         {/* ── LIVE SESSION PANEL ── floats as side panel when active */}
         {showMeetPanel && sessionActive && (
-          <div style={{position:'fixed',top:52,right:0,bottom:0,width:340,background:'rgba(4,8,22,0.98)',borderLeft:'1px solid rgba(99,102,241,0.25)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',zIndex:200,boxShadow:'-12px 0 40px rgba(0,0,0,0.5)'}}>
+          <div style={{position:'fixed',top:52,right:0,bottom:panelMinimized?'auto':0,width:340,background:'rgba(4,8,22,0.98)',borderLeft:'1px solid rgba(99,102,241,0.25)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',zIndex:200,boxShadow:'-12px 0 40px rgba(0,0,0,0.5)',transition:'bottom .3s ease'}}>
             {/* Header */}
             <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'linear-gradient(90deg,rgba(99,102,241,0.08),transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1199,4 +1199,4 @@ const CommandCenter: React.FC<CommandCenterProps> = ({ currentUser, apiBase }) =
 
 export default CommandCenter;
 
-// 12:19:39
+// 12:23:29
