@@ -159,7 +159,7 @@ interface UserContextType {
   projects: Project[];
   voiceAccessGranted: boolean;
   validateLogin: (email: string, password: string) => boolean;
-  commitLogin: (email: string, password: string) => void;
+  commitLogin: (email: string, password: string) => Promise<void>;
   loginAsUser: (user: User) => void;
   logout: () => void;
   addUser: (user: Omit<User, "id"> & { password: string }) => {
@@ -235,8 +235,8 @@ const defaultUsers: StoredUser[] = [
   { id: "29", name: "Arena Moitra",                 email: "arena.moitra@roswalt.com",         role: "staff",      isDoer: true,  password: "100029", phone: "+91XXXXXXXXXX" },
   { id: "30", name: "Dhairya Mehta",                email: "dhairya.mehta@roswalt.com",        role: "staff",      isDoer: true,  password: "100030", phone: "+91XXXXXXXXXX" },
   { id: "31", name: "Mahira khatri",                 email: "mahira.khatri@roswalt.com",       role: "staff",      isDoer: true,  password: "100031", phone: "+91XXXXXXXXXX" },
-  { id: "32", name: "Zarana Rathod",                 email: "zarana.rathod@roswalt.com",       role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" } 
-  
+  { id: "32", name: "Zarana Rathod",                 email: "zarana.rathod@roswalt.com",       role: "staff",      isDoer: true,  password: "100032", phone: "+91XXXXXXXXXX" },
+  { id: "33", name: "Shubham Sakore",                email: "shubham.sakore@roswalt.com",      role: "staff",      isDoer: true,  password: "100033", phone: "+91XXXXXXXXXX" }
 ];
 
 
@@ -331,27 +331,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.email]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const validateLogin = (email: string, password: string): boolean =>
-    !!storedUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
+  const validateLogin = (email: string, password: string): boolean => true;
 
-  const commitLogin = (email: string, password: string): void => {
-    const found = storedUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-    if (found) {
-      const { password: _p, ...userWithoutPassword } = found;
-      setUser(userWithoutPassword);
-      setVoiceAccessGranted(true);
-      try { sessionStorage.setItem("sc_user", JSON.stringify(userWithoutPassword)); } catch {}
-      logActivity({ category: "auth", action: "Login", actorEmail: found.email, actorName: found.name });
+  const commitLogin = async (email: string, password: string): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.user) {
+        const u = { ...data.user, isDoer: data.user.isDoer ?? data.user.role === "staff" };
+        setUser(u);
+        setVoiceAccessGranted(true);
+        try { sessionStorage.setItem("sc_user", JSON.stringify(u)); } catch {}
+        logActivity({ category: "auth", action: "Login", actorEmail: u.email, actorName: u.name });
+      }
+    } catch (err) {
+      console.error("[commitLogin] failed:", err);
     }
-  };
-
-  const loginAsUser = (u: User): void => {
-    setUser(u);
-    setVoiceAccessGranted(true);
   };
 
   const logout = (): void => {
@@ -360,9 +360,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try { sessionStorage.removeItem("sc_user"); } catch {}
   };
 
-  const addUser = (
-    newUser: Omit<User, "id"> & { password: string }
-  ): { success: boolean; message: string } => {
+  const loginAsUser = (u: User): void => {
+    setUser(u);
+    setVoiceAccessGranted(true);
+  };
+
+  const addUser = (newUser: Omit<User, "id"> & { password: string }): { success: boolean; message: string } => {
     const exists = storedUsers.find(
       (u) => u.email.toLowerCase() === newUser.email.toLowerCase()
     );
@@ -731,3 +734,4 @@ export const useUser = () => {
   if (!context) throw new Error("useUser must be inside UserProvider");
   return context;
 };
+
