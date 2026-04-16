@@ -86,34 +86,34 @@ const Login: React.FC = () => {
     }, 800);
   }, [email, role, teamMembers, setRole]);
 
-  const handleVerifyPassword = useCallback((e: React.FormEvent) => {
+  const handleVerifyPassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setError("");
     setLoading(true);
-
-    timeoutRef.current = setTimeout(() => {
-      const valid = validateLogin(email, password);
-
-      if (!valid) {
+    try {
+      const res = await fetch(`${process.env.REACT_APP_API_URL || "https://api.roswaltsmartcue.com"}/api/login`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
         setError("Invalid password. Please try again.");
         setPassword("");
         setLoading(false);
         try { announceVoice("Access_Denied").catch(() => {}); } catch {}
         return;
       }
-
       setGrantedRole(role);
       setLoading(false);
       setStep("granted");
-
-      timeoutRef.current = setTimeout(async () => {
-        try { await announceVoice("Access_Granted"); } catch {}
-        commitLogin(email, password);
-        navigate("/" + role);
-      }, 2500);
-    }, 600);
-  }, [email, password, role, validateLogin, commitLogin, navigate]);
+      try { await announceVoice("Access_Granted"); } catch {}
+      await commitLogin(email, password);
+      navigate("/" + role);
+    } catch (err) {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
+  }, [email, password, role, commitLogin, navigate]);
 
   // ── CHANGE: Added "supremo" to roles array ────────────────────────────────
   const roles: { value: Role; label: string; icon: string }[] = [
