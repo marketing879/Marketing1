@@ -32,7 +32,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     ForwardedTaskTree = require("./ForwardedTaskTree").default;
   } catch {
     ForwardedTaskTree = () => (
-      <div style={{ color: "#8a9aaa", fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, padding: 24 }}>
+      <div style={{ color: "#8a9aaa", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: 24 }}>
         ForwardedTaskTree component not found.
       </div>
     );
@@ -210,56 +210,56 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
   // ── Design tokens ─────────────────────────────────────────────────────────────
   const G = {
-    bg:           "rgba(4,6,14,0.55)",
-    bgDeep:       "rgba(2,4,10,0.70)",
-    surface:      "rgba(10,18,40,0.55)",
-    surfaceMid:   "rgba(16,28,58,0.60)",
-    surfaceHigh:  "rgba(22,38,78,0.65)",
-    gold:         "#ffe066",
-    goldBright:   "#fff3a0",
-    goldDim:      "rgba(255,224,102,0.14)",
-    goldGlow:     "rgba(255,224,102,0.45)",
-    goldBorder:   "rgba(255,224,102,0.45)",
-    goldBorderHi: "rgba(255,224,102,0.70)",
-    border:       "rgba(255,255,255,0.12)",
-    borderHi:     "rgba(255,255,255,0.28)",
-    success:       "#00f5a0",
-    successDim:    "rgba(0,245,160,0.12)",
-    successBorder: "rgba(0,245,160,0.35)",
-    danger:        "#ff2d55",
-    dangerDim:     "rgba(255,45,85,0.14)",
-    dangerBorder:  "rgba(255,45,85,0.40)",
-    amber:         "#ff9f0a",
-    amberDim:      "rgba(255,159,10,0.14)",
-    cyan:          "#00d4ff",
-    cyanDim:       "rgba(0,212,255,0.12)",
-    purple:        "#bf5fff",
-    purpleDim:     "rgba(191,95,255,0.14)",
-    pink:          "#ff375f",
-    pinkDim:       "rgba(255,55,95,0.12)",
-    lime:          "#39ff14",
-    limeDim:       "rgba(57,255,20,0.10)",
-    textPrimary:   "#f0f4ff",
-    textSecondary: "#b8c8e8",
-    textMuted:     "#7890b0",
+    bg:           "#c8d3e8",
+    bgDeep:       "#bccade",
+    surface:      "#ffffff",
+    surfaceMid:   "#f7f9fc",
+    surfaceHigh:  "#eef2f8",
+    gold:         "#2563eb",
+    goldBright:   "#3b82f6",
+    goldDim:      "rgba(37,99,235,0.08)",
+    goldGlow:     "rgba(37,99,235,0.18)",
+    goldBorder:   "rgba(37,99,235,0.22)",
+    goldBorderHi: "rgba(37,99,235,0.45)",
+    border:       "rgba(0,0,0,0.07)",
+    borderHi:     "rgba(0,0,0,0.13)",
+    success:       "#10b981",
+    successDim:    "rgba(16,185,129,0.08)",
+    successBorder: "rgba(16,185,129,0.25)",
+    danger:        "#ef4444",
+    dangerDim:     "rgba(239,68,68,0.08)",
+    dangerBorder:  "rgba(239,68,68,0.25)",
+    amber:         "#f59e0b",
+    amberDim:      "rgba(245,158,11,0.10)",
+    cyan:          "#0ea5e9",
+    cyanDim:       "rgba(14,165,233,0.08)",
+    purple:        "#6366f1",
+    purpleDim:     "rgba(99,102,241,0.08)",
+    pink:          "#ec4899",
+    pinkDim:       "rgba(236,72,153,0.08)",
+    lime:          "#22c55e",
+    limeDim:       "rgba(34,197,94,0.08)",
+    textPrimary:   "#1e293b",
+    textSecondary: "#475569",
+    textMuted:     "#94a3b8",
   };
 
   const CSS = `
-    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: transparent; color: ${G.textPrimary}; font-family: 'Poppins', sans-serif; -webkit-font-smoothing: antialiased; }
-    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${G.cyan}55; border-radius: 99px; }
+    html, body { background: #c8d3e8; color: ${G.textPrimary}; font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: #e8edf5; } ::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.35); border-radius: 99px; }
     @keyframes fadeUp   { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
     @keyframes fadeIn   { from { opacity:0; } to { opacity:1; } }
     @keyframes scaleIn  { from { opacity:0; transform:scale(0.94); } to { opacity:1; transform:scale(1); } }
     @keyframes shimmer  { 0%,100% { opacity:0.5; } 50% { opacity:1; } }
     @keyframes gradient-shift { 0% { background-position: 0% center; } 50% { background-position: 100% center; } 100% { background-position: 0% center; } }
-    @keyframes glow-cyan { 0%,100% { box-shadow:0 0 18px ${G.cyan}77, 0 0 36px ${G.purple}44; } 50% { box-shadow:0 0 28px ${G.cyan}99, 0 0 56px ${G.purple}66; } }
+    @keyframes glow-cyan { 0%,100% { box-shadow:0 0 12px rgba(14,165,233,0.25); } 50% { box-shadow:0 0 22px rgba(14,165,233,0.40); } }
     @keyframes spin     { to { transform:rotate(360deg); } }
     @keyframes progressBar { 0%{width:0%;} 50%{width:100%;} 100%{width:0%;} }
     @keyframes pulse    { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-    @keyframes tatPulse { 0%,100%{box-shadow:0 0 0 0 ${G.danger}77;} 50%{box-shadow:0 0 0 8px ${G.danger}00;} }
-    @keyframes neon-border { 0%,100%{border-color:${G.cyan}66;} 50%{border-color:${G.purple}88;} }
+    @keyframes tatPulse { 0%,100%{box-shadow:0 0 0 0 ${G.danger}55;} 50%{box-shadow:0 0 0 8px ${G.danger}00;} }
+    @keyframes neon-border { 0%,100%{border-color:${G.cyan}44;} 50%{border-color:${G.purple}66;} }
     @keyframes float { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
     .fade-up  { animation: fadeUp  0.5s ease both; }
     .fade-in  { animation: fadeIn  0.35s ease both; }
@@ -272,96 +272,96 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     .float    { animation: float 4s ease infinite; }
     input:focus, textarea:focus, select:focus { outline: none; }
     input::placeholder, textarea::placeholder { color: ${G.textMuted}; }
-    select option { background: #0d1a35; color: ${G.textPrimary}; }
-    optgroup { color: ${G.textSecondary}; font-family: 'Poppins', sans-serif; font-size: 11px; }
-    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8) brightness(1.4) hue-rotate(160deg); cursor: pointer; }
+    select option { background: #ffffff; color: ${G.textPrimary}; font-family: 'DM Sans', sans-serif; }
+    optgroup { color: ${G.textSecondary}; font-family: 'DM Sans', sans-serif; font-size: 11px; }
+    input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 
-    .g-btn-gold { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, ${G.cyan} 0%, #0099cc 50%, ${G.cyan} 100%); color: #001a26; font-weight:800; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; border:none; border-radius:8px; font-family:'Oswald',sans-serif; cursor:pointer; transition: all 0.2s ease; box-shadow: 0 0 20px ${G.cyan}66, 0 4px 16px rgba(0,212,255,0.4), inset 0 1px 0 rgba(255,255,255,0.3); }
-    .g-btn-gold:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 0 32px ${G.cyan}88, 0 8px 24px rgba(0,212,255,0.5); }
+    .g-btn-gold { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #2563eb 100%); color: #fff; font-weight:700; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; border:none; border-radius:10px; font-family:'Plus Jakarta Sans',sans-serif; cursor:pointer; transition: all 0.2s ease; box-shadow: 0 2px 12px rgba(37,99,235,0.35), 0 1px 3px rgba(0,0,0,0.08); }
+    .g-btn-gold:hover:not(:disabled) { transform:translateY(-2px); box-shadow: 0 6px 20px ${G.cyan}55; }
     .g-btn-gold:disabled { opacity:0.35; cursor:not-allowed; }
-    .g-btn-ghost { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: rgba(255,255,255,0.06); color: ${G.textPrimary}; border: 1px solid rgba(255,255,255,0.14); border-radius:8px; font-family:'Poppins',sans-serif; font-size:13px; font-weight:500; cursor:pointer; transition: all 0.2s ease; backdrop-filter: blur(8px); }
-    .g-btn-ghost:hover { border-color:${G.cyan}55; background:rgba(0,212,255,0.08); color:${G.cyan}; }
-    .g-btn-success { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, #00c87a, ${G.success}); color:#001a0e; border:none; border-radius:8px; font-family:'Oswald',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.2s ease; box-shadow: 0 0 18px ${G.success}55, 0 4px 12px rgba(0,245,160,0.3); }
-    .g-btn-success:hover { transform:translateY(-2px); box-shadow: 0 0 28px ${G.success}77; }
-    .g-btn-danger { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, #cc0033, ${G.danger}); color:#fff; border:none; border-radius:8px; font-family:'Oswald',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.2s ease; box-shadow: 0 0 18px ${G.danger}55, 0 4px 12px rgba(255,45,85,0.3); }
-    .g-btn-danger:hover { transform:translateY(-2px); box-shadow: 0 0 28px ${G.danger}77; }
-    .g-btn-ai { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 16px; background: rgba(191,95,255,0.15); color:${G.purple}; border: 1px solid rgba(191,95,255,0.40); border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; transition:all 0.2s ease; }
-    .g-btn-ai:hover:not(:disabled) { background:rgba(191,95,255,0.28); border-color:rgba(191,95,255,0.7); transform:translateY(-1px); box-shadow: 0 0 16px ${G.purple}55; }
+    .g-btn-ghost { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: #ffffff; color: ${G.textPrimary}; border: 1px solid rgba(0,0,0,0.12); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; cursor:pointer; transition: all 0.2s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .g-btn-ghost:hover { border-color:#2563eb; background:rgba(37,99,235,0.06); color:#2563eb; }
+    .g-btn-success { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, #047857, ${G.success}); color:#fff; border:none; border-radius:8px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.2s ease; box-shadow: 0 2px 12px ${G.success}44; }
+    .g-btn-success:hover { transform:translateY(-2px); box-shadow: 0 6px 20px ${G.success}55; }
+    .g-btn-danger { display:flex; align-items:center; justify-content:center; gap:8px; padding: 11px 22px; background: linear-gradient(135deg, #b91c1c, ${G.danger}); color:#fff; border:none; border-radius:8px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.2s ease; box-shadow: 0 2px 12px ${G.danger}44; }
+    .g-btn-danger:hover { transform:translateY(-2px); box-shadow: 0 6px 20px ${G.danger}55; }
+    .g-btn-ai { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 16px; background: ${G.purpleDim}; color:${G.purple}; border: 1px solid rgba(124,58,237,0.30); border-radius:8px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; transition:all 0.2s ease; }
+    .g-btn-ai:hover:not(:disabled) { background:rgba(124,58,237,0.18); border-color:${G.purple}; transform:translateY(-1px); box-shadow: 0 4px 12px ${G.purple}33; }
     .g-btn-ai:disabled { opacity:0.35; cursor:not-allowed; }
-    .g-btn-review-att { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 16px; background: rgba(0,245,160,0.12); color:${G.success}; border: 1px solid rgba(0,245,160,0.35); border-radius:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; transition:all 0.2s ease; }
-    .g-btn-review-att:hover:not(:disabled) { background:rgba(0,245,160,0.25); border-color:rgba(0,245,160,0.65); transform:translateY(-1px); box-shadow: 0 0 16px ${G.success}55; }
+    .g-btn-review-att { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 16px; background: ${G.successDim}; color:${G.success}; border: 1px solid ${G.successBorder}; border-radius:8px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; transition:all 0.2s ease; }
+    .g-btn-review-att:hover:not(:disabled) { background:rgba(5,150,105,0.18); border-color:${G.success}; transform:translateY(-1px); box-shadow: 0 4px 12px ${G.success}33; }
     .g-btn-review-att:disabled { opacity:0.35; cursor:not-allowed; }
-    .g-btn-delete { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 14px; background: rgba(255,45,85,0.10); color:${G.danger}; border: 1px solid ${G.dangerBorder}; border-radius:8px; font-family:'Poppins',sans-serif; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s ease; }
-    .g-btn-delete:hover { background:rgba(255,45,85,0.22); border-color:${G.danger}; transform:translateY(-1px); box-shadow: 0 0 14px ${G.danger}44; }
+    .g-btn-delete { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 14px; background: ${G.dangerDim}; color:${G.danger}; border: 1px solid ${G.dangerBorder}; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s ease; }
+    .g-btn-delete:hover { background:rgba(220,38,38,0.18); border-color:${G.danger}; transform:translateY(-1px); box-shadow: 0 4px 12px ${G.danger}33; }
 
-    .g-input { width:100%; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 14px; color:${G.textPrimary}; font-size:14px; font-family:'Poppins',sans-serif; transition: border-color 0.2s, box-shadow 0.2s; backdrop-filter: blur(6px); }
-    .g-input:focus { border-color:${G.cyan}66; box-shadow:0 0 0 3px rgba(0,212,255,0.15), inset 0 0 0 1px rgba(0,212,255,0.25); }
-    .g-label { display:block; font-size:10px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:${G.textMuted}; margin-bottom:8px; font-family:'IBM Plex Mono',monospace; }
-    .g-card { background:${G.surface}; border:1px solid rgba(255,255,255,0.10); border-radius:14px; transition: border-color 0.2s, background 0.2s; backdrop-filter: blur(16px); }
-    .g-card:hover { border-color:rgba(0,212,255,0.30); background:${G.surfaceMid}; }
+    .g-input { width:100%; background:#ffffff; border:1px solid rgba(0,0,0,0.12); border-radius:8px; padding:12px 14px; color:${G.textPrimary}; font-size:14px; font-family:'DM Sans',sans-serif; transition: border-color 0.2s, box-shadow 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .g-input:focus { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.10); }
+    .g-label { display:block; font-size:10px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:${G.textMuted}; margin-bottom:8px; font-family:'JetBrains Mono',monospace; }
+    .g-card { background:#ffffff; border:1px solid rgba(0,0,0,0.07); border-radius:14px; transition: border-color 0.2s, box-shadow 0.2s; box-shadow: 0 1px 8px rgba(30,41,59,0.06), 0 0 0 0 transparent; }
+    .g-card:hover { border-color:rgba(37,99,235,0.30); box-shadow: 0 4px 20px rgba(37,99,235,0.10); }
 
-    .g-stat-card { background: linear-gradient(135deg, rgba(10,18,40,0.60) 0%, rgba(16,28,58,0.65) 100%); border:1px solid rgba(255,255,255,0.10); border-radius:16px; padding:22px 24px; position:relative; overflow:hidden; transition: all 0.25s ease; backdrop-filter: blur(20px); cursor: pointer; }
-    .g-stat-card:hover { border-color:${G.cyan}55; transform:translateY(-5px); box-shadow: 0 12px 40px rgba(0,212,255,0.20), 0 0 30px rgba(0,212,255,0.10); }
-    .g-stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg, transparent, ${G.cyan}, ${G.purple}, ${G.cyan}, transparent); opacity:0.9; }
+    .g-stat-card { background: #ffffff; border:1px solid rgba(30,41,59,0.08); border-radius:16px; padding:22px 24px; position:relative; overflow:hidden; transition: all 0.25s ease; box-shadow: 0 2px 10px rgba(30,41,59,0.07); cursor: pointer; }
+    .g-stat-card:hover { border-color:rgba(37,99,235,0.35); transform:translateY(-4px); box-shadow: 0 8px 28px rgba(37,99,235,0.12); }
+    .g-stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background: linear-gradient(90deg, #2563eb, #6366f1, #2563eb); opacity:0.8; }
 
-    .g-overlay { position:fixed; inset:0; background:rgba(0,0,6,0.80); backdrop-filter:blur(18px); z-index:100; display:flex; align-items:center; justify-content:center; padding:24px; animation:fadeIn 0.25s ease; }
-    .g-modal { background: linear-gradient(160deg, rgba(16,26,56,0.92) 0%, rgba(10,18,40,0.95) 100%); border:1px solid rgba(255,255,255,0.12); border-radius:20px; width:100%; max-width:620px; max-height:90vh; overflow-y:auto; animation:scaleIn 0.3s ease; box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 60px rgba(0,212,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12); backdrop-filter: blur(24px); }
+    .g-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(14px); z-index:100; display:flex; align-items:center; justify-content:center; padding:24px; animation:fadeIn 0.25s ease; }
+    .g-modal { background: #ffffff; border:1px solid rgba(37,99,235,0.10); border-radius:20px; width:100%; max-width:620px; max-height:90vh; overflow-y:auto; animation:scaleIn 0.3s ease; box-shadow: 0 24px 64px rgba(30,41,59,0.14), 0 4px 20px rgba(0,0,0,0.08); }
     .g-modal-wide { max-width: 920px; }
 
-    .g-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px; font-size:10px; font-weight:600; letter-spacing:0.07em; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; }
+    .g-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px; font-size:10px; font-weight:600; letter-spacing:0.07em; font-family:'JetBrains Mono',monospace; text-transform:uppercase; }
     .g-badge-gold  { background:${G.goldDim};    color:${G.gold};    border:1px solid ${G.goldBorder}; }
     .g-badge-green { background:${G.successDim}; color:${G.success}; border:1px solid ${G.successBorder}; }
     .g-badge-red   { background:${G.dangerDim};  color:${G.danger};  border:1px solid ${G.dangerBorder}; }
-    .g-badge-muted { background:rgba(255,255,255,0.05); color:${G.textSecondary}; border:1px solid rgba(255,255,255,0.12); }
+    .g-badge-muted { background:rgba(0,0,0,0.05); color:${G.textSecondary}; border:1px solid rgba(0,0,0,0.10); }
     .pri-high   { background:${G.dangerDim};  color:${G.danger};  border:1px solid ${G.dangerBorder}; }
-    .pri-medium { background:rgba(0,212,255,0.10); color:${G.cyan};  border:1px solid rgba(0,212,255,0.35); }
+    .pri-medium { background:${G.cyanDim};    color:${G.cyan};    border:1px solid rgba(37,99,235,0.30); }
     .pri-low    { background:${G.successDim}; color:${G.success}; border:1px solid ${G.successBorder}; }
 
-    .g-drop { border:2px dashed rgba(255,255,255,0.15); border-radius:12px; padding:24px 16px; text-align:center; cursor:pointer; transition:all 0.2s ease; background:rgba(0,0,0,0.20); }
-    .g-drop:hover, .g-drop.drag-over { border-color:${G.cyan}66; background:rgba(0,212,255,0.06); }
+    .g-drop { border:2px dashed rgba(0,0,0,0.15); border-radius:12px; padding:24px 16px; text-align:center; cursor:pointer; transition:all 0.2s ease; background:rgba(0,0,0,0.02); }
+    .g-drop:hover, .g-drop.drag-over { border-color:#2563eb; background:rgba(37,99,235,0.05); }
     .ai-progress-fill { height:100%; border-radius:3px; background: linear-gradient(90deg, ${G.success}, ${G.cyan}, ${G.purple}, ${G.success}); background-size: 200% 100%; animation: progressBar 1.8s ease-in-out infinite; }
     .glow-dot { width:7px; height:7px; border-radius:50%; animation:shimmer 2s ease infinite; }
 
-    .g-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background: linear-gradient(135deg, rgba(16,28,58,0.95), rgba(22,38,78,0.95)); border:1px solid ${G.cyan}55; border-radius:99px; padding:12px 28px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:${G.textPrimary}; z-index:9999; white-space:nowrap; box-shadow:0 8px 32px rgba(0,0,0,0.7), 0 0 24px ${G.cyan}33; animation:fadeUp 0.3s ease; backdrop-filter: blur(16px); }
+    .g-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background: #0f172a; border:1px solid rgba(37,99,235,0.3); border-radius:99px; padding:12px 28px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#f0f4ff; z-index:9999; white-space:nowrap; box-shadow:0 8px 32px rgba(0,0,0,0.2); animation:fadeUp 0.3s ease; }
 
-    .g-lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.96); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s ease; }
-    .g-lightbox-img { max-width: 90vw; max-height: 85vh; border-radius: 12px; object-fit: contain; box-shadow: 0 0 60px rgba(0,212,255,0.2), 0 40px 80px rgba(0,0,0,0.9); animation: scaleIn 0.25s ease; }
-    .g-lightbox-close { position: absolute; top: 20px; right: 24px; width: 40px; height: 40px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; color: white; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10; }
-    .g-lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; background: rgba(0,212,255,0.10); border: 1px solid rgba(0,212,255,0.25); border-radius: 50%; color: ${G.cyan}; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .g-lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s ease; }
+    .g-lightbox-img { max-width: 90vw; max-height: 85vh; border-radius: 12px; object-fit: contain; box-shadow: 0 40px 80px rgba(0,0,0,0.5); animation: scaleIn 0.25s ease; }
+    .g-lightbox-close { position: absolute; top: 20px; right: 24px; width: 40px; height: 40px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.20); border-radius: 50%; color: white; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10; }
+    .g-lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.20); border-radius: 50%; color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
     .g-lightbox-nav.prev { left: 20px; } .g-lightbox-nav.next { right: 20px; }
     .g-lightbox-nav:disabled { opacity: 0.2; cursor: not-allowed; }
-    .g-lightbox-counter { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.1em; }
+    .g-lightbox-counter { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 0.1em; }
 
-    .tat-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.07em; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; background:${G.dangerDim}; color:${G.danger}; border:1px solid ${G.dangerBorder}; animation:tatPulse 2s ease infinite; }
+    .tat-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.07em; font-family:'JetBrains Mono',monospace; text-transform:uppercase; background:${G.dangerDim}; color:${G.danger}; border:1px solid ${G.dangerBorder}; animation:tatPulse 2s ease infinite; }
 
-    .g-dt-row { display:flex; gap:0; align-items:stretch; border:1px solid rgba(255,255,255,0.12); border-radius:8px; overflow:hidden; background:rgba(0,0,0,0.40); }
-    .g-dt-row input[type="date"] { flex:1; background:transparent; border:none; padding:12px 14px; color:${G.textPrimary}; font-size:14px; font-family:'Poppins',sans-serif; min-width:0; }
-    .g-dt-row input[type="date"]:focus { outline:none; box-shadow: inset 0 0 0 2px rgba(0,212,255,0.3); }
+    .g-dt-row { display:flex; gap:0; align-items:stretch; border:1px solid rgba(0,0,0,0.12); border-radius:8px; overflow:hidden; background:#ffffff; }
+    .g-dt-row input[type="date"] { flex:1; background:transparent; border:none; padding:12px 14px; color:${G.textPrimary}; font-size:14px; font-family:'DM Sans',sans-serif; min-width:0; }
+    .g-dt-row input[type="date"]:focus { outline:none; box-shadow: inset 0 0 0 2px ${G.cyanDim}; }
     .g-dt-row select { appearance: none; padding-right: 32px !important; }
 
-    .g-slot-btn { padding:0 13px; background:transparent; border:none; border-left:1px solid rgba(255,255,255,0.10); color:${G.textMuted}; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:0.09em; cursor:pointer; transition:all 0.15s ease; white-space:nowrap; }
+    .g-slot-btn { padding:0 13px; background:transparent; border:none; border-left:1px solid rgba(0,0,0,0.08); color:${G.textMuted}; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:600; letter-spacing:0.09em; cursor:pointer; transition:all 0.15s ease; white-space:nowrap; }
     .g-slot-btn:first-child { border-left: none; }
-    .g-slot-btn.active { background:linear-gradient(135deg, rgba(0,212,255,0.25), rgba(191,95,255,0.18)); color:${G.cyan}; font-weight:700; box-shadow: inset 0 0 0 1.5px rgba(0,212,255,0.45); }
-    .g-slot-btn:hover:not(.active) { color:${G.textSecondary}; background:rgba(255,255,255,0.04); }
+    .g-slot-btn.active { background:linear-gradient(135deg, ${G.cyanDim}, ${G.purpleDim}); color:${G.cyan}; font-weight:700; box-shadow: inset 0 0 0 1.5px rgba(37,99,235,0.35); }
+    .g-slot-btn:hover:not(.active) { color:${G.textSecondary}; background:rgba(0,0,0,0.04); }
 
-    .admin-avatar { width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, ${G.cyan}, ${G.purple}); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 2px solid rgba(0,212,255,0.45); cursor: pointer; transition: all 0.3s ease; position: relative; }
-    .admin-avatar:hover { transform: scale(1.06); box-shadow: 0 0 20px ${G.cyan}66; }
+    .admin-avatar { width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #6366f1); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 2px solid rgba(37,99,235,0.30); cursor: pointer; transition: all 0.3s ease; position: relative; }
+    .admin-avatar:hover { transform: scale(1.06); box-shadow: 0 4px 16px rgba(37,99,235,0.30); }
     .admin-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .admin-avatar-placeholder { font-size: 22px; color: #fff; }
 
     .g-task-list-modal { max-width: 860px; max-height: 88vh; }
-    .task-list-item { padding: 14px 18px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; background: rgba(255,255,255,0.03); transition: all 0.2s ease; margin-bottom: 8px; }
-    .task-list-item:hover { border-color: ${G.cyan}44; background: rgba(0,212,255,0.05); }
+    .task-list-item { padding: 14px 18px; border: 1px solid rgba(0,0,0,0.07); border-radius: 10px; background: #fafbfc; transition: all 0.2s ease; margin-bottom: 8px; }
+    .task-list-item:hover { border-color: rgba(37,99,235,0.28); background: rgba(37,99,235,0.04); }
 
-    .neon-divider { height: 1px; background: linear-gradient(90deg, transparent, ${G.cyan}, ${G.purple}, ${G.cyan}, transparent); opacity: 0.6; margin: 0; }
+    .neon-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(37,99,235,0.3), rgba(99,102,241,0.3), rgba(37,99,235,0.3), transparent); opacity: 0.6; margin: 0; }
 
-    .g-btn-reassign { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 14px; background: rgba(0,212,255,0.10); color:${G.cyan}; border: 1px solid rgba(0,212,255,0.35); border-radius:8px; font-family:'Poppins',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
-    .g-btn-reassign:hover { background:rgba(0,212,255,0.22); border-color:${G.cyan}; transform:translateY(-1px); box-shadow: 0 0 14px ${G.cyan}44; }
-    .tat-ext-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.07em; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; background:rgba(255,159,10,0.14); color:${G.amber}; border:1px solid rgba(255,159,10,0.45); animation:shimmer 2s ease infinite; }
-    .handover-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(191,95,255,0.10); border:1px solid rgba(191,95,255,0.35); border-radius:8px; font-size:12px; color:${G.purple}; font-family:'IBM Plex Mono',monospace; margin-bottom:10px; }
+    .g-btn-reassign { display:flex; align-items:center; justify-content:center; gap:7px; padding: 9px 14px; background: ${G.cyanDim}; color:${G.cyan}; border: 1px solid rgba(37,99,235,0.30); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+    .g-btn-reassign:hover { background:rgba(37,99,235,0.14); border-color:#2563eb; transform:translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.20); }
+    .tat-ext-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 12px; border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.07em; font-family:'JetBrains Mono',monospace; text-transform:uppercase; background:${G.amberDim}; color:${G.amber}; border:1px solid rgba(217,119,6,0.35); animation:shimmer 2s ease infinite; }
+    .handover-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; background:${G.purpleDim}; border:1px solid rgba(124,58,237,0.25); border-radius:8px; font-size:12px; color:${G.purple}; font-family:'JetBrains Mono',monospace; margin-bottom:10px; }
 
-    .g-confirm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(20px); z-index:200; display:flex; align-items:center; justify-content:center; animation:fadeIn 0.2s ease; }
-    .g-confirm-box { background:linear-gradient(160deg,rgba(20,8,28,0.98),rgba(10,4,20,0.99)); border:1px solid ${G.dangerBorder}; border-radius:20px; padding:36px 40px; max-width:440px; width:100%; text-align:center; box-shadow:0 0 60px ${G.danger}22, 0 40px 80px rgba(0,0,0,0.9); animation:scaleIn 0.25s ease; }
+    .g-confirm-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); backdrop-filter:blur(12px); z-index:200; display:flex; align-items:center; justify-content:center; animation:fadeIn 0.2s ease; }
+    .g-confirm-box { background:#ffffff; border:1px solid ${G.dangerBorder}; border-radius:20px; padding:36px 40px; max-width:440px; width:100%; text-align:center; box-shadow:0 20px 60px rgba(30,41,59,0.10); animation:scaleIn 0.25s ease; }
   `;
 
   const priClass = (p: string) =>
@@ -437,15 +437,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
     return (
       <div>
         {/* Label row */}
-        <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: G.cyan, fontWeight: 700 }}>
+        <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#0891b2", fontWeight: 700 }}>
             {String(displayH).padStart(2,"0")}:{String(min).padStart(2,"0")} {isAM ? "AM" : "PM"}
           </span>
           <span style={{ opacity: 0.4 }}>— scroll to set time</span>
         </div>
         <div style={{
           display: "flex", gap: 4, alignItems: "center",
-          background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)",
+          background: "#f8fafc", border: "1px solid rgba(0,0,0,0.08)",
           borderRadius: 14, padding: "0 8px", position: "relative", overflow: "hidden",
           userSelect: "none",
         }}>
@@ -453,9 +453,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           <div style={{
             position: "absolute", top: "50%", left: 0, right: 0, height: 40,
             transform: "translateY(-50%)",
-            background: "rgba(0,212,255,0.07)",
-            borderTop: "1px solid rgba(0,212,255,0.2)",
-            borderBottom: "1px solid rgba(0,212,255,0.2)",
+            background: "rgba(0,212,255,0.06)",
+            borderTop: "1px solid rgba(0,212,255,0.12)",
+            borderBottom: "1px solid rgba(0,212,255,0.12)",
             pointerEvents: "none", zIndex: 1,
           }} />
 
@@ -468,9 +468,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   ...itemBase,
                   fontSize: active ? 22 : 16,
                   fontWeight: active ? 900 : 400,
-                  color: active ? "#00d4ff" : "rgba(255,255,255,0.25)",
-                  background: active ? "rgba(0,212,255,0.12)" : "transparent",
-                  border: active ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+                  color: active ? "#0891b2" : "rgba(0,0,0,0.35)",
+                  background: active ? "rgba(6,182,212,0.10)" : "transparent",
+                  border: active ? "1px solid rgba(6,182,212,0.25)" : "1px solid transparent",
                   fontFamily: "'Space Grotesk',sans-serif",
                   transform: active ? "scale(1.08)" : "scale(1)",
                   zIndex: active ? 2 : 0,
@@ -482,7 +482,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           </div>
 
           {/* Colon separator */}
-          <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,0.3)", paddingBottom: 4, zIndex: 2 }}>:</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(0,0,0,0.25)", paddingBottom: 4, zIndex: 2 }}>:</div>
 
           {/* MINUTES column */}
           <div style={{ ...colStyle, scrollbarWidth: "none" }}>
@@ -494,9 +494,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   ...itemBase,
                   fontSize: exactActive ? 22 : 16,
                   fontWeight: exactActive ? 900 : 400,
-                  color: exactActive ? "#00d4ff" : "rgba(255,255,255,0.25)",
-                  background: exactActive ? "rgba(0,212,255,0.12)" : "transparent",
-                  border: exactActive ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+                  color: exactActive ? "#0891b2" : "rgba(0,0,0,0.35)",
+                  background: exactActive ? "rgba(6,182,212,0.10)" : "transparent",
+                  border: exactActive ? "1px solid rgba(6,182,212,0.25)" : "1px solid transparent",
                   fontFamily: "'Space Grotesk',sans-serif",
                   transform: exactActive ? "scale(1.08)" : "scale(1)",
                   zIndex: exactActive ? 2 : 0,
@@ -516,12 +516,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   width: 52, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
                   borderRadius: 9, cursor: "pointer",
                   fontSize: active ? 15 : 13, fontWeight: active ? 900 : 500,
-                  color: active ? "#00d4ff" : "rgba(255,255,255,0.3)",
-                  background: active ? "rgba(0,212,255,0.15)" : "rgba(255,255,255,0.03)",
-                  border: active ? "1px solid rgba(0,212,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                  fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.05em",
+                  color: active ? "#0891b2" : "rgba(0,0,0,0.35)",
+                  background: active ? "rgba(6,182,212,0.12)" : "rgba(255,255,255,0.6)",
+                  border: active ? "1px solid rgba(6,182,212,0.3)" : "1px solid rgba(0,0,0,0.08)",
+                  fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.05em",
                   transition: "all 0.15s",
-                  boxShadow: active ? "0 0 12px rgba(0,212,255,0.25)" : "none",
+                  boxShadow: active ? "0 0 12px rgba(6,182,212,0.15)" : "none",
                 }}>
                   {ap}
                 </div>
@@ -568,14 +568,14 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         <div style={{ padding: "24px 28px 18px", borderBottom: `1px solid rgba(255,255,255,0.10)` }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: accentColor, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 6 }}>Task List</div>
-              <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary }}>{title}</h2>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: accentColor, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 6 }}>Task List</div>
+              <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary }}>{title}</h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: accentColor, background: `${accentColor}18`, border: `1px solid ${accentColor}44`, borderRadius: 99, padding: "3px 12px" }}>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: accentColor, background: `${accentColor}18`, border: `1px solid ${accentColor}44`, borderRadius: 99, padding: "3px 12px" }}>
                 {tasks.length} tasks
               </span>
-              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: G.textSecondary }}>
+              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.10)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: G.textSecondary }}>
                 <X size={15} />
               </button>
             </div>
@@ -584,7 +584,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         <div style={{ padding: "20px 28px 28px", overflowY: "auto", maxHeight: "calc(88vh - 110px)" }}>
           {tasks.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px" }}>
-              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, color: G.textMuted }}>No tasks in this category</div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 18, color: G.textMuted }}>No tasks in this category</div>
             </div>
           ) : (
             tasks.map((task, idx) => {
@@ -592,19 +592,19 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               return (
                 <div key={task.id} className="task-list-item fade-up" style={{ animationDelay: `${idx * 40}ms` }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                    <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted }}>
+                    <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.09)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted }}>
                       {String(idx + 1).padStart(2, "0")}
                     </div>
                     <div style={{ flex: 1, minWidth: 0, cursor: onSelectTask ? "pointer" : "default" }} onClick={() => onSelectTask?.(task)}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-                        <span style={{ fontFamily: "'Poppins',sans-serif", fontSize: 14, fontWeight: 600, color: G.textPrimary }}>{task.title}</span>
+                        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 600, color: G.textPrimary }}>{task.title}</span>
                         <span className={priClass(task.priority)}><Flag size={8} />{task.priority.toUpperCase()}</span>
                         <span className="g-badge" style={{ background: `${ac}18`, color: ac, border: `1px solid ${ac}33` }}>{APPROVAL_LABELS[task.approvalStatus] || task.approvalStatus}</span>
                       </div>
                       <p style={{ fontSize: 12, color: G.textMuted, lineHeight: 1.5, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
                         {task.description}
                       </p>
-                      <div style={{ display: "flex", gap: 14, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                      <div style={{ display: "flex", gap: 14, fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><User size={9} />{getNameFn(task.assignedTo)}</span>
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Calendar size={9} />{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                         {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
@@ -648,7 +648,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         <div style={{ width: 56, height: 56, borderRadius: 14, background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
           <Trash2 size={24} color={G.danger} />
         </div>
-        <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, marginBottom: 12 }}>Confirm Delete</h3>
+        <h3 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, marginBottom: 12 }}>Confirm Delete</h3>
         <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 28 }}>{message}</p>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="g-btn-danger" onClick={onConfirm} style={{ flex: 1 }}><Trash2 size={14} />Delete</button>
@@ -697,9 +697,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
       >
         <div style={{
-          background: "rgba(4,8,22,0.98)", border: `1px solid ${G.cyan}33`, borderRadius: 22,
+          background: "#ffffff", border: `1px solid ${G.cyan}33`, borderRadius: 22,
           padding: 0, maxWidth: 660, width: "100%", maxHeight: "90vh", overflowY: "auto",
-          boxShadow: `0 40px 100px rgba(0,0,0,0.95), 0 0 80px ${G.cyan}0d, inset 0 1px 0 rgba(255,255,255,0.05)`,
+          boxShadow: `0 40px 100px rgba(0,0,0,0.95), 0 0 80px ${G.cyan}0d, inset 0 1px 0 rgba(255,255,255,0.8)`,
           transform: visible ? "translateY(0) scale(1)" : "translateY(28px) scale(0.96)",
           transition: "transform 0.34s cubic-bezier(0.34,1.56,0.64,1)",
         }}>
@@ -711,13 +711,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 6, background: `${G.cyan}18`, border: `1px solid ${G.cyan}40`, fontSize: 9, fontWeight: 800, color: G.cyan, textTransform: "uppercase" as const, letterSpacing: "1.2px", marginBottom: 12 }}>
                   <Zap size={8} /> Admin Live Briefing
                 </div>
-                <div style={{ fontSize: 23, fontWeight: 800, color: G.textPrimary, letterSpacing: "-0.5px", fontFamily: "'Oswald',sans-serif", lineHeight: 1.15 }}>
+                <div style={{ fontSize: 23, fontWeight: 800, color: G.textPrimary, letterSpacing: "-0.5px", fontFamily: "'Plus Jakarta Sans',sans-serif", lineHeight: 1.15 }}>
                   Welcome back, <span style={{ color: G.cyan }}>{adminName}</span>
                 </div>
                 <div style={{ fontSize: 12, color: G.textMuted, marginTop: 7 }}>Here's your team's workload snapshot — act on urgent items first.</div>
               </div>
               <button onClick={handleClose}
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, width: 34, height: 34, color: G.textMuted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, transition: "all 0.18s" }}
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, width: 34, height: 34, color: G.textMuted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, transition: "all 0.18s" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = G.danger; (e.currentTarget as HTMLButtonElement).style.borderColor = `${G.danger}55`; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = G.textMuted; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.1)"; }}
               >✕</button>
@@ -727,7 +727,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               {stats.map(s => (
                 <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 10, background: `${s.color}12`, border: `1px solid ${s.color}38` }}>
                   <span style={{ fontSize: 11, color: s.color }}>{s.icon}</span>
-                  <span style={{ fontSize: 19, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif", lineHeight: 1 }}>{s.value}</span>
+                  <span style={{ fontSize: 19, fontWeight: 900, color: s.color, fontFamily: "'Plus Jakarta Sans',sans-serif", lineHeight: 1 }}>{s.value}</span>
                   <span style={{ fontSize: 9, color: G.textMuted, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{s.label}</span>
                 </div>
               ))}
@@ -848,6 +848,268 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
   };
 
   // ── Main Component ─────────────────────────────────────────────────────────────
+
+  // ── Modal Header ──────────────────────────────────────────────────────────────
+  interface ModalHeaderProps {
+    title: string;
+    sub: string;
+    onClose: () => void;
+    accent: string;
+  }
+
+  const ModalHeader: React.FC<ModalHeaderProps> = ({ title, sub, onClose, accent }) => (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "22px 26px 18px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+      <div>
+        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: accent, letterSpacing: "0.16em", textTransform: "uppercase" as const, marginBottom: 6 }}>{sub}</div>
+        <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, lineHeight: 1.2, maxWidth: 460 }}>{title}</h2>
+      </div>
+      <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.09)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: G.textMuted }}>
+        <X size={15} />
+      </button>
+    </div>
+  );
+
+
+  // ── Task Row ──────────────────────────────────────────────────────────────────
+  interface TaskRowProps {
+    task: Task;
+    idx: number;
+    staffName: string;
+    isAdminAssignee: boolean;
+    onReview: () => void;
+    onViewHistory: () => void;
+    onDelete: () => void;
+    onReassign: () => void;
+    onReviewTatExt?: () => void;
+    onToggleAutopulse?: () => void;
+    getNameFn: (e: string) => string;
+  }
+
+  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete, onReassign, onReviewTatExt, onToggleAutopulse, getNameFn }) => {
+    const [hovered, setHovered] = React.useState(false);
+    const hasPendingTatExt = task.tatExtensionRequest?.status === "pending";
+    return (
+      <div className="fade-up"
+        style={{ animationDelay: `${idx * 55}ms`, background: hovered ? G.surfaceMid : G.surface, border: `1px solid ${hovered ? G.cyan + "44" : task.tatBreached ? G.dangerBorder : "rgba(255,255,255,0.09)"}`, borderRadius: 12, padding: "18px 22px", transition: "all 0.2s ease", backdropFilter: "blur(16px)" }}
+        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+        {/* TAT Extension pending banner */}
+        {hasPendingTatExt && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "8px 14px", background: "rgba(255,159,10,0.10)", border: `1px solid rgba(255,159,10,0.40)`, borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: G.amber, fontFamily: "'JetBrains Mono',monospace" }}>
+              <Clock size={11} />
+              <strong>TAT EXTENSION REQUEST</strong> · {staffName} has requested a deadline extension
+              <span style={{ fontSize: 10, color: G.textMuted }}>— New date: {new Date(task.tatExtensionRequest!.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} {task.tatExtensionRequest!.requestedNewTimeSlot}</span>
+            </div>
+            {onReviewTatExt && (
+              <button onClick={e => { e.stopPropagation(); onReviewTatExt(); }}
+                style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(255,159,10,0.14)", border: `1px solid rgba(255,159,10,0.45)`, borderRadius: 7, color: G.amber, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" as const }}>
+                Review Extension →
+              </button>
+            )}
+          </div>
+        )}
+        {/* Handover banner */}
+        {task.handoverRequested && task.previousAssignee && (
+          <div className="handover-banner">
+            <Share2 size={11} />
+            Handover triggered — <strong style={{ marginLeft: 4 }}>{getNameFn(task.previousAssignee!)}</strong> was asked to hand over creatives
+          </div>
+        )}
+        {task.tatBreached && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "6px 12px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 7, fontSize: 11, color: G.danger, fontFamily: "'JetBrains Mono',monospace" }}>
+            <AlertTriangle size={11} /> TAT BREACH — {task.smartAssist?.delayDuration || "Overdue"}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
+          <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(255,255,255,0.09)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 2 }}>
+            {String(idx + 1).padStart(2, "0")}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary }}>{task.title}</h3>
+              <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
+              {isAdminAssignee && <span className="g-badge g-badge-gold"><Shield size={9} />ADMIN</span>}
+              {hasPendingTatExt && <span className="tat-ext-badge"><Clock size={9} />EXT REQUESTED</span>}
+              {(task as any).isAutopulse && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "2px 7px", borderRadius: 4,
+                  background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)",
+                  fontSize: 8, fontWeight: 800, color: "#c9a96e",
+                  textTransform: "uppercase" as const, letterSpacing: "0.5px",
+                }}>
+                  <Zap size={7} /> AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
+              {task.description}
+            </p>
+            {/* ── Voice Note player ── */}
+            {(task as any).voiceNote && (
+              <div style={{
+                margin: "0 0 10px",
+                padding: "8px 12px", borderRadius: 9,
+                background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
+                display: "flex", flexDirection: "column" as const, gap: 6,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Radio size={10} color="#c9a96e" />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>Voice Brief</span>
+                </div>
+                <audio src={(task as any).voiceNote} controls style={{ width: "100%", height: 32, accentColor: "#c9a96e" }} />
+              </div>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, color: isAdminAssignee ? G.gold : G.textSecondary }}>
+                {isAdminAssignee ? <Shield size={10} color={G.gold} /> : <User size={10} />}{staffName}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <Calendar size={10} />{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
+              </span>
+              {task.completionNotes && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan }}><FileText size={10} />Has notes</span>}
+              {task.history && task.history.length > 0 && (
+                <button onClick={onViewHistory} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: 0 }}>
+                  <ListTree size={10} />History ({task.history.length})
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 2, flexDirection: "column" as const }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {/* Pause / Resume Autopulse */}
+              {(task as any).isAutopulse && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleAutopulse?.();
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "9px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    cursor: "pointer", border: "1px solid rgba(201,169,110,0.3)",
+                    background: "rgba(201,169,110,0.07)", color: "#c9a96e",
+                    fontFamily: "inherit", whiteSpace: "nowrap" as const,
+                  }}
+                  title={(task as any).autopulsePaused ? "Resume Autopulse" : "Pause Autopulse"}
+                >
+                  {(task as any).autopulsePaused ? <><Zap size={11} />Resume</> : <>⏸ Pause</>}
+                </button>
+              )}
+              <button onClick={onReview}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: hovered ? `linear-gradient(135deg,${G.cyan},#60efff)` : "rgba(255,255,255,0.05)", color: hovered ? "#001a26" : G.textSecondary, border: `1px solid ${hovered ? G.cyan : "rgba(255,255,255,0.10)"}`, borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap" as const, boxShadow: hovered ? `0 0 20px ${G.cyan}55` : "none" }}>
+                <Eye size={12} />Review<ChevronRight size={11} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="g-btn-delete"
+                style={{ padding: "9px 12px" }}
+                title="Delete task"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+            {/* Reassign button — always available on review tasks */}
+            <button
+              className="g-btn-reassign"
+              onClick={e => { e.stopPropagation(); onReassign(); }}
+              title="Reassign this task to a different doer"
+              style={{ width: "100%", fontSize: 11 }}
+            >
+              <Share2 size={11} />Reassign Doer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+
+  // ── Add User Tab ─────────────────────────────────────────────────────────────
+  const AddUserTab: React.FC = () => {
+    const [form, setForm] = useState({ name: "", email: "", role: "staff", phone: "" });
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const handleSave = async () => {
+      if (!form.name.trim() || !form.email.trim()) return;
+      setSaving(true);
+      try {
+        await fetch("https://api.roswaltsmartcue.com/api/members", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, id: crypto.randomUUID(), createdAt: new Date().toISOString() }),
+        });
+        setSaved(true);
+        setForm({ name: "", email: "", role: "staff", phone: "" });
+        setTimeout(() => setSaved(false), 3000);
+      } catch { } finally { setSaving(false); }
+    };
+    return (
+      <section style={{ marginTop: 40, paddingBottom: 60, maxWidth: 560 }}>
+        <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Add <em style={{ color: G.cyan }}>Team Member</em></h2>
+        <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 28, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Register a new user to the SmartCue platform</p>
+        <div className="g-card" style={{ padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div><label className="g-label">Full Name *</label><input className="g-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. John Smith" /></div>
+          <div><label className="g-label">Email Address *</label><input className="g-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="john@roswalt.com" /></div>
+          <div>
+            <label className="g-label">Role</label>
+            <select className="g-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+          <div><label className="g-label">Phone (optional)</label><input className="g-input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91 XXXXX XXXXX" /></div>
+          <button className="g-btn-gold" onClick={handleSave} disabled={saving || !form.name.trim() || !form.email.trim()} style={{ marginTop: 8 }}>
+            {saving ? <><Loader size={13} className="spin" />Saving…</> : saved ? <><CheckCircle size={13} />Member Added!</> : <><Plus size={13} />Add Member</>}
+          </button>
+        </div>
+      </section>
+    );
+  };
+
+  // ── Add Project Tab ───────────────────────────────────────────────────────────
+  const AddProjectTab: React.FC = () => {
+    const [form, setForm] = useState({ name: "", projectCode: "", status: "active", description: "" });
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const handleSave = async () => {
+      if (!form.name.trim()) return;
+      setSaving(true);
+      try {
+        await fetch("https://api.roswaltsmartcue.com/api/projects", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, id: crypto.randomUUID(), createdAt: new Date().toISOString() }),
+        });
+        setSaved(true);
+        setForm({ name: "", projectCode: "", status: "active", description: "" });
+        setTimeout(() => setSaved(false), 3000);
+      } catch { } finally { setSaving(false); }
+    };
+    return (
+      <section style={{ marginTop: 40, paddingBottom: 60, maxWidth: 560 }}>
+        <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Add <em style={{ color: G.success }}>Project</em></h2>
+        <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 28, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Register a new project to assign tasks against</p>
+        <div className="g-card" style={{ padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div><label className="g-label">Project Name *</label><input className="g-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Tower B — Phase 2" /></div>
+          <div><label className="g-label">Project Code</label><input className="g-input" value={form.projectCode} onChange={e => setForm(f => ({ ...f, projectCode: e.target.value }))} placeholder="e.g. RR-TB2" /></div>
+          <div>
+            <label className="g-label">Status</label>
+            <select className="g-input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              <option value="active">Active</option>
+              <option value="on-hold">On Hold</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <div><label className="g-label">Description (optional)</label><textarea className="g-input" rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief project description…" style={{ resize: "vertical" as const }} /></div>
+          <button className="g-btn-gold" onClick={handleSave} disabled={saving || !form.name.trim()} style={{ marginTop: 8 }}>
+            {saving ? <><Loader size={13} className="spin" />Saving…</> : saved ? <><CheckCircle size={13} />Project Added!</> : <><FolderPlus size={13} />Add Project</>}
+          </button>
+        </div>
+      </section>
+    );
+  };
+
   const AdminDashboard: React.FC = () => {
     const {
       getTasksForAdminReview, getAssignedTasks, submitTaskCompletion,
@@ -2087,7 +2349,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
       { id: "progress",   label: "Progress",   icon: Activity    },
       { id: "taskmap",    label: "Task Map",   icon: GitBranch   },
       { id: "autopulse",  label: "Autopulse",  icon: Zap         },
-      { id: "prime",       label: "Prime",       icon: Shield      },
+      { id: "prime",      label: "Prime",      icon: Shield      },
+      { id: "adduser",    label: "Add User",   icon: User        },
+      { id: "addproject", label: "Add Project",icon: FolderPlus  },
       ...(isVinay ? [{ id: "portfolio", label: "Portfolio", icon: FolderPlus }] : []),
     ];
 
@@ -2132,192 +2396,148 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
         {/* Background layer */}
         {useImageBackground && backgroundImage ? (
-          <img src={backgroundImage} alt="Background" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 0.45 }} />
+          <img src={backgroundImage} alt="Background" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 0.08 }} />
         ) : (
-          <video
-            key={backgroundVideo ?? "default"}
-            style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: -1, opacity: 1 }}
-            autoPlay muted loop playsInline preload="auto"
-          >
-            {backgroundVideo
-              ? <source src={backgroundVideo} />
-              : <source src="https://res.cloudinary.com/donsrpgw3/video/upload/v1773314238/0_Hologram_Technology_3840x2160_vzvhd5.mp4" type="video/mp4" />
-            }
-          </video>
+          <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: -1, background: "linear-gradient(135deg, #f0f2f8 0%, #e8edf8 40%, #eef0f8 100%)" }} />
         )}
 
         <input ref={backgroundInputRef}      type="file" accept="image/*"       style={{ display: "none" }} onChange={(e) => handleBackgroundImageUpload(e.target.files)} />
         <input ref={backgroundVideoInputRef} type="file" accept="video/*"       style={{ display: "none" }} onChange={(e) => handleBackgroundVideoUpload(e.target.files)} />
-
-        <div style={{ minHeight: "100vh", position: "relative" }}>
-          <div style={{ position: "relative", zIndex: 1, maxWidth: 1280, margin: "0 auto", padding: "0 28px" }}>
-
-            {/* ── HEADER ── */}
-            <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", position: "sticky", top: 0, zIndex: 50, background: "transparent", backdropFilter: "blur(28px)", borderBottom: "1px solid rgba(255,255,255,0.08)", boxShadow: `0 8px 32px rgba(0,0,0,0.4), inset 0 -1px 0 ${G.cyan}22` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-
-                {/* Logo */}
-                <div style={{ width: 56, height: 56, borderRadius: 12, background: roswalLogo ? "transparent" : `linear-gradient(135deg, ${G.gold}44, ${G.amber}22)`, border: `2px solid ${G.gold}66`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", boxShadow: `0 0 20px ${G.gold}33` }}
-                  onClick={() => logoInputRef.current?.click()} title="Click to update logo">
-                  {roswalLogo ? <img src={roswalLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} /> : <span style={{ fontSize: 28 }}>♞</span>}
+        <div style={{ display: "flex", minHeight: "100vh" }}>
+          <aside style={{ width: 220, background: "linear-gradient(180deg, #1e293b 0%, #162032 100%)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh", flexShrink: 0, zIndex: 50, overflowY: "auto" }}>
+            <div style={{ padding: "16px 16px 14px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(37,99,235,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden", flexShrink: 0 }} onClick={() => logoInputRef.current?.click()}>
+                  {roswalLogo ? <img src={roswalLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 13, fontWeight: 700, color: "#c9a96e" }}>R</span>}
                 </div>
                 <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleLogoUpload(e.target.files)} />
-
-                {/* BG Toggle */}
-                <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: 3 }}>
-                  <button onClick={() => backgroundVideoInputRef.current?.click()}
-                    style={{ padding: "5px 10px", background: !useImageBackground ? "rgba(0,212,255,0.15)" : "transparent", border: !useImageBackground ? `1px solid ${G.cyan}44` : "1px solid transparent", borderRadius: 5, color: !useImageBackground ? G.cyan : G.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const }}
-                    title="Upload a custom background video">
-                    🎬 Video {backgroundVideo ? "✓" : ""}
-                  </button>
-                  <button onClick={() => backgroundInputRef.current?.click()}
-                    style={{ padding: "5px 10px", background: useImageBackground ? "rgba(255,224,102,0.15)" : "transparent", border: useImageBackground ? `1px solid ${G.gold}44` : "1px solid transparent", borderRadius: 5, color: useImageBackground ? G.gold : G.textMuted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const }}>
-                    🖼️ Image {backgroundImage ? "✓" : ""}
-                  </button>
-                  {(backgroundVideo || backgroundImage) && (
-                    <button
-                      onClick={() => {
-                        setBackgroundVideo(null); setBackgroundImage(null); setUseImageBackground(false);
-                        try { localStorage.removeItem("ad_bg_video"); localStorage.removeItem("ad_bg_image"); localStorage.setItem("ad_bg_type", "video"); } catch {}
-                        toast("↺ Background reset to default");
-                      }}
-                      style={{ padding: "5px 8px", background: "rgba(255,45,85,0.10)", border: "1px solid rgba(255,45,85,0.25)", borderRadius: 5, color: G.danger, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "'IBM Plex Mono',monospace" }}
-                      title="Reset to default video"
-                    >✕</button>
-                  )}
-                </div>
-
-                {/* Title */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, background: `linear-gradient(90deg, ${G.cyan} 0%, #60efff 20%, ${G.gold} 50%, #60efff 80%, ${G.cyan} 100%)`, backgroundSize: "300% 100%", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", lineHeight: 1, animation: "gradient-shift 8s ease infinite" } as React.CSSProperties}>
-                    Admin <em>Control</em>
-                  </div>
-                  <div style={{ fontSize: 9, color: G.gold, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.18em", textTransform: "uppercase" as const, fontWeight: 700 }}>ROSWALT REALTY</div>
-                </div>
-
-                {/* Avatar */}
-                <div className="admin-avatar glow" onClick={() => profileInputRef.current?.click()} title="Change profile photo" style={{ marginLeft: 8 }}>
-                  {adminProfileImg ? <img src={adminProfileImg} alt="Admin" /> : <div style={{ fontSize: 22 }}>👤</div>}
-                </div>
-                <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleProfileImageUpload(e.target.files)} />
-
-                {user && <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, marginLeft: 6, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>{(user as { name?: string }).name} · {user.email}</div>}
+                <div><div style={{ fontSize: 13, fontWeight: 700, color: "#ffffff", lineHeight: 1.2 }}>SmartCue</div><div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Roswalt Realty</div></div>
               </div>
+            </div>
+            <div style={{ padding: "10px 14px 10px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 9 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, overflow: "hidden", cursor: "pointer", background: "rgba(255,255,255,0.15)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => profileInputRef.current?.click()}>
+                {adminProfileImg ? <img src={adminProfileImg} alt="Admin" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e" }}>{((user as any)?.name || "A").substring(0,2).toUpperCase()}</span>}
+              </div>
+              <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleProfileImageUpload(e.target.files)} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{(user as any)?.name || user?.email?.split("@")[0]}</div>
+                <div style={{ fontSize: 9, color: "#bbb", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{user?.email}</div>
+              </div>
+            </div>
+            <div style={{ flex: 1, padding: "10px 8px" }}>
+              <div style={{ fontSize: 9, color: "#ccc", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "0 8px 5px", fontWeight: 600 }}>Main</div>
+              {TABS.filter((t: any) => ["analytics","overview"].includes(t.id)).map((tab: any) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: activeTab === tab.id ? "#ffffff" : "rgba(255,255,255,0.60)", fontWeight: activeTab === tab.id ? 600 : 400, background: activeTab === tab.id ? "rgba(255,255,255,0.14)" : "transparent", border: "none", textAlign: "left" as const, marginBottom: 1, transition: "all 0.12s" }}>
+                  <tab.icon size={13} />{tab.label}
+                </button>
+              ))}
+              <div style={{ fontSize: 9, color: "#ccc", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "10px 8px 5px", fontWeight: 600 }}>Tasks</div>
+              {TABS.filter((t: any) => ["review","autopulse","mytasks"].includes(t.id)).map((tab: any) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: activeTab === tab.id ? "#ffffff" : "rgba(255,255,255,0.60)", fontWeight: activeTab === tab.id ? 600 : 400, background: activeTab === tab.id ? "rgba(255,255,255,0.14)" : "transparent", border: "none", textAlign: "left" as const, marginBottom: 1, transition: "all 0.12s", position: "relative" as const }}>
+                  <tab.icon size={13} />{tab.label}
+                  {tab.id === "review" && tasksToReview.length > 0 && <span style={{ marginLeft: "auto", background: "#fde8e8", color: "#c0392b", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{tasksToReview.length}</span>}
+                  {tab.id === "autopulse" && allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length > 0 && <span style={{ marginLeft: "auto", background: "#fef3e2", color: "#b45309", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length}</span>}
+                  {tab.id === "mytasks" && myPendingTasks.length > 0 && <span style={{ marginLeft: "auto", background: "#fde8e8", color: "#c0392b", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{myPendingTasks.length}</span>}
+                </button>
+              ))}
+              <div style={{ fontSize: 9, color: "#ccc", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "10px 8px 5px", fontWeight: 600 }}>Operations</div>
+              {TABS.filter((t: any) => ["tickets","progress","prime","portfolio","adduser","addproject"].includes(t.id)).map((tab: any) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: activeTab === tab.id ? "#ffffff" : "rgba(255,255,255,0.60)", fontWeight: activeTab === tab.id ? 600 : 400, background: activeTab === tab.id ? "rgba(255,255,255,0.14)" : "transparent", border: "none", textAlign: "left" as const, marginBottom: 1, transition: "all 0.12s", position: "relative" as const }}>
+                  <tab.icon size={13} />{tab.label}
+                  {tab.id === "tickets" && pendingAssistanceTickets.length > 0 && <span style={{ marginLeft: "auto", background: "#fef3e2", color: "#b45309", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{pendingAssistanceTickets.length}</span>}
+                  {tab.id === "prime" && allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length > 0 && <span style={{ marginLeft: "auto", background: "#fde8e8", color: "#c0392b", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>{allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length}</span>}
+                </button>
+              ))}
+            </div>
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                {activeSmartAssistCount > 0 && (
-                  <button onClick={() => { setActiveTicket(null); setShowSmartAssist(true); }} className="tat-badge" style={{ cursor: "pointer", border: "none" }}>
-                    <AlertTriangle size={11} /> {activeSmartAssistCount} TAT Breach{activeSmartAssistCount !== 1 ? "es" : ""}
-                  </button>
-                )}
-                <button onClick={() => setShowGlobalHistory(true)} className="g-btn-ghost" style={{ padding: "9px 13px" }}><History size={15} /></button>
+            <div style={{ padding: "10px 8px 14px", borderTop: "1px solid #f0f0f0" }}>
+              {activeSmartAssistCount > 0 && (
+                <button onClick={() => { setActiveTicket(null); setShowSmartAssist(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 7, background: "#fde8e8", border: "none", color: "#c0392b", fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 4 }}>
+                  <AlertTriangle size={12} /> {activeSmartAssistCount} TAT Breach{activeSmartAssistCount !== 1 ? "es" : ""}
+                </button>
+              )}
+              <button onClick={() => setShowAIPanel(!showAIPanel)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: showAIPanel ? "#1a1a1a" : "#555", background: showAIPanel ? "#f0f0f0" : "transparent", border: "none", textAlign: "left" as const, marginBottom: 1 }}>
+                <MessageSquare size={13} />AI Chat
+              </button>
+              <button onClick={() => setShowGlobalHistory(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.60)", background: "transparent", border: "none", textAlign: "left" as const, marginBottom: 1 }}>
+                <History size={13} />History
+              </button>
+              <button onClick={toggleVoice} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: voiceEnabled ? "#fbbf24" : "rgba(255,255,255,0.60)", background: voiceEnabled ? "rgba(251,191,36,0.12)" : "transparent", border: "none", textAlign: "left" as const, marginBottom: 1 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                {voiceEnabled ? "Voice ON" : "Voice OFF"}
+              </button>
+              <button onClick={handleLogout} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.60)", background: "transparent", border: "none", textAlign: "left" as const, marginBottom: 8 }}>
+                <LogOut size={13} />Logout
+              </button>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                <button onClick={() => backgroundVideoInputRef.current?.click()} style={{ flex: 1, padding: "5px 4px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 5, color: G.textSecondary, cursor: "pointer", fontSize: 9, fontWeight: 600 }}>🎬 {backgroundVideo ? "✓" : "BG"}</button>
+                <button onClick={() => backgroundInputRef.current?.click()} style={{ flex: 1, padding: "5px 4px", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 5, color: G.textSecondary, cursor: "pointer", fontSize: 9, fontWeight: 600 }}>🖼 {backgroundImage ? "✓" : "IMG"}</button>
+              </div>
+              <button className="g-btn-gold" onClick={() => setShowCreateModal(true)} style={{ width: "100%", justifyContent: "center", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", boxShadow: "0 2px 12px rgba(37,99,235,0.35)", border: "none", color: "#ffffff" }}><Plus size={13} />New Task</button>
+            </div>
+          </aside>
+          {/* ── MAIN CONTENT ── */}
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "0 24px", background: "#c8d3e8" }}>
+            {showAIPanel && (<div style={{ margin: "20px 0", height: 500, borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,212,255,0.33)" }}><ClaudeChat theme="amber" /></div>)}
+            {activeTab === "analytics" && (
+              <section style={{ marginTop: 24, paddingBottom: 60 }}>
 
-                <div style={{ display: "flex", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, padding: 3 }}>
-                  {TABS.map((tab) => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", background: activeTab === tab.id ? "rgba(0,212,255,0.14)" : "transparent", color: activeTab === tab.id ? G.cyan : G.textSecondary, border: activeTab === tab.id ? `1px solid ${G.cyan}44` : "1px solid transparent", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600, transition: "all 0.2s", position: "relative" as const }}>
-                      <tab.icon size={12} />{tab.label}
-                      {tab.id === "review"   && tasksToReview.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{tasksToReview.length}</span>}
-                      {tab.id === "tickets"  && pendingAssistanceTickets.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#ff9500", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{pendingAssistanceTickets.length}</span>}
-                      {tab.id === "autopulse" && allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#c9a96e", borderRadius: "50%", fontSize: 9, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length}</span>}
-                      {tab.id === "prime" && allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length > 0 && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: "#f87171", borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length}</span>}
-                      {tab.id === "mytasks"  && myPendingTasks.length > 0        && <span style={{ position: "absolute", top: -5, right: -5, width: 16, height: 16, background: G.danger,  borderRadius: "50%", fontSize: 9, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{myPendingTasks.length}</span>}
-                    </button>
+                {/* ── Page header ── */}
+                <div style={{ marginBottom: 24 }}>
+                  <h1 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 32, fontWeight: 700, color: G.textPrimary, lineHeight: 1.1, marginBottom: 4 }}>
+                    Task <em style={{ color: G.cyan, fontStyle: "italic" }}>Analytics</em>
+                  </h1>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.14em", textTransform: "uppercase" as const }}>
+                    Real-time performance metrics — click any card to drill down
+                  </div>
+                </div>
+
+                {/* ── Top stat cards row ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 12 }}>
+                  {[
+                    { label: "Total Tasks",     value: analytics.totalTasks,          sub: "All time",          accent: G.cyan,    icon: BarChart3,     tasks: allTasksCombined },
+                    { label: "Completion Rate", value: `${analytics.completionRate}%`, sub: "Success ratio",     accent: G.success, icon: TrendingUp,    tasks: allTasksCombined.filter((t: Task) => t.approvalStatus === "superadmin-approved") },
+                    { label: "Avg Completion",  value: analytics.avgCompletionTime,   sub: "Per task",          accent: G.purple,  icon: Clock,         tasks: [] as Task[] },
+                    { label: "Active Tasks",    value: allTasksCombined.filter((t: Task) => (["assigned","in-review","admin-approved"] as string[]).includes(t.approvalStatus)).length, sub: "In progress", accent: G.amber, icon: Activity, tasks: allTasksCombined.filter((t: Task) => (["assigned","in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
+                    { label: "TAT Breached",    value: analytics.tatBreachedCount,    sub: "Deadline misses",   accent: G.danger,  icon: AlertTriangle, tasks: allTasksCombined.filter((t: Task) => t.tatBreached) },
+                    { label: "Smart Assist",    value: analytics.activeTicketCount,   sub: "Open escalations",  accent: G.gold,    icon: Bell,          tasks: [] as Task[] },
+                    { label: "Assigned by Me",  value: allTasksCombined.filter((t: Task) => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()).length, sub: "Tasks I created", accent: G.cyan, icon: CheckCircle, tasks: allTasksCombined.filter((t: Task) => (t.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase()) },
+                    { label: "Pending Review",  value: tasksToReview.length,          sub: "Awaiting approval", accent: G.gold,    icon: Eye,           tasks: tasksToReview },
+                  ].map((card, i) => (
+                    <div key={i} className="g-stat-card fade-up"
+                      style={{ animationDelay: `${i * 45}ms`, cursor: card.tasks.length > 0 ? "pointer" : "default" }}
+                      onClick={() => card.tasks.length > 0 && openTaskListModal(card.label, card.tasks, card.accent)}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 8, color: G.textMuted, letterSpacing: "0.14em", textTransform: "uppercase" as const }}>{card.label}</div>
+                        <card.icon size={12} color={card.accent} />
+                      </div>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 36, fontWeight: 700, color: card.accent, lineHeight: 1, textShadow: `0 0 20px ${card.accent}55`, marginBottom: 4 }}>{card.value}</div>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted }}>{card.sub}</div>
+                      {card.tasks.length > 0 && <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 9, color: `${card.accent}77`, fontFamily: "'JetBrains Mono',monospace" }}>click ›</div>}
+                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${card.accent}55,transparent)` }} />
+                    </div>
                   ))}
                 </div>
-                <button className="g-btn-gold" onClick={() => setShowCreateModal(true)}><Plus size={14} strokeWidth={2.5} />New Task</button>
-                <button className="g-btn-ghost" onClick={() => setShowAIPanel(!showAIPanel)} style={{ padding: "9px 13px", borderColor: showAIPanel ? `${G.cyan}55` : undefined }}><MessageSquare size={16} color={showAIPanel ? G.cyan : undefined} /></button>
-                {/* ── Voice Module Toggle ── */}
-                <button
-                  onClick={toggleVoice}
-                  title={voiceEnabled ? "Voice ON — click to disable ElevenLabs" : "Voice OFF — click to enable"}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 7,
-                    padding: "7px 13px", borderRadius: 9, cursor: "pointer",
-                    fontFamily: "inherit", fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${voiceEnabled ? "rgba(201,169,110,0.4)" : "rgba(255,255,255,0.1)"}`,
-                    background: voiceEnabled ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.04)",
-                    color: voiceEnabled ? "#c9a96e" : "#7e84a3",
-                    transition: "all 0.2s",
-                    letterSpacing: "0.3px",
-                    textTransform: "uppercase" as const,
-                  }}
-                >
-                  {/* Mic icon — inline SVG so no extra import needed */}
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    {voiceEnabled ? (
-                      <>
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8"  y1="23" x2="16" y2="23"/>
-                      </>
-                    ) : (
-                      <>
-                        <line x1="1" y1="1" x2="23" y2="23"/>
-                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
-                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8"  y1="23" x2="16" y2="23"/>
-                      </>
-                    )}
-                  </svg>
-                  {voiceEnabled ? "Voice ON" : "Voice OFF"}
-                </button>
-                <button className="g-btn-ghost" onClick={handleLogout} style={{ padding: "9px 13px" }}><LogOut size={16} /></button>
-              </div>
-            </header>
-
-            {showAIPanel && (
-              <div style={{ marginTop: 20, height: 500, borderRadius: 16, overflow: "hidden", border: `1px solid ${G.cyan}33` }}>
-                <ClaudeChat theme="amber" />
-              </div>
-            )}
-
-            {/* ══ ANALYTICS TAB ══ */}
-            {activeTab === "analytics" && (
-              <section style={{ marginTop: 32, paddingBottom: 60 }}>
-                <div style={{ marginBottom: 28 }}>
-                  <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
-                    Task <em style={{ color: G.cyan }}>Analytics</em>
-                  </h2>
-                  <div className="neon-divider" style={{ marginBottom: 8 }} />
-                  <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>Real-time performance metrics — click any card to drill down</p>
-                </div>
-
-                {/* Key Metrics Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 28 }}>
-                  {(() => {
-                    const myEmail = (user?.email ?? "").toLowerCase();
-                    const assignedByMe  = allTasksCombined.filter(t => (t.assignedBy ?? "").toLowerCase() === myEmail);
-                    return [
-                    { title: "Total Tasks",     value: tasksLoaded ? analytics.totalTasks : "…",       subtitle: "All time",          color: G.cyan,    tasks: analytics.allTasks },
-                    { title: "Completion Rate", value: tasksLoaded ? `${analytics.completionRate}%` : "…", subtitle: "Success ratio",  color: G.success, tasks: analytics.allTasks.filter(t => t.approvalStatus === "superadmin-approved") },
-                    { title: "Avg Completion",  value: tasksLoaded ? analytics.avgCompletionTime : "…", subtitle: "Per task",          color: G.purple,  tasks: analytics.allTasks.filter(t => t.completedAt) },
-                    { title: "Active Tasks",    value: tasksLoaded ? analytics.inProgressTasks : "…",   subtitle: "In progress",       color: G.amber,   tasks: analytics.allTasks.filter(t => (["in-review","admin-approved"] as string[]).includes(t.approvalStatus)) },
-                    { title: "TAT Breached",    value: tasksLoaded ? analytics.tatBreachedCount : "…",  subtitle: "Deadline misses",   color: G.danger,  tasks: analytics.allTasks.filter(t => t.tatBreached) },
-                    { title: "Smart Assist",    value: analytics.activeTicketCount, subtitle: "Open escalations", color: G.amber, tasks: [] },
-                    { title: "Assigned by Me",  value: tasksLoaded ? assignedByMe.length : "…",         subtitle: "Tasks I created",   color: G.cyan,    tasks: assignedByMe },
-                    { title: "Pending Review",  value: tasksLoaded ? tasksToReview.length : "…",        subtitle: "Awaiting approval", color: G.gold,    tasks: tasksToReview },
-                    { title: "Prime Directives", value: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && t.approvalStatus !== "superadmin-approved").length, subtitle: "D1 — Active", color: "#f87171", tasks: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective) },
-                    { title: "Autopulse",         value: allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length, subtitle: "D2 — Recurring",  color: "#c9a96e", tasks: allTasksCombined.filter((t: Task) => (t as any).isAutopulse) },
-                    ];
-                  })().map((card, i) => (
-                    <div key={i} className="g-stat-card fade-up" style={{ animationDelay: `${i * 60}ms` }}
-                      onClick={() => card.tasks.length > 0 && openTaskListModal(card.title, card.tasks, card.color)}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>{card.title}</div>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: card.color, boxShadow: `0 0 12px ${card.color}` }} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 28 }}>
+                  {[
+                    { label: "Prime Directives", value: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt).length, sub: "D1 — Active",    accent: G.danger, icon: Shield, tasks: allTasksCombined.filter((t: Task) => (t as any).isPrimeDirective && !(t as any).pdAcknowledgedAt) },
+                    { label: "Autopulse",         value: allTasksCombined.filter((t: Task) => (t as any).isAutopulse).length,                                      sub: "D2 — Recurring", accent: G.amber,  icon: Zap,   tasks: allTasksCombined.filter((t: Task) => (t as any).isAutopulse) },
+                  ].map((card, i) => (
+                    <div key={i} className="g-stat-card fade-up"
+                      style={{ animationDelay: `${(8 + i) * 45}ms`, cursor: card.tasks.length > 0 ? "pointer" : "default" }}
+                      onClick={() => card.tasks.length > 0 && openTaskListModal(card.label, card.tasks, card.accent)}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 8, color: G.textMuted, letterSpacing: "0.14em", textTransform: "uppercase" as const }}>{card.label}</div>
+                        <card.icon size={12} color={card.accent} />
                       </div>
-                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 40, fontWeight: 700, color: card.color, lineHeight: 1, marginBottom: 8, textShadow: `0 0 20px ${card.color}55` }}>{card.value}</div>
-                      <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>{card.subtitle}</div>
-                      {card.tasks.length > 0 && <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 9, color: `${card.color}88`, fontFamily: "'IBM Plex Mono',monospace" }}>click to view ›</div>}
-                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${card.color}66,transparent)` }} />
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 36, fontWeight: 700, color: card.accent, lineHeight: 1, textShadow: `0 0 20px ${card.accent}55`, marginBottom: 4 }}>{card.value}</div>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted }}>{card.sub}</div>
+                      {card.tasks.length > 0 && <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 9, color: `${card.accent}77`, fontFamily: "'JetBrains Mono',monospace" }}>click ›</div>}
+                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${card.accent}55,transparent)` }} />
                     </div>
                   ))}
                 </div>
 
-                {/* SVG gradient defs */}
                 <svg width="0" height="0" style={{ position: "absolute", pointerEvents: "none" }}>
                   <defs>
                     <linearGradient id="barG0" x1="0" y1="0" x2="0" y2="1">
@@ -2343,11 +2563,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 20, marginBottom: 20 }}>
 
                   {/* BAR CHART */}
-                  <div style={{ background: "linear-gradient(145deg, rgba(4,8,22,0.92) 0%, rgba(10,18,48,0.88) 100%)", border: "1px solid rgba(0,212,255,0.28)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(0,212,255,0.08), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)" }}>
+                  <div style={{ background: "#ffffff", border: "1px solid rgba(0,212,255,0.28)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(0,212,255,0.08), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
                       <div>
-                        <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "#f0f4ff", letterSpacing: "0.03em", marginBottom: 3 }}>Task Status Breakdown</h3>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#00d4ff88", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Live data · All tasks</div>
+                        <h3 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 17, fontWeight: 700, color: "#1e293b", letterSpacing: "0.03em", marginBottom: 3 }}>Task Status Breakdown</h3>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#00d4ff88", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Live data · All tasks</div>
                       </div>
                       <div style={{ display: "flex", gap: 5 }}>
                         {["#00ffb3","#e040fb","#fff176","#ff6b8a"].map((c, i) => (
@@ -2363,9 +2583,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         { name: "TAT Breach",  value: analytics.tatBreachedCount, fill: "url(#barG3)" },
                       ]} margin={{ top: 10, right: 10, left: -10, bottom: 4 }} barCategoryGap="38%">
                         <CartesianGrid strokeDasharray="1 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                        <XAxis dataKey="name" stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600 }} axisLine={false} tickLine={false} />
-                        <YAxis stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" }} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{ fill: "rgba(0,212,255,0.04)" }} contentStyle={{ background: "rgba(2,6,20,0.98)", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 12, color: "#f0f4ff", fontFamily: "'IBM Plex Mono',monospace", fontSize: 12 }} labelStyle={{ color: "#00d4ff", fontWeight: 700 }} />
+                        <XAxis dataKey="name" stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }} axisLine={false} tickLine={false} />
+                        <YAxis stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }} axisLine={false} tickLine={false} />
+                        <Tooltip cursor={{ fill: "rgba(0,212,255,0.04)" }} contentStyle={{ background: "#ffffff", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 12, color: "#1e293b", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }} labelStyle={{ color: "#00d4ff", fontWeight: 700 }} />
                         <Bar dataKey="value" radius={[10, 10, 2, 2]} maxBarSize={58}>
                           {(["url(#barG0)","url(#barG1)","url(#barG2)","url(#barG3)"] as string[]).map((fill, idx) => (
                             <Cell key={idx} fill={fill} />
@@ -2373,9 +2593,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
-                    <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8, paddingTop: 12, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                       {[{label:"Completed",c:"#00ffb3"},{label:"In Progress",c:"#e040fb"},{label:"Pending",c:"#fff176"},{label:"TAT Breach",c:"#ff6b8a"}].map((item,i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "#7890b0", fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "#7890b0", fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>
                           <div style={{ width: 10, height: 4, borderRadius: 99, background: item.c, boxShadow: `0 0 10px ${item.c}` }} />{item.label}
                         </div>
                       ))}
@@ -2383,20 +2603,20 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
 
                   {/* PIE CHART */}
-                  <div style={{ background: "linear-gradient(145deg, rgba(4,8,22,0.92) 0%, rgba(14,10,44,0.88) 100%)", border: "1px solid rgba(191,95,255,0.30)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(191,95,255,0.08), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)" }}>
+                  <div style={{ background: "#ffffff", border: "1px solid rgba(191,95,255,0.30)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(191,95,255,0.08), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
                       <div>
-                        <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "#f0f4ff", letterSpacing: "0.03em", marginBottom: 3 }}>Status Distribution</h3>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#bf5fff88", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Proportional breakdown</div>
+                        <h3 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 17, fontWeight: 700, color: "#1e293b", letterSpacing: "0.03em", marginBottom: 3 }}>Status Distribution</h3>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#bf5fff88", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Proportional breakdown</div>
                       </div>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#bf5fff", letterSpacing: "0.14em", textTransform: "uppercase" as const, background: "rgba(191,95,255,0.12)", border: "1px solid rgba(191,95,255,0.30)", borderRadius: 99, padding: "4px 12px" }}>● LIVE</div>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#bf5fff", letterSpacing: "0.14em", textTransform: "uppercase" as const, background: "rgba(191,95,255,0.12)", border: "1px solid rgba(191,95,255,0.30)", borderRadius: 99, padding: "4px 12px" }}>● LIVE</div>
                     </div>
                     {analytics.totalTasks === 0 ? (
                       <div style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
                         <div style={{ width: 80, height: 80, borderRadius: "50%", border: `2px dashed ${G.purple}44`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                           <BarChart3 size={28} color={G.textMuted} />
                         </div>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: G.textMuted, letterSpacing: "0.10em" }}>No data yet</div>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: G.textMuted, letterSpacing: "0.10em" }}>No data yet</div>
                       </div>
                     ) : (
                       <ResponsiveContainer width="100%" height={260}>
@@ -2415,15 +2635,15 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               const rad = (por ?? 96) + 22;
                               const x = (pcx ?? 0) + rad * Math.cos(-((midAngle ?? 0) * RAD));
                               const y = (pcy ?? 0) + rad * Math.sin(-((midAngle ?? 0) * RAD));
-                              return <text x={x} y={y} fill="#b8c8e8" textAnchor={x > (pcx ?? 0) ? "start" : "end"} dominantBaseline="central" style={{ fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700 }}>{value}</text>;
+                              return <text x={x} y={y} fill="#b8c8e8" textAnchor={x > (pcx ?? 0) ? "start" : "end"} dominantBaseline="central" style={{ fontSize: 11, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>{value}</text>;
                             }}
                           >
                             {[{ fill: "url(#pieG0)", stroke: "#00ffb3" },{ fill: "url(#pieG1)", stroke: "#e040fb" },{ fill: "url(#pieG2)", stroke: "#fff176" },{ fill: "url(#pieG3)", stroke: "#22d3ee" }].map((s, idx) => (
                               <Cell key={idx} fill={s.fill} stroke={`${s.stroke}77`} strokeWidth={3} />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={{ background: "rgba(2,6,20,0.98)", border: "1px solid rgba(191,95,255,0.40)", borderRadius: 12, color: "#f0f4ff", fontFamily: "'IBM Plex Mono',monospace", fontSize: 12 }} labelStyle={{ color: "#bf5fff", fontWeight: 700 }} />
-                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10, fontFamily: "'IBM Plex Mono',monospace", color: "#7890b0", textTransform: "uppercase" as const, letterSpacing: "0.08em", paddingTop: 4 }} formatter={(value) => <span style={{ color: "#b8c8e8" }}>{value}</span>} />
+                          <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid rgba(191,95,255,0.40)", borderRadius: 12, color: "#1e293b", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }} labelStyle={{ color: "#bf5fff", fontWeight: 700 }} />
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#7890b0", textTransform: "uppercase" as const, letterSpacing: "0.08em", paddingTop: 4 }} formatter={(value) => <span style={{ color: "#b8c8e8" }}>{value}</span>} />
                         </PieChart>
                       </ResponsiveContainer>
                     )}
@@ -2431,23 +2651,23 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 </div>
 
                 {/* AREA CHART */}
-                <div style={{ background: "linear-gradient(145deg, rgba(4,8,22,0.92) 0%, rgba(6,18,36,0.88) 100%)", border: "1px solid rgba(0,245,160,0.28)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(0,245,160,0.07), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)", marginBottom: 20 }}>
+                <div style={{ background: "#ffffff", border: "1px solid rgba(0,245,160,0.28)", borderRadius: 20, padding: "26px 24px 16px", backdropFilter: "blur(28px)", boxShadow: "0 0 0 1px rgba(0,245,160,0.07), 0 12px 48px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07)", marginBottom: 20 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
                     <div>
-                      <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "#f0f4ff", letterSpacing: "0.03em", marginBottom: 3 }}>Completion Rate Trend</h3>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#00f5a088", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Weekly performance vs target</div>
+                      <h3 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 17, fontWeight: 700, color: "#1e293b", letterSpacing: "0.03em", marginBottom: 3 }}>Completion Rate Trend</h3>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#00f5a088", letterSpacing: "0.14em", textTransform: "uppercase" as const }}>Weekly performance vs target</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <div style={{ width: 22, height: 3, borderRadius: 99, background: "linear-gradient(90deg,#00ffb3,#00d4ff,#bf5fff,#ff2d55)" }} />
-                        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#00d4ff", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Actual</span>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#00d4ff", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Actual</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <div style={{ width: 22, height: 2, borderRadius: 99, background: "#ffe06655", borderTop: "2px dashed #ffe06699" }} />
-                        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#ffe066", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Target</span>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "#ffe066", letterSpacing: "0.1em", textTransform: "uppercase" as const }}>Target</span>
                       </div>
                       {analytics.totalTasks === 0 && (
-                        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 99, padding: "3px 10px" }}>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.10)", borderRadius: 99, padding: "3px 10px" }}>
                           No tasks yet
                         </span>
                       )}
@@ -2474,10 +2694,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="1 10" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="name" stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 600 }} axisLine={false} tickLine={false} />
-                      <YAxis stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" }} axisLine={false} tickLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                      <XAxis dataKey="name" stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }} axisLine={false} tickLine={false} />
+                      <YAxis stroke="transparent" tick={{ fill: "#7890b0", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }} axisLine={false} tickLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                       <Tooltip
-                        contentStyle={{ background: "rgba(2,6,20,0.98)", border: "1px solid rgba(0,245,160,0.38)", borderRadius: 12, color: "#f0f4ff", fontFamily: "'IBM Plex Mono',monospace", fontSize: 12 }}
+                        contentStyle={{ background: "#ffffff", border: "1px solid rgba(0,245,160,0.38)", borderRadius: 12, color: "#1e293b", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}
                         labelStyle={{ color: "#00f5a0", fontWeight: 700, marginBottom: 4 }}
                         formatter={(v: number | undefined) => [`${v ?? 0}%`, ""] as [string, string]}
                       />
@@ -2495,8 +2715,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 </div>
 
                 {/* Status mini cards */}
-                <div style={{ background: "rgba(8,14,32,0.70)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "22px 26px", marginBottom: 20, backdropFilter: "blur(20px)" }}>
-                  <h3 style={{ fontFamily: "'Poppins',sans-serif", fontSize: 13, fontWeight: 600, color: G.textSecondary, marginBottom: 18, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Tasks by Status <span style={{ color: G.textMuted, fontSize: 10 }}>— click to view</span></h3>
+                <div style={{ background: "#f7f9fc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, padding: "22px 26px", marginBottom: 20, backdropFilter: "blur(20px)" }}>
+                  <h3 style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600, color: G.textSecondary, marginBottom: 18, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Tasks by Status <span style={{ color: G.textMuted, fontSize: 10 }}>— click to view</span></h3>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
                     {[
                       { label: "Approved",   value: analytics.tasksByStatus.approved,  color: G.success, filter: (t: Task) => t.approvalStatus === "superadmin-approved" },
@@ -2508,18 +2728,18 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         style={{ padding: "16px", background: `${item.color}08`, border: `1px solid ${item.color}22`, borderRadius: 12, textAlign: "center", cursor: "pointer", transition: "all 0.25s ease", position: "relative" as const }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; (e.currentTarget as HTMLDivElement).style.boxShadow = `0 8px 24px ${item.color}33`; (e.currentTarget as HTMLDivElement).style.borderColor = `${item.color}55`; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = ""; (e.currentTarget as HTMLDivElement).style.boxShadow = ""; (e.currentTarget as HTMLDivElement).style.borderColor = `${item.color}22`; }}>
-                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 38, fontWeight: 700, color: item.color, textShadow: `0 0 20px ${item.color}66`, marginBottom: 6 }}>{item.value}</div>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>{item.label}</div>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 38, fontWeight: 700, color: item.color, textShadow: `0 0 20px ${item.color}66`, marginBottom: 6 }}>{item.value}</div>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>{item.label}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Team distribution */}
-                <div style={{ background: "rgba(8,14,32,0.70)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "22px 26px", backdropFilter: "blur(20px)" }}>
-                  <h3 style={{ fontFamily: "'Poppins',sans-serif", fontSize: 13, fontWeight: 600, color: G.textSecondary, marginBottom: 20, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Task Distribution by Team</h3>
+                <div style={{ background: "#f7f9fc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, padding: "22px 26px", backdropFilter: "blur(20px)" }}>
+                  <h3 style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600, color: G.textSecondary, marginBottom: 20, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Task Distribution by Team</h3>
                   {Object.keys(analytics.tasksPerStaff).length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "32px 24px", color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", fontSize: 12 }}>No tasks assigned yet.</div>
+                    <div style={{ textAlign: "center", padding: "32px 24px", color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>No tasks assigned yet.</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                       {Object.entries(analytics.tasksPerStaff).slice(0, 6).map(([email, count], i) => {
@@ -2533,9 +2753,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
                             <div style={{ width: 150, flexShrink: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, color: G.textPrimary }}>{member?.name || "Unknown"}</div>
-                              <div style={{ fontSize: 9, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>{member?.role || "staff"}</div>
+                              <div style={{ fontSize: 9, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>{member?.role || "staff"}</div>
                             </div>
-                            <div style={{ flex: 1, height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 99, overflow: "hidden" }}>
+                            <div style={{ flex: 1, height: 8, background: "rgba(0,0,0,0.03)", borderRadius: 99, overflow: "hidden" }}>
                               <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, ${barColor}, ${barColor}aa)`, borderRadius: 99, transition: "width 0.6s ease", boxShadow: `0 0 8px ${barColor}66` }} />
                             </div>
                             <div style={{ width: 55, textAlign: "right", fontSize: 13, fontWeight: 700, color: barColor }}>{count}</div>
@@ -2551,11 +2771,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
-                        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, color: G.textPrimary }}>
+                        <span style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 15, fontWeight: 700, color: G.textPrimary }}>
                           {pendingAssistanceTickets.length} Assistance Ticket{pendingAssistanceTickets.length !== 1 ? "s" : ""} <span style={{ color: "#ff9500" }}>Awaiting Your Review</span>
                         </span>
                       </div>
-                      <button onClick={() => setActiveTab("tickets")} style={{ padding: "5px 12px", background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 7, color: "#ff9500", fontSize: 10, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                      <button onClick={() => setActiveTab("tickets")} style={{ padding: "5px 12px", background: "rgba(255,149,0,0.1)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 7, color: "#ff9500", fontSize: 10, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                         Manage All <ChevronRight size={10} />
                       </button>
                     </div>
@@ -2564,7 +2784,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         const sName = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
                         return (
                           <div key={ticket.id} onClick={() => { setSelectedTicket(ticket); setTicketReviewNote(""); setShowTicketModal(true); }}
-                            style={{ flex: "1 1 200px", padding: "12px 14px", background: "rgba(10,14,28,0.80)", border: "1px solid rgba(255,149,0,0.22)", borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }}
+                            style={{ flex: "1 1 200px", padding: "12px 14px", background: "#ffffff", border: "1px solid rgba(255,149,0,0.22)", borderRadius: 10, cursor: "pointer", transition: "all 0.2s" }}
                             onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,149,0,0.5)"}
                             onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,149,0,0.22)"}
                           >
@@ -2578,7 +2798,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                 )}
               </section>
+
             )}
+
             {activeTab === "overview" && (
               <>
                 <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginTop: 32 }}>
@@ -2587,14 +2809,14 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       onClick={() => s.tasks.length > 0 && openTaskListModal(s.label, s.tasks, s.accent)}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div>
-                          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 48, fontWeight: 700, color: s.accent, lineHeight: 1, textShadow: `0 0 24px ${s.accent}55` }}>{s.value}</div>
-                          <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginTop: 10 }}>{s.label}</div>
+                          <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 48, fontWeight: 700, color: s.accent, lineHeight: 1, textShadow: `0 0 24px ${s.accent}55` }}>{s.value}</div>
+                          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginTop: 10 }}>{s.label}</div>
                         </div>
                         <div style={{ width: 38, height: 38, borderRadius: 10, background: `${s.accent}14`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                           <s.icon size={18} color={s.accent} />
                         </div>
                       </div>
-                      {s.tasks.length > 0 && <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 9, color: `${s.accent}77`, fontFamily: "'IBM Plex Mono',monospace" }}>click ›</div>}
+                      {s.tasks.length > 0 && <div style={{ position: "absolute", bottom: 10, right: 12, fontSize: 9, color: `${s.accent}77`, fontFamily: "'JetBrains Mono',monospace" }}>click ›</div>}
                       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${s.accent}55,transparent)` }} />
                     </div>
                   ))}
@@ -2606,7 +2828,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       <AlertTriangle size={20} color={G.danger} />
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: G.danger }}>{activeSmartAssistCount} Active TAT Breach{activeSmartAssistCount !== 1 ? "es" : ""}</div>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: G.textMuted, marginTop: 3 }}>Smart Assist reminders running every 24h</div>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: G.textMuted, marginTop: 3 }}>Smart Assist reminders running every 24h</div>
                       </div>
                     </div>
                     <button onClick={() => setActiveTab("progress")} className="g-btn-ghost" style={{ fontSize: 12, padding: "8px 14px" }}>View Progress <ChevronRight size={13} /></button>
@@ -2618,13 +2840,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   <section className="fade-up" style={{ marginTop: 28, paddingBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 10px #ff9500", animation: "pulse 1.5s infinite" }} />
-                      <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 700, color: G.textPrimary }}>
+                      <h3 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 18, fontWeight: 700, color: G.textPrimary }}>
                         Assistance Tickets <em style={{ color: "#ff9500" }}>Pending Review</em>
                       </h3>
-                      <span style={{ padding: "3px 10px", background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.35)", borderRadius: 99, fontSize: 10, color: "#ff9500", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 800 }}>
+                      <span style={{ padding: "3px 10px", background: "rgba(255,149,0,0.12)", border: "1px solid rgba(255,149,0,0.35)", borderRadius: 99, fontSize: 10, color: "#ff9500", fontFamily: "'JetBrains Mono',monospace", fontWeight: 800 }}>
                         {pendingAssistanceTickets.length} ACTION REQUIRED
                       </span>
-                      <button onClick={() => setActiveTab("tickets")} style={{ marginLeft: "auto", padding: "6px 14px", background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 8, color: "#ff9500", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                      <button onClick={() => setActiveTab("tickets")} style={{ marginLeft: "auto", padding: "6px 14px", background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 8, color: "#ff9500", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                         View All <ChevronRight size={11} />
                       </button>
                     </div>
@@ -2633,7 +2855,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         const staffName = allMembers.find(m => m.email.toLowerCase() === ticket.assignedTo.toLowerCase())?.name ?? ticket.assignedTo;
                         return (
                           <div key={ticket.id} style={{
-                            background: "rgba(10,14,28,0.80)",
+                            background: "#ffffff",
                             border: "1px solid rgba(255,149,0,0.30)",
                             borderRadius: 14, padding: "16px 20px",
                             display: "flex", alignItems: "center", gap: 18,
@@ -2643,7 +2865,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                             <div style={{ width: 4, alignSelf: "stretch", background: "linear-gradient(180deg,#ff9500,#ff6b35)", borderRadius: 99, flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-                                <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(255,149,0,0.1)", color: "#ff9500", fontWeight: 800, textTransform: "uppercase" as const, border: "1px solid rgba(255,149,0,0.25)", fontFamily: "'IBM Plex Mono',monospace" }}>{ticket.id}</span>
+                                <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(255,149,0,0.1)", color: "#ff9500", fontWeight: 800, textTransform: "uppercase" as const, border: "1px solid rgba(255,149,0,0.25)", fontFamily: "'JetBrains Mono',monospace" }}>{ticket.id}</span>
                                 <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(255,51,102,0.08)", color: "#ff3366", fontWeight: 700, textTransform: "uppercase" as const, border: "1px solid rgba(255,51,102,0.2)" }}>Delayed Task</span>
                               </div>
                               <div style={{ fontSize: 14, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>{ticket.taskTitle}</div>
@@ -2673,25 +2895,25 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 )}
 
                 <section style={{ marginTop: 32, paddingBottom: 60 }}>
-                  <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 20 }}>Task <em style={{ color: G.cyan }}>Monitor</em></h2>
+                  <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 20 }}>Task <em style={{ color: G.cyan }}>Monitor</em></h2>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 14 }}>
                     {[
-                      { label: "Approved",   color: G.success, tasks: tasksToReview.filter((t) => (["admin-approved","superadmin-approved"] as string[]).includes(t.approvalStatus)) },
-                      { label: "In Process", color: G.purple,  tasks: myAssignedTasks.filter((t) => t.approvalStatus === "in-review") },
-                      { label: "Pending",    color: G.gold,    tasks: myAssignedTasks.filter((t) => t.approvalStatus === "assigned" || (t.approvalStatus as string) === "pending") },
-                      { label: "Completed",  color: G.cyan,    tasks: [...tasksToReview, ...myAssignedTasks].filter((t) => t.approvalStatus === "superadmin-approved") },
+                      { label: "Approved",   color: G.success, tasks: allTasksCombined.filter((t) => (["admin-approved","superadmin-approved"] as string[]).includes(t.approvalStatus)) },
+                      { label: "In Process", color: G.purple,  tasks: allTasksCombined.filter((t) => t.approvalStatus === "in-review") },
+                      { label: "Pending",    color: G.gold,    tasks: allTasksCombined.filter((t) => t.approvalStatus === "assigned" || (t.approvalStatus as string) === "pending") },
+                      { label: "Completed",  color: G.cyan,    tasks: allTasksCombined.filter((t) => t.approvalStatus === "superadmin-approved") },
                     ].map((group, i) => (
-                      <div key={i} className="fade-up" style={{ animationDelay: `${i * 70}ms`, background: "rgba(8,14,32,0.65)", border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 14, padding: "20px 22px", backdropFilter: "blur(16px)", cursor: group.tasks.length > 0 ? "pointer" : "default" }}
+                      <div key={i} className="fade-up" style={{ animationDelay: `${i * 70}ms`, background: "#f8fafc", border: `1px solid rgba(0,0,0,0.08)`, borderRadius: 14, padding: "20px 22px", backdropFilter: "blur(16px)", cursor: group.tasks.length > 0 ? "pointer" : "default" }}
                         onClick={() => group.tasks.length > 0 && openTaskListModal(group.label, group.tasks, group.color)}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                           <div>
-                            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>{group.label}</div>
-                            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 34, fontWeight: 700, color: group.color, textShadow: `0 0 16px ${group.color}44`, marginTop: 4 }}>{group.tasks.length}</div>
+                            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>{group.label}</div>
+                            <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 34, fontWeight: 700, color: group.color, textShadow: `0 0 16px ${group.color}44`, marginTop: 4 }}>{group.tasks.length}</div>
                           </div>
                           <div style={{ width: 10, height: 10, borderRadius: "50%", background: group.color, boxShadow: `0 0 14px ${group.color}` }} className="shimmer" />
                         </div>
                         {group.tasks.length > 0 && (
-                          <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                          <div style={{ fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                             Latest: {group.tasks[group.tasks.length - 1]?.title.substring(0, 28)}…
                           </div>
                         )}
@@ -2705,11 +2927,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             {/* ══ MY TASKS TAB ══ */}
             {activeTab === "mytasks" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
-                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>My <em style={{ color: G.gold }}>Tasks</em></h2>
-                <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Tasks assigned to you by other admins</p>
+                <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>My <em style={{ color: G.gold }}>Tasks</em></h2>
+                <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Tasks assigned to you by other admins</p>
                 {myAssignedTasks.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "72px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
-                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted }}>No tasks assigned to you</div>
+                  <div style={{ textAlign: "center", padding: "72px 24px", background: "#f8fafc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted }}>No tasks assigned to you</div>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2721,9 +2943,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       return (
                         <div key={task.id} className="g-card fade-up" style={{ animationDelay: `${idx * 55}ms`, padding: "20px 24px", borderColor: task.tatBreached ? G.dangerBorder : undefined }}>
                           {task.tatBreached && (
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 8, marginBottom: 14, fontSize: 12, color: G.danger, fontFamily: "'IBM Plex Mono',monospace" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 8, marginBottom: 14, fontSize: 12, color: G.danger, fontFamily: "'JetBrains Mono',monospace" }}>
                               <span style={{ display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={12} /> TAT BREACH — {task.smartAssist?.delayDuration || "Overdue"}</span>
-                              <button onClick={() => openSmartAssist(task)} style={{ background: "none", border: `1px solid ${G.dangerBorder}`, borderRadius: 6, color: G.danger, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: "3px 8px" }}>View Ticket</button>
+                              <button onClick={() => openSmartAssist(task)} style={{ background: "none", border: `1px solid ${G.dangerBorder}`, borderRadius: 6, color: G.danger, cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: "3px 8px" }}>View Ticket</button>
                             </div>
                           )}
                           <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
@@ -2739,7 +2961,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 )}
                               </div>
                               {task.assignedBy && (
-                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "4px 12px", borderRadius: 99, background: G.goldDim, border: `1px solid ${G.goldBorder}`, fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.gold }}>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "4px 12px", borderRadius: 99, background: G.goldDim, border: `1px solid ${G.goldBorder}`, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.gold }}>
                                   <Shield size={9} /> Assigned by <strong style={{ marginLeft: 3 }}>{getName(task.assignedBy)}</strong>
                                 </div>
                               )}
@@ -2767,18 +2989,18 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               {task.completionNotes && (
                                 <div style={{ padding: "10px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 8, fontSize: 13, color: G.textSecondary, marginBottom: 10 }}>📝 {task.completionNotes}</div>
                               )}
-                              <div style={{ display: "flex", gap: 14, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", gap: 14, fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", flexWrap: "wrap" }}>
                                 <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                                   <Calendar size={10} />Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                   {task.timeSlot && <span style={{ color: G.gold, marginLeft: 4 }}>· {task.timeSlot}</span>}
                                 </span>
                                 {task.purpose && (
-                                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan, fontSize: 10, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>
                                     🎯 {task.purpose}
                                   </span>
                                 )}
                                 {task.history && task.history.length > 0 && (
-                                  <button onClick={() => { setHistoryTask(task); setShowHistoryModal(true); }} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: 0 }}>
+                                  <button onClick={() => { setHistoryTask(task); setShowHistoryModal(true); }} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: 0 }}>
                                     <ListTree size={10} />View History ({task.history.length})
                                   </button>
                                 )}
@@ -2805,20 +3027,20 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>Pending <em style={{ color: G.gold }}>Review</em></h2>
-                    <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>{tasksToReview.length} task{tasksToReview.length !== 1 ? "s" : ""} awaiting decision</p>
+                    <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>Pending <em style={{ color: G.gold }}>Review</em></h2>
+                    <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>{tasksToReview.length} task{tasksToReview.length !== 1 ? "s" : ""} awaiting decision</p>
                   </div>
                   {tasksToReview.length > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div className="glow-dot" style={{ background: G.success }} />
-                      <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted }}>LIVE</span>
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted }}>LIVE</span>
                     </div>
                   )}
                 </div>
                 {tasksToReview.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "72px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                  <div style={{ textAlign: "center", padding: "72px 24px", background: "#f8fafc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
                     <CheckCircle size={32} color={G.success} style={{ marginBottom: 16 }} />
-                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 700, color: G.textPrimary, marginBottom: 8 }}>All clear</div>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 24, fontWeight: 700, color: G.textPrimary, marginBottom: 8 }}>All clear</div>
                     <div style={{ fontSize: 13, color: G.textMuted }}>No tasks pending review.</div>
                   </div>
                 ) : (
@@ -2850,8 +3072,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             {/* ══ PROGRESS TAB ══ */}
             {activeTab === "progress" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
-                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.cyan }}>Progress</em></h2>
-                <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Real-time visibility into all assigned tasks</p>
+                <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.cyan }}>Progress</em></h2>
+                <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Real-time visibility into all assigned tasks</p>
                 <ProgressTracker tasks={allTasksCombined} getNameFn={getName} isAdminFn={isAdminEmail} pollInterval={30000} onRefresh={() => toast("↻ Progress refreshed")} />
               </section>
             )}
@@ -2861,10 +3083,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap" as const, gap: 12 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>
+                    <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary }}>
                       Assistance <em style={{ color: "#ff9500" }}>Tickets</em>
                     </h2>
-                    <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                    <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
                       {pendingAssistanceTickets.length} pending · {(assistanceTickets ?? []).filter(t => t.status === "admin-approved" || t.status === "superadmin-approved").length} approved
                     </p>
                   </div>
@@ -2872,12 +3094,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     {pendingAssistanceTickets.length > 0 && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff9500", boxShadow: "0 0 8px #ff9500", animation: "pulse 1.5s infinite" }} />
-                        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#ff9500" }}>ACTION REQUIRED</span>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "#ff9500" }}>ACTION REQUIRED</span>
                       </div>
                     )}
                     <button
                       onClick={() => { setRaiseTicketTask(null as any); setRaiseTicketType("small-activity"); setRaiseTicketNote(""); setRaiseTicketAssignTo(""); setRaiseTicketAttachments([]); setShowRaiseTicketModal(true); }}
-                      style={{ padding: "8px 16px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 10, color: G.cyan, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                      style={{ padding: "8px 16px", background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 10, color: G.cyan, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", display: "flex", alignItems: "center", gap: 6 }}>
                       <Plus size={12} /> New Ticket
                     </button>
                   </div>
@@ -2907,12 +3129,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     return (
                       <div style={{
                         textAlign: "center", padding: "72px 24px",
-                        background: "rgba(8,14,32,0.65)",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "#f8fafc",
+                        border: "1px solid rgba(0,0,0,0.08)",
                         borderRadius: 16, backdropFilter: "blur(16px)",
                       }}>
                         <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.3 }}>🎫</div>
-                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, marginBottom: 8 }}>No Tickets</div>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, marginBottom: 8 }}>No Tickets</div>
                         <div style={{ fontSize: 13, color: G.textMuted }}>Assistance tickets raised by your team will appear here.</div>
                       </div>
                     );
@@ -2933,7 +3155,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
                         return (
                           <div key={ticket.id} style={{
-                            background: "rgba(8,12,28,0.75)",
+                            background: "#ffffff",
                             border: `1px solid ${isPending ? "rgba(255,149,0,0.35)" : isApproved ? "rgba(0,255,136,0.22)" : "rgba(255,255,255,0.07)"}`,
                             borderRadius: 14, overflow: "hidden",
                             backdropFilter: "blur(20px)",
@@ -2956,7 +3178,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                         background: "rgba(255,149,0,0.1)", color: "#ff9500",
                                         fontWeight: 800, textTransform: "uppercase" as const,
                                         border: "1px solid rgba(255,149,0,0.25)", letterSpacing: "0.5px",
-                                        fontFamily: "'IBM Plex Mono',monospace",
+                                        fontFamily: "'JetBrains Mono',monospace",
                                       }}>{ticket.id}</span>
                                       <span style={{
                                         fontSize: 9, padding: "2px 8px", borderRadius: 4,
@@ -3041,7 +3263,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                     <div style={{ fontSize: 9, fontWeight: 800, color: G.success, textTransform: "uppercase" as const, letterSpacing: "0.6px", marginBottom: 5 }}>
                                       Your Response · {ticket.approvedAt ? new Date(ticket.approvedAt).toLocaleDateString("en-IN") : ""}
                                     </div>
-                                    <div style={{ fontSize: 12, color: "#c8f5dc", lineHeight: 1.6 }}>{ticket.adminComment}</div>
+                                    <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.6 }}>{ticket.adminComment}</div>
                                   </div>
                                 )}
 
@@ -3078,11 +3300,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
                     <div>
-                      <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
+                      <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
                         <Zap size={22} color="#c9a96e" style={{ display: "inline", marginRight: 10, verticalAlign: "middle" }} />
                         <em style={{ color: "#c9a96e" }}>Autopulse</em> Tasks
                       </h2>
-                      <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                      <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
                         Recurring task engine — auto-reassigns after admin approval
                       </p>
                     </div>
@@ -3100,9 +3322,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       { label: "Paused",            value: pausedPulse.length,     color: G.textMuted,sub: "Admin paused" },
                       { label: "Recurrences Fired", value: recurredTasks.length,   color: G.cyan,     sub: `${parentTasks.length} original task${parentTasks.length !== 1 ? "s" : ""}` },
                     ].map(s => (
-                      <div key={s.label} style={{ padding: "18px 20px", background: "rgba(8,14,32,0.65)", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
-                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
+                      <div key={s.label} style={{ padding: "18px 20px", background: "#f8fafc", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
                         <div style={{ fontSize: 11, color: G.textMuted }}>{s.sub}</div>
                       </div>
                     ))}
@@ -3110,9 +3332,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
                   {/* Empty state */}
                   {autopulseTasks.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "80px 24px", background: "rgba(8,14,32,0.65)", border: "1px dashed rgba(201,169,110,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                    <div style={{ textAlign: "center", padding: "80px 24px", background: "#f8fafc", border: "1px dashed rgba(201,169,110,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
                       <Zap size={40} color="rgba(201,169,110,0.25)" />
-                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Autopulse Tasks Yet</div>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Autopulse Tasks Yet</div>
                       <div style={{ fontSize: 13, color: G.textMuted, marginBottom: 20 }}>Create a task and toggle Autopulse ON to start a recurring cycle.</div>
                       <button className="g-btn-gold" onClick={() => setShowCreateModal(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         <Zap size={14} /> Create First Autopulse Task
@@ -3153,7 +3375,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                   {task.description}
                                 </p>
                                 {/* Metadata row */}
-                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                                     <User size={10} />{getName(task.assignedTo)}
                                   </span>
@@ -3225,12 +3447,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
                     <div>
-                      <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
+                      <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>
                         <Shield size={22} color="#f87171" style={{ display: "inline", marginRight: 10, verticalAlign: "middle" }} />
                         <em style={{ color: "#f87171" }}>Prime</em> Directives
-                        <span style={{ marginLeft: 12, fontSize: 12, fontFamily: "'IBM Plex Mono',monospace", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 6, padding: "2px 8px", color: "#f87171", verticalAlign: "middle" }}>D1</span>
+                        <span style={{ marginLeft: 12, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 6, padding: "2px 8px", color: "#f87171", verticalAlign: "middle" }}>D1</span>
                       </h2>
-                      <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
+                      <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>
                         One-time high-priority tasks — flash reminders until acknowledged
                       </p>
                     </div>
@@ -3248,9 +3470,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       { label: "Acknowledged",    value: ackP.length,       color: G.success,  sub: "Completed + signed off" },
                       { label: "Snoozed",         value: snoozedP.length,   color: G.amber,    sub: "Temporarily paused" },
                     ].map(s => (
-                      <div key={s.label} style={{ padding: "18px 20px", background: "rgba(8,14,32,0.65)", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
-                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
+                      <div key={s.label} style={{ padding: "18px 20px", background: "#f8fafc", border: `1px solid ${s.color}22`, borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8 }}>{s.label}</div>
+                        <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
                         <div style={{ fontSize: 11, color: G.textMuted }}>{s.sub}</div>
                       </div>
                     ))}
@@ -3258,9 +3480,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
                   {/* Empty state */}
                   {primeTasks.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "80px 24px", background: "rgba(8,14,32,0.65)", border: "1px dashed rgba(248,113,113,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                    <div style={{ textAlign: "center", padding: "80px 24px", background: "#f8fafc", border: "1px dashed rgba(248,113,113,0.2)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
                       <Shield size={40} color="rgba(248,113,113,0.25)" />
-                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Prime Directives Yet</div>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, fontWeight: 700, color: G.textMuted, marginTop: 16, marginBottom: 8 }}>No Prime Directives Yet</div>
                       <div style={{ fontSize: 13, color: G.textMuted, marginBottom: 20 }}>Create a task and toggle Prime Directive ON to activate flash reminders.</div>
                       <button className="g-btn-gold" onClick={() => setShowCreateModal(true)}
                         style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)", color: "#f87171" }}>
@@ -3302,7 +3524,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 <p style={{ fontSize: 12, color: G.textSecondary, lineHeight: 1.5, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
                                   {task.description}
                                 </p>
-                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}><User size={10} />{getName(task.assignedTo)}</span>
                                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}><Calendar size={10} />Due: {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                                   <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#f87171" }}><Bell size={9} />Every {interval}h</span>
@@ -3325,7 +3547,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                     syncTaskToBackend(updated as Task);
                                     toast("⏸ Snoozed for 2 hours");
                                   }}
-                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: G.textMuted }}>
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", background: "rgba(0,0,0,0.03)", border: "1px solid rgba(255,255,255,0.1)", color: G.textMuted }}>
                                     ⏸ Snooze 2h
                                   </button>
                                 </div>
@@ -3342,8 +3564,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
             {activeTab === "taskmap" && (
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
-                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.purple }}>Map</em></h2>
-                <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Parent-child forwarding tree with full context</p>
+                <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 700, color: G.textPrimary, marginBottom: 6 }}>Task <em style={{ color: G.purple }}>Map</em></h2>
+                <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, marginBottom: 24, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Parent-child forwarding tree with full context</p>
                 <ForwardedTaskTree tasks={allTasksCombined} getNameFn={getName} isAdminFn={isAdminEmail} onSelectTask={(task: Task) => { openReviewModal(task); }} />
               </section>
             )}
@@ -3353,18 +3575,18 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               <section style={{ marginTop: 40, paddingBottom: 60 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
+                    <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 30, fontWeight: 700, color: G.textPrimary, marginBottom: 4 }}>
                       Project <em style={{ color: G.cyan }}>Portfolio</em>
                     </h2>
-                    <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>
+                    <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, letterSpacing: "0.10em", textTransform: "uppercase" as const }}>
                       {(projects as any[]).length} project{(projects as any[]).length !== 1 ? "s" : ""} in the system
                     </p>
                   </div>
                 </div>
                 {(projects as any[]).length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "72px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
+                  <div style={{ textAlign: "center", padding: "72px 24px", background: "#f8fafc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16 }}>
                     <div style={{ fontSize: 36, marginBottom: 16, opacity: 0.3 }}>📁</div>
-                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, color: G.textMuted }}>No projects yet</div>
+                    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 22, color: G.textMuted }}>No projects yet</div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 20 }}>
@@ -3376,7 +3598,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       return (
                         <div key={project.id}
                           onClick={() => setSelectedProject(project)}
-                          style={{ background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "22px 24px", cursor: "pointer", transition: "all 0.22s", backdropFilter: "blur(16px)", animationDelay: `${idx * 55}ms` }}
+                          style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, padding: "22px 24px", cursor: "pointer", transition: "all 0.22s", backdropFilter: "blur(16px)", animationDelay: `${idx * 55}ms` }}
                           onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${project.color || G.cyan}55`; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,255,255,0.08)"; (e.currentTarget as HTMLDivElement).style.transform = ""; }}
                         >
@@ -3384,7 +3606,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                             <div style={{ width: 12, height: 12, borderRadius: "50%", background: project.color || G.cyan, boxShadow: `0 0 12px ${project.color || G.cyan}66`, flexShrink: 0 }} />
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 15, fontWeight: 700, color: G.textPrimary }}>{project.name}</div>
-                              {project.projectCode && <div style={{ fontSize: 10, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>{project.projectCode}</div>}
+                              {project.projectCode && <div style={{ fontSize: 10, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{project.projectCode}</div>}
                             </div>
                             <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 4, background: project.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(212,175,55,0.12)", color: project.status === "active" ? "#10b981" : G.gold, border: `1px solid ${project.status === "active" ? "rgba(16,185,129,0.3)" : "rgba(212,175,55,0.3)"}`, fontWeight: 700, textTransform: "uppercase" as const }}>
                               {project.status || "active"}
@@ -3396,19 +3618,19 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               <span style={{ fontSize: 10, color: G.textMuted, fontWeight: 700 }}>Completion</span>
                               <span style={{ fontSize: 10, color: pct === 100 ? "#10b981" : G.cyan, fontWeight: 700 }}>{pct}%</span>
                             </div>
-                            <div style={{ height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{ height: 5, background: "rgba(0,0,0,0.03)", borderRadius: 3, overflow: "hidden" }}>
                               <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${project.color || G.cyan},${project.color || G.cyan}88)`, borderRadius: 3, transition: "width 0.6s ease" }} />
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
                             {[{ label: "Total", value: projTasks.length, color: G.cyan }, { label: "Done", value: done, color: "#10b981" }, { label: "Pending", value: pending, color: G.amber }].map(s => (
                               <div key={s.label} style={{ flex: 1, textAlign: "center" as const, padding: "8px 0", background: `${s.color}10`, border: `1px solid ${s.color}25`, borderRadius: 8 }}>
-                                <div style={{ fontSize: 18, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                                <div style={{ fontSize: 18, fontWeight: 900, color: s.color, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>{s.value}</div>
                                 <div style={{ fontSize: 9, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{s.label}</div>
                               </div>
                             ))}
                           </div>
-                          <div style={{ paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ paddingTop: 12, borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             <span style={{ fontSize: 11, color: G.cyan, fontWeight: 600 }}>Click to view details →</span>
                           </div>
                         </div>
@@ -3446,14 +3668,14 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap" as const, gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                       <button onClick={() => setSelectedProject(null)}
-                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "6px 12px", color: G.textMuted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+                        style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.10)", borderRadius: 8, padding: "6px 12px", color: G.textMuted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
                         ← Back
                       </button>
                       <div>
-                        <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: G.textPrimary, marginBottom: 2 }}>
+                        <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 28, fontWeight: 700, color: G.textPrimary, marginBottom: 2 }}>
                           <span style={{ color: proj.color || G.cyan }}>●</span> {proj.name}
                         </h2>
-                        <p style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted }}>
+                        <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted }}>
                           {proj.projectCode && `${proj.projectCode} · `}{proj.projectType || ""}{proj.location ? ` · ${proj.location}` : ""}
                         </p>
                       </div>
@@ -3473,19 +3695,19 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       { label: "Team Members", value: memberRows.length, color: G.purple   },
                     ].map(s => (
                       <div key={s.label} style={{ padding: "12px 20px", background: `${s.color}10`, border: `1px solid ${s.color}30`, borderRadius: 12 }}>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: s.color, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>{s.value}</div>
                         <div style={{ fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.6px", marginTop: 2 }}>{s.label}</div>
                       </div>
                     ))}
                   </div>
 
                   {/* Overall progress */}
-                  <div style={{ padding: "16px 20px", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, marginBottom: 28, backdropFilter: "blur(16px)" }}>
+                  <div style={{ padding: "16px 20px", background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, marginBottom: 28, backdropFilter: "blur(16px)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>Overall Completion</span>
                       <span style={{ fontSize: 13, fontWeight: 800, color: pct === 100 ? "#10b981" : G.cyan }}>{pct}%</span>
                     </div>
-                    <div style={{ height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 5, overflow: "hidden" }}>
+                    <div style={{ height: 10, background: "rgba(0,0,0,0.03)", borderRadius: 5, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${proj.color || G.cyan},${proj.color || G.cyan}88)`, borderRadius: 5, transition: "width 0.7s ease", boxShadow: `0 0 12px ${proj.color || G.cyan}55` }} />
                     </div>
                   </div>
@@ -3493,7 +3715,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {/* Per-member breakdown */}
                   {memberRows.length > 0 && (
                     <>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
                         👥 Team Workload Breakdown
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14, marginBottom: 28 }}>
@@ -3501,7 +3723,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           const memberPct = m.total ? Math.round((m.done / m.total) * 100) : 0;
                           const avgScore  = m.scores.length ? Math.round(m.scores.reduce((a, b) => a + b, 0) / m.scores.length) : null;
                           return (
-                            <div key={i} style={{ padding: "16px 18px", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, backdropFilter: "blur(16px)" }}>
+                            <div key={i} style={{ padding: "16px 18px", background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, backdropFilter: "blur(16px)" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: G.textPrimary }}>{m.name}</div>
                                 {avgScore !== null && (
@@ -3513,12 +3735,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                                 {[{ label: "Total", value: m.total, color: G.cyan }, { label: "Done", value: m.done, color: "#10b981" }, { label: "Pending", value: m.pending, color: G.amber }].map(s => (
                                   <div key={s.label} style={{ flex: 1, textAlign: "center" as const, padding: "6px 0", background: `${s.color}10`, borderRadius: 6 }}>
-                                    <div style={{ fontSize: 16, fontWeight: 800, color: s.color, fontFamily: "'Oswald',sans-serif" }}>{s.value}</div>
+                                    <div style={{ fontSize: 16, fontWeight: 800, color: s.color, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>{s.value}</div>
                                     <div style={{ fontSize: 8, color: G.textMuted, textTransform: "uppercase" as const }}>{s.label}</div>
                                   </div>
                                 ))}
                               </div>
-                              <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
+                              <div style={{ height: 4, background: "rgba(0,0,0,0.03)", borderRadius: 2, overflow: "hidden" }}>
                                 <div style={{ height: "100%", width: `${memberPct}%`, background: "linear-gradient(90deg,#10b981,#10b98188)", borderRadius: 2 }} />
                               </div>
                               <div style={{ fontSize: 10, color: G.textMuted, marginTop: 4, textAlign: "right" as const }}>{memberPct}% complete</div>
@@ -3530,16 +3752,16 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   )}
 
                   {/* Task table */}
-                  <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.10em", fontWeight: 700, marginBottom: 16 }}>
                     📋 All Tasks in this Project ({projTasks.length})
                   </div>
                   {projTasks.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "48px 24px", background: "rgba(8,14,32,0.65)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
+                    <div style={{ textAlign: "center", padding: "48px 24px", background: "#f8fafc", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16 }}>
                       <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>📋</div>
                       <div style={{ color: G.textMuted }}>No tasks for this project yet</div>
                     </div>
                   ) : (
-                    <div style={{ overflowX: "auto", background: "rgba(8,14,32,0.75)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
+                    <div style={{ overflowX: "auto", background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 16, backdropFilter: "blur(16px)" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
                           <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
@@ -3571,7 +3793,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 <td style={{ padding: "12px 14px", fontSize: 11, color: G.amber }}>{task.assignedBy ? getName(task.assignedBy) : "—"}</td>
                                 <td style={{ padding: "12px 14px", minWidth: 100 }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
+                                    <div style={{ flex: 1, height: 5, background: "rgba(0,0,0,0.03)", borderRadius: 2, overflow: "hidden" }}>
                                       <div style={{ height: "100%", width: `${p}%`, background: `linear-gradient(90deg,${c},${c}88)`, borderRadius: 2 }} />
                                     </div>
                                     <span style={{ fontSize: 10, color: c, width: 28, flexShrink: 0 }}>{p}%</span>
@@ -3582,9 +3804,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                     {task.approvalStatus?.replace(/-/g, " ")}
                                   </span>
                                 </td>
-                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted }}>{fmtDate(task.createdAt)}</td>
-                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10 }}>{fmtDate(task.dueDate)}</td>
-                                <td style={{ padding: "12px 14px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: completedOn ? "#10b981" : G.textMuted }}>
+                                <td style={{ padding: "12px 14px", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: G.textMuted }}>{fmtDate(task.createdAt)}</td>
+                                <td style={{ padding: "12px 14px", fontFamily: "'JetBrains Mono',monospace", fontSize: 10 }}>{fmtDate(task.dueDate)}</td>
+                                <td style={{ padding: "12px 14px", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: completedOn ? "#10b981" : G.textMuted }}>
                                   {completedOn ? fmtDate(completedOn) : "—"}
                                 </td>
                                 <td style={{ padding: "12px 14px", textAlign: "center" as const }}>
@@ -3597,7 +3819,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 </td>
                                 <td style={{ padding: "12px 14px" }}>
                                   <button onClick={() => openReviewModal(task)}
-                                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, color: G.textSecondary, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 7, color: G.textSecondary, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
                                     <Eye size={11} />
                                   </button>
                                 </td>
@@ -3611,6 +3833,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 </section>
               );
             })()}
+            {/* ══ ADD USER TAB ══ */}
+            {activeTab === "adduser" && <AddUserTab />}
+
+            {/* ══ ADD PROJECT TAB ══ */}
+            {activeTab === "addproject" && <AddProjectTab />}
+
           </div>
 
           {/* ════ MODALS ════ */}
@@ -3626,7 +3854,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             }}>
               <div style={{
                 width: "100%", maxWidth: 560,
-                background: "linear-gradient(160deg, rgba(10,14,32,0.99) 0%, rgba(6,8,22,1) 100%)",
+                background: "linear-gradient(160deg, #ffffff 0%, #f8fafc 100%)",
                 border: "1px solid rgba(255,149,0,0.35)",
                 borderRadius: 20, overflow: "hidden",
                 boxShadow: "0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,149,0,0.06)",
@@ -3634,8 +3862,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 {/* Modal header */}
                 <div style={{
                   padding: "22px 24px 18px",
-                  background: "linear-gradient(135deg, rgba(255,149,0,0.1), rgba(255,107,53,0.05))",
-                  borderBottom: "1px solid rgba(255,149,0,0.15)",
+                  background: "linear-gradient(135deg, rgba(245,158,11,0.06), rgba(251,146,60,0.03))",
+                  borderBottom: "1px solid rgba(245,158,11,0.2)",
                   display: "flex", alignItems: "flex-start", justifyContent: "space-between",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -3651,18 +3879,18 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     </div>
                     <div>
                       {/* Task title — prominently displayed (Fix 5) */}
-                      <div style={{ fontSize: 18, fontWeight: 800, color: G.textPrimary, fontFamily: "'Oswald',sans-serif", lineHeight: 1.2, marginBottom: 4 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "#1e293b", fontFamily: "'Plus Jakarta Sans',sans-serif", lineHeight: 1.2, marginBottom: 4 }}>
                         {selectedTicket.taskTitle}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
-                        <div style={{ fontSize: 10, color: (selectedTicket as any).ticketType === "reschedule-request" ? G.cyan : "#ff9500", fontFamily: "'IBM Plex Mono',monospace", letterSpacing: "0.06em" }}>
+                        <div style={{ fontSize: 10, color: (selectedTicket as any).ticketType === "reschedule-request" ? G.cyan : "#ff9500", fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.06em" }}>
                           {(selectedTicket as any).ticketType === "reschedule-request"
                             ? "📅 RESCHEDULE REQUEST"
                             : "🎫 ASSISTANCE TICKET"} · ACTION REQUIRED
                         </div>
                         {/* Ownership badge — confirms this admin owns the ticket (Fix 6) */}
                         {(selectedTicket.assignedBy ?? "").toLowerCase() === (user?.email ?? "").toLowerCase() && (
-                          <span style={{ fontSize: 9, background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.2)", borderRadius: 4, padding: "1px 6px", color: G.success, fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700 }}>
+                          <span style={{ fontSize: 9, background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.2)", borderRadius: 4, padding: "1px 6px", color: G.success, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>
                             ✓ YOUR TASK
                           </span>
                         )}
@@ -3676,8 +3904,8 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {/* Staff info */}
                   <div style={{
                     padding: "14px 16px",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.07)",
+                    background: "rgba(37,99,235,0.02)",
+                    border: "1px solid rgba(0,0,0,0.07)",
                     borderRadius: 12,
                   }}>
                     <div style={{ fontSize: 9, fontWeight: 800, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.8px", marginBottom: 10 }}>Request Details</div>
@@ -3777,7 +4005,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       placeholder="Provide your feedback, instructions, or revised timeline to the doer…"
                       style={{
                         width: "100%", padding: "12px 14px",
-                        background: "rgba(255,255,255,0.04)",
+                        background: "rgba(0,0,0,0.03)",
                         border: "1px solid rgba(255,149,0,0.25)",
                         borderRadius: 10, color: G.textPrimary,
                         fontSize: 12, fontFamily: "inherit",
@@ -3795,7 +4023,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       onClick={() => setShowTicketModal(false)}
                       style={{
                         flex: 1, padding: "13px",
-                        background: "rgba(255,255,255,0.04)",
+                        background: "rgba(0,0,0,0.03)",
                         border: "1px solid rgba(255,255,255,0.1)",
                         borderRadius: 10, color: G.textMuted,
                         fontSize: 12, fontWeight: 700, cursor: "pointer",
@@ -3912,13 +4140,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           {showRaiseTicketModal && (
             <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
               onClick={e => { if (e.target === e.currentTarget) setShowRaiseTicketModal(false); }}>
-              <div style={{ background: "#1a1d2e", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 16, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ background: "#ffffff", border: "1px solid rgba(255,149,0,0.3)", borderRadius: 16, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 800, color: "#ff9500", textTransform: "uppercase" as const, letterSpacing: "1px", marginBottom: 4 }}>
                       {raiseTicketType === "delete-request" ? "🗑 Delete Request Ticket" : "🎫 Raise Assistance Ticket"}
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "#e8eaf6", fontFamily: "'Oswald',sans-serif" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
                       {raiseTicketTask?.title}
                     </div>
                   </div>
@@ -3952,12 +4180,12 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     {raiseTicketType === "delete-request" ? "Assigned To (Superadmin)" : "Assign To"}
                   </div>
                   {raiseTicketType === "delete-request" ? (
-                    <div style={{ padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, fontSize: 12, color: "#c8ccdd" }}>
+                    <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, fontSize: 12, color: "#475569" }}>
                       Superadmin — Pushkaraj Gore
                     </div>
                   ) : (
                     <select value={raiseTicketAssignTo} onChange={e => setRaiseTicketAssignTo(e.target.value)}
-                      style={{ width: "100%", padding: "10px 14px", background: "#12142a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#c8ccdd", fontSize: 12, outline: "none" }}>
+                      style={{ width: "100%", padding: "10px 14px", background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#475569", fontSize: 12, outline: "none" }}>
                       <option value="">— Select recipient —</option>
                       {allMembers.filter(m => m.email !== user?.email).map(m => (
                         <option key={m.id} value={m.email}>{m.name} ({m.role})</option>
@@ -3973,7 +4201,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                   <textarea value={raiseTicketNote} onChange={e => setRaiseTicketNote(e.target.value)}
                     placeholder={raiseTicketType === "delete-request" ? "Explain why this task needs to be deleted…" : "Describe the activity, query, or delegation details…"}
-                    style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,149,0,0.2)", borderRadius: 10, color: "#e8eaf6", fontSize: 12, resize: "vertical", outline: "none", minHeight: 90, lineHeight: 1.6, fontFamily: "inherit", boxSizing: "border-box" as const }}
+                    style={{ width: "100%", padding: "12px 14px", background: "rgba(0,0,0,0.03)", border: "1px solid rgba(255,149,0,0.2)", borderRadius: 10, color: "#1e293b", fontSize: 12, resize: "vertical", outline: "none", minHeight: 90, lineHeight: 1.6, fontFamily: "inherit", boxSizing: "border-box" as const }}
                     onFocus={e => e.target.style.borderColor = "rgba(255,149,0,0.5)"}
                     onBlur={e => e.target.style.borderColor = "rgba(255,149,0,0.2)"}
                   />
@@ -3986,7 +4214,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                   <input ref={raiseTicketFileRef} type="file" accept="image/*,.pdf" multiple style={{ display: "none" }} onChange={handleRaiseTicketAttachment} />
                   <button onClick={() => raiseTicketFileRef.current?.click()}
-                    style={{ padding: "8px 16px", background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 8, color: "#7e84a3", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                    style={{ padding: "8px 16px", background: "rgba(0,0,0,0.03)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 8, color: "#7e84a3", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                     <Upload size={12} /> Attach Files
                   </button>
                   {raiseTicketAttachments.length > 0 && (
@@ -3999,7 +4227,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 {/* Action buttons */}
                 <div style={{ display: "flex", gap: 10 }}>
                   <button onClick={() => setShowRaiseTicketModal(false)}
-                    style={{ flex: 1, padding: "12px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    style={{ flex: 1, padding: "12px", background: "rgba(0,0,0,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#7e84a3", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                     Cancel
                   </button>
                   <button onClick={handleSubmitRaiseTicket}
@@ -4129,7 +4357,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     <div style={{ gridColumn: "1 / -1" }}>
                       <label className="g-label">Project *</label>
                       {activeProjects.length === 0 ? (
-                        <div style={{ padding: "12px 14px", background: G.amberDim, border: "1px solid rgba(255,159,10,0.3)", borderRadius: 8, color: G.amber, fontSize: 12, fontFamily: "'IBM Plex Mono',monospace" }}>⚠ No active projects.</div>
+                        <div style={{ padding: "12px 14px", background: G.amberDim, border: "1px solid rgba(255,159,10,0.3)", borderRadius: 8, color: G.amber, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>⚠ No active projects.</div>
                       ) : (
                         <select className="g-input" value={newTask.projectId} onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}>
                           <option value="">— Select a project —</option>
@@ -4225,7 +4453,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           background: "rgba(255,51,102,0.08)", border: "1px solid rgba(255,51,102,0.35)",
                         }}>
                           <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff3366", boxShadow: "0 0 10px #ff3366", animation: "badgePulse 1s ease-in-out infinite", flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#ff3366", fontFamily: "'IBM Plex Mono',monospace" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#ff3366", fontFamily: "'JetBrains Mono',monospace" }}>
                             REC {String(recordingSeconds).padStart(2,"0")}s
                           </span>
                           <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, gap: 4 }}>
@@ -4243,7 +4471,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                                 boxShadow: `0 0 6px ${recordingSeconds >= 25 ? "#ff9500" : "#ff3366"}`,
                               }} />
                             </div>
-                            <span style={{ fontSize: 9, color: "#434763", fontFamily: "'IBM Plex Mono',monospace" }}>
+                            <span style={{ fontSize: 9, color: "#434763", fontFamily: "'JetBrains Mono',monospace" }}>
                               {30 - recordingSeconds}s remaining · max 30s
                             </span>
                           </div>
@@ -4336,7 +4564,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     </div>
                   )}
                   {newTask.dueDate && (
-                    <div style={{ padding: "8px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.gold, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ padding: "8px 14px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.gold, fontFamily: "'JetBrains Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                       <Clock size={12} />Deadline: {new Date(computeExactDeadline(newTask.dueDate, newTask.timeSlot)).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   )}
@@ -4401,11 +4629,11 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           onChange={(e) => setNewTask({ ...newTask, autopulseCycleDays: Math.max(1, parseInt(e.target.value) || 7) } as any)}
                           style={{
                             width: 64, padding: "5px 10px",
-                            background: "rgba(255,255,255,0.05)",
+                            background: "rgba(0,0,0,0.03)",
                             border: "1px solid rgba(201,169,110,0.4)",
                             borderRadius: 7, color: "#c9a96e",
                             fontSize: 13, fontWeight: 700,
-                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontFamily: "'JetBrains Mono',monospace",
                             outline: "none", textAlign: "center" as const,
                           }}
                         />
@@ -4413,7 +4641,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         <div style={{
                           marginLeft: "auto", fontSize: 10, padding: "3px 9px", borderRadius: 5,
                           background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.25)",
-                          color: "#c9a96e", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700,
+                          color: "#c9a96e", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700,
                         }}>
                           AUTOPULSE ON
                         </div>
@@ -4425,7 +4653,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10 }}>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#f87171", display: "flex", alignItems: "center", gap: 6 }}>
-                        <Shield size={13} /> Prime Directive — <span style={{ fontSize: 9, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>D1</span>
+                        <Shield size={13} /> Prime Directive — <span style={{ fontSize: 9, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>D1</span>
                       </div>
                       <div style={{ fontSize: 10, color: G.textMuted, marginTop: 2 }}>High-priority one-time task with flash screen reminders</div>
                     </div>
@@ -4436,7 +4664,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                   {(newTask as any).isPrimeDirective && (
                     <div style={{ padding: "10px 14px", background: "rgba(248,113,113,0.04)", border: "1px solid rgba(248,113,113,0.15)", borderRadius: 8 }}>
-                      <label style={{ fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono',monospace" }}>Flash reminder every (hours)</label>
+                      <label style={{ fontSize: 10, color: G.textMuted, textTransform: "uppercase" as const, letterSpacing: "0.1em", fontFamily: "'JetBrains Mono',monospace" }}>Flash reminder every (hours)</label>
                       <input type="number" min={1} max={168} value={(newTask as any).pdReminderIntervalHours ?? 24}
                         onChange={e => setNewTask((p: any) => ({ ...p, pdReminderIntervalHours: parseInt(e.target.value) || 24 }))}
                         style={{ width: "100%", marginTop: 6, padding: "8px 10px", background: G.bgDeep, border: "1px solid rgba(248,113,113,0.25)", borderRadius: 7, color: G.textPrimary, fontSize: 14, outline: "none" }} />
@@ -4457,9 +4685,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               <div className="g-modal">
                 <ModalHeader title={`Forward: ${forwardTask.title}`} sub="Delegate while preserving full context" onClose={() => { setShowForwardModal(false); setForwardTask(null); setForwardTo(""); setForwardNotes(""); }} accent={G.purple} />
                 <div style={{ padding: "24px 28px 28px" }}>
-                  <div style={{ padding: "12px 14px", background: "rgba(0,0,0,0.30)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, marginBottom: 18 }}>
+                  <div style={{ padding: "12px 14px", background: "rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, marginBottom: 18 }}>
                     <div style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6 }}>{forwardTask.description}</div>
-                    <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                    <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                       <span>Priority: {forwardTask.priority?.toUpperCase()}</span><span>·</span>
                       <span>Due: {new Date(forwardTask.dueDate).toLocaleDateString()}</span>
                       {forwardTask.timeSlot && <span>· {forwardTask.timeSlot}</span>}
@@ -4568,7 +4796,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 <ModalHeader title={`Review: ${selectedTask.title}`} sub="Approve to forward to Superadmin, or send back for rework" onClose={() => { setShowReviewModal(false); setSelectedTask(null); setReviewComments(""); }} accent={G.gold} />
                 {reviewTaskLoading && (
                   <div style={{ padding: "8px 28px", background: "rgba(0,212,255,0.05)", borderBottom: "1px solid rgba(0,212,255,0.12)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: G.cyan, fontFamily: "'IBM Plex Mono',monospace" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: G.cyan, fontFamily: "'JetBrains Mono',monospace" }}>
                       <Loader size={11} style={{ animation: "spin 1s linear infinite" }} />
                       Fetching full submission data — attachments, score, notes…
                     </div>
@@ -4639,9 +4867,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   {scoreData && (
                     <div style={{ padding: "16px 18px", background: "rgba(0,212,255,0.05)", border: `1px solid rgba(0,212,255,0.2)`, borderRadius: 12, marginBottom: 14 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap" as const, gap: 10 }}>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.cyan, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>🎯 AI Score Report</div>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.cyan, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>🎯 AI Score Report</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 22, fontWeight: 900, color: scoreData.percentScore >= 75 ? G.success : scoreData.percentScore >= 55 ? G.amber : G.danger, fontFamily: "'Oswald',sans-serif" }}>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: scoreData.percentScore >= 75 ? G.success : scoreData.percentScore >= 55 ? G.amber : G.danger, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
                             {scoreData.percentScore}/100
                           </span>
                           <span style={{ fontSize: 13, fontWeight: 800, padding: "3px 10px", borderRadius: 6, background: scoreData.percentScore >= 75 ? "rgba(0,255,136,0.15)" : scoreData.percentScore >= 55 ? "rgba(255,149,0,0.15)" : "rgba(255,51,102,0.15)", color: scoreData.percentScore >= 75 ? G.success : scoreData.percentScore >= 55 ? G.amber : G.danger }}>
@@ -4661,7 +4889,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                           {scoreData.grammarClean ? "✓ Grammar Clean" : "⚠ Grammar Issues"}
                         </span>
                         {(scoreData.categories || []).map((c: any) => (
-                          <span key={c.name} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 5, background: "rgba(255,255,255,0.04)", color: G.textSecondary, border: "1px solid rgba(255,255,255,0.08)" }}>
+                          <span key={c.name} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 5, background: "rgba(0,0,0,0.03)", color: G.textSecondary, border: "1px solid rgba(0,0,0,0.08)" }}>
                             {c.name}: {c.score}/20
                           </span>
                         ))}
@@ -4685,13 +4913,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                     </div>
                   )}
 
-                  <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, marginBottom: 14 }}>
-                    <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>Description</div>
+                  <div style={{ padding: "14px 16px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, marginBottom: 14 }}>
+                    <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>Description</div>
                     <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.65 }}>{selectedTask.description}</p>
                   </div>
                   {selectedTask.completionNotes && (
                     <div style={{ padding: "14px 16px", background: G.goldDim, border: `1px solid ${G.goldBorder}`, borderRadius: 10, marginBottom: 14 }}>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.gold, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>📝 Completion Notes</div>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.gold, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 8 }}>📝 Completion Notes</div>
                       <p style={{ fontSize: 14, color: G.textSecondary, lineHeight: 1.65 }}>{selectedTask.completionNotes}</p>
                     </div>
                   )}
@@ -4776,7 +5004,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 
                     return (
                       <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: G.textMuted, letterSpacing: "0.12em", textTransform: "uppercase" as const, marginBottom: 10 }}>
                           📎 Attachments ({selectedTask.attachments!.length})
                         </div>
                         <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
@@ -4787,7 +5015,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       </div>
                     );
                   })()}
-                  <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ padding: "10px 14px", background: "rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace", display: "flex", alignItems: "center", gap: 8 }}>
                     <Calendar size={12} />Due: {new Date(selectedTask.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {selectedTask.timeSlot && <span style={{ color: G.gold }}>· {selectedTask.timeSlot}</span>}
                   </div>
@@ -4819,7 +5047,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                       <Share2 size={13} />Reassign Task to Different Doer
                     </button>
                   </div>
-                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(0,0,0,0.07)" }}>
                     <button className="g-btn-delete" style={{ width: "100%" }} onClick={() => { setShowReviewModal(false); requestDeleteTask(selectedTask!); }}>
                       <Trash2 size={13} />Request Delete (Needs Superadmin Approval)
                     </button>
@@ -4838,7 +5066,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
                     <span className={priClass(submitTask.priority)}><Flag size={9} />{submitTask.priority?.toUpperCase()}</span>
                     {submitTask.timeSlot && <span className="g-badge g-badge-muted"><Clock size={9} />{submitTask.timeSlot}</span>}
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: G.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
                       <Calendar size={10} />Due {new Date(submitTask.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </span>
                   </div>
@@ -4871,13 +5099,13 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                         {submitPhotos.map((src, i) => (
                           <div key={i} style={{ position: "relative" }}>
                             <img src={src} alt={`Photo ${i + 1}`} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${G.cyan}33`, cursor: "pointer" }} onClick={() => openLightbox(submitPhotos, i)} />
-                            <button onClick={() => removePhoto(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", background: G.danger, border: "none", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 11 }}>
+                            <button onClick={() => removePhoto(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", background: G.danger, border: "none", color: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 11 }}>
                               <X size={10} />
                             </button>
                             {aiReviewResults && (() => {
                               const r = aiReviewResults.results.find((r) => r.image === i + 1);
                               const c = r?.status === "CLEAN" ? G.success : r?.status === "ERROR" ? G.danger : G.amber;
-                              return r ? <span style={{ position: "absolute", bottom: 2, left: 2, right: 2, textAlign: "center", fontSize: 8, background: `${c}cc`, color: "#fff", padding: "1px 4px", borderRadius: 4, fontFamily: "'IBM Plex Mono',monospace" }}>{r.status}</span> : null;
+                              return r ? <span style={{ position: "absolute", bottom: 2, left: 2, right: 2, textAlign: "center", fontSize: 8, background: `${c}cc`, color: "#1e293b", padding: "1px 4px", borderRadius: 4, fontFamily: "'JetBrains Mono',monospace" }}>{r.status}</span> : null;
                             })()}
                           </div>
                         ))}
@@ -4890,7 +5118,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   </div>
                   {aiReviewResults && reviewPanelOpen && (
                     <div style={{ marginBottom: 16, padding: "14px 16px", background: aiReviewResults.hasErrors ? G.dangerDim : G.successDim, border: `1px solid ${aiReviewResults.hasErrors ? G.dangerBorder : G.successBorder}`, borderRadius: 10 }}>
-                      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: aiReviewResults.hasErrors ? G.danger : G.success, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: aiReviewResults.hasErrors ? G.danger : G.success, letterSpacing: "0.10em", textTransform: "uppercase" as const, marginBottom: 10 }}>
                         {aiReviewResults.hasErrors ? "⚠ Issues Found" : "✓ All Clear"}
                       </div>
                       {aiReviewResults.results.map((r, i) => (
@@ -5157,7 +5385,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             background: "linear-gradient(160deg, rgba(15,8,20,0.97), rgba(25,10,30,0.97))",
             border: "1px solid rgba(248,113,113,0.55)",
             borderRadius: 24, padding: "36px 32px",
-            boxShadow: "0 0 80px rgba(248,113,113,0.25), 0 40px 80px rgba(0,0,0,0.7)",
+            boxShadow: "0 0 80px rgba(248,113,113,0.25), 0 20px 40px rgba(30,41,59,0.12)",
             margin: "0 20px",
           }}>
             {/* Top label */}
@@ -5166,27 +5394,27 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                 <Shield size={24} color="#f87171" />
               </div>
               <div>
-                <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#f87171", letterSpacing: "0.18em", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "#f87171", letterSpacing: "0.18em", textTransform: "uppercase" as const, marginBottom: 3 }}>
                   ⚡ Prime Directive — D1 Alert
                 </div>
-                <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "rgba(248,113,113,0.5)", letterSpacing: "0.12em" }}>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: "rgba(248,113,113,0.5)", letterSpacing: "0.12em" }}>
                   Reminder #{(pdFlash as any).pdReminderCount ?? 1} · Assigned to {getName((pdFlash as Task).assignedTo)}
                 </div>
               </div>
             </div>
 
             {/* Task title */}
-            <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: "#fff", marginBottom: 10, lineHeight: 1.2 }}>
+            <h2 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 28, fontWeight: 700, color: "#1e293b", marginBottom: 10, lineHeight: 1.2 }}>
               {(pdFlash as Task).title}
             </h2>
 
             {/* Description */}
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, marginBottom: 20 }}>
               {(pdFlash as Task).description?.slice(0, 160) || "No description provided."}
             </p>
 
             {/* Meta row */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28, fontFamily: "'IBM Plex Mono',monospace", fontSize: 11 }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
               <span style={{ color: G.amber, display: "flex", alignItems: "center", gap: 5 }}>
                 <Calendar size={11} />Due: {new Date((pdFlash as Task).dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
@@ -5219,7 +5447,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   toast("✓ Prime Directive acknowledged");
                   setPdFlash(null);
                 }}
-                style={{ flex: 1, padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #f87171, #ef4444)", color: "#fff", fontWeight: 800, fontSize: 13, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.08em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                style={{ flex: 1, padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #f87171, #ef4444)", color: "#1e293b", fontWeight: 800, fontSize: 13, fontFamily: "'Plus Jakarta Sans',sans-serif", letterSpacing: "0.08em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
               >
                 <CheckCircle size={16} /> ACKNOWLEDGE
               </button>
@@ -5234,7 +5462,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
                   toast("⏸ Snoozed for 2 hours");
                   setPdFlash(null);
                 }}
-                style={{ padding: "13px 20px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
+                style={{ padding: "13px 20px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.10)", cursor: "pointer", background: "rgba(0,0,0,0.04)", color: "#64748b", fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
               >
                 ⏸ Snooze 2h
               </button>
@@ -5242,7 +5470,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
               {/* Dismiss */}
               <button
                 onClick={() => setPdFlash(null)}
-                style={{ padding: "13px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.3)", fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
+                style={{ padding: "13px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer", background: "transparent", color: G.textMuted, fontWeight: 700, fontSize: 12, fontFamily: "inherit" }}
               >
                 <X size={14} />
               </button>
@@ -5277,7 +5505,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
         {showAssigningOverlay && (
           <div style={{
             position: "fixed", inset: 0, zIndex: 9999,
-            background: "rgba(0,0,0,0.92)",
+            background: "rgba(15,23,42,0.75)",
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
             backdropFilter: "blur(8px)",
@@ -5294,7 +5522,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
             </video>
             <p style={{
               marginTop: 28, color: "#c9a96e",
-              fontFamily: "'IBM Plex Mono',monospace",
+              fontFamily: "'JetBrains Mono',monospace",
               fontSize: 13, letterSpacing: "0.18em",
               textTransform: "uppercase",
             }}>
@@ -5303,174 +5531,6 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
           </div>
         )}
       </>
-    );
-  };
-
-  // ── Modal Header ──────────────────────────────────────────────────────────────
-  const ModalHeader: React.FC<{ title: string; sub: string; onClose: () => void; accent?: string }> = ({ title, sub, onClose, accent = G.cyan }) => (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "22px 26px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-      <div>
-        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: accent, letterSpacing: "0.16em", textTransform: "uppercase" as const, marginBottom: 6 }}>{sub}</div>
-        <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: G.textPrimary, lineHeight: 1.2, maxWidth: 460 }}>{title}</h2>
-      </div>
-      <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: G.textMuted }}>
-        <X size={15} />
-      </button>
-    </div>
-  );
-
-  // ── Task Row ──────────────────────────────────────────────────────────────────
-  interface TaskRowProps {
-    task: Task;
-    idx: number;
-    staffName: string;
-    isAdminAssignee: boolean;
-    onReview: () => void;
-    onViewHistory: () => void;
-    onDelete: () => void;
-    onReassign: () => void;
-    onReviewTatExt?: () => void;
-    onToggleAutopulse?: () => void;
-    getNameFn: (e: string) => string;
-  }
-
-  const TaskRow: React.FC<TaskRowProps> = ({ task, idx, staffName, isAdminAssignee, onReview, onViewHistory, onDelete, onReassign, onReviewTatExt, onToggleAutopulse, getNameFn }) => {
-    const [hovered, setHovered] = React.useState(false);
-    const hasPendingTatExt = task.tatExtensionRequest?.status === "pending";
-    return (
-      <div className="fade-up"
-        style={{ animationDelay: `${idx * 55}ms`, background: hovered ? G.surfaceMid : G.surface, border: `1px solid ${hovered ? G.cyan + "44" : task.tatBreached ? G.dangerBorder : "rgba(255,255,255,0.09)"}`, borderRadius: 12, padding: "18px 22px", transition: "all 0.2s ease", backdropFilter: "blur(16px)" }}
-        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-        {/* TAT Extension pending banner */}
-        {hasPendingTatExt && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "8px 14px", background: "rgba(255,159,10,0.10)", border: `1px solid rgba(255,159,10,0.40)`, borderRadius: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: G.amber, fontFamily: "'IBM Plex Mono',monospace" }}>
-              <Clock size={11} />
-              <strong>TAT EXTENSION REQUEST</strong> · {staffName} has requested a deadline extension
-              <span style={{ fontSize: 10, color: G.textMuted }}>— New date: {new Date(task.tatExtensionRequest!.requestedNewDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} {task.tatExtensionRequest!.requestedNewTimeSlot}</span>
-            </div>
-            {onReviewTatExt && (
-              <button onClick={e => { e.stopPropagation(); onReviewTatExt(); }}
-                style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(255,159,10,0.14)", border: `1px solid rgba(255,159,10,0.45)`, borderRadius: 7, color: G.amber, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" as const }}>
-                Review Extension →
-              </button>
-            )}
-          </div>
-        )}
-        {/* Handover banner */}
-        {task.handoverRequested && task.previousAssignee && (
-          <div className="handover-banner">
-            <Share2 size={11} />
-            Handover triggered — <strong style={{ marginLeft: 4 }}>{getNameFn(task.previousAssignee!)}</strong> was asked to hand over creatives
-          </div>
-        )}
-        {task.tatBreached && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "6px 12px", background: G.dangerDim, border: `1px solid ${G.dangerBorder}`, borderRadius: 7, fontSize: 11, color: G.danger, fontFamily: "'IBM Plex Mono',monospace" }}>
-            <AlertTriangle size={11} /> TAT BREACH — {task.smartAssist?.delayDuration || "Overdue"}
-          </div>
-        )}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
-          <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: G.textMuted, marginTop: 2 }}>
-            {String(idx + 1).padStart(2, "0")}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: G.textPrimary }}>{task.title}</h3>
-              <span className={priClass(task.priority)}><Flag size={9} />{task.priority?.toUpperCase()}</span>
-              {isAdminAssignee && <span className="g-badge g-badge-gold"><Shield size={9} />ADMIN</span>}
-              {hasPendingTatExt && <span className="tat-ext-badge"><Clock size={9} />EXT REQUESTED</span>}
-              {(task as any).isAutopulse && (
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  padding: "2px 7px", borderRadius: 4,
-                  background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.3)",
-                  fontSize: 8, fontWeight: 800, color: "#c9a96e",
-                  textTransform: "uppercase" as const, letterSpacing: "0.5px",
-                }}>
-                  <Zap size={7} /> AUTOPULSE {(task as any).autopulseGeneration > 0 ? `#${(task as any).autopulseGeneration}` : ""}
-                </span>
-              )}
-            </div>
-            <p style={{ fontSize: 13, color: G.textSecondary, lineHeight: 1.6, marginBottom: 10, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
-              {task.description}
-            </p>
-            {/* ── Voice Note player ── */}
-            {(task as any).voiceNote && (
-              <div style={{
-                margin: "0 0 10px",
-                padding: "8px 12px", borderRadius: 9,
-                background: "rgba(201,169,110,0.07)", border: "1px solid rgba(201,169,110,0.28)",
-                display: "flex", flexDirection: "column" as const, gap: 6,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Radio size={10} color="#c9a96e" />
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#c9a96e", textTransform: "uppercase" as const, letterSpacing: "0.6px" }}>Voice Brief</span>
-                </div>
-                <audio src={(task as any).voiceNote} controls style={{ width: "100%", height: 32, accentColor: "#c9a96e" }} />
-              </div>
-            )}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 11, color: G.textMuted, fontFamily: "'IBM Plex Mono',monospace" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 5, color: isAdminAssignee ? G.gold : G.textSecondary }}>
-                {isAdminAssignee ? <Shield size={10} color={G.gold} /> : <User size={10} />}{staffName}
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <Calendar size={10} />{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                {task.timeSlot && <span style={{ color: G.gold }}>· {task.timeSlot}</span>}
-              </span>
-              {task.completionNotes && <span style={{ display: "flex", alignItems: "center", gap: 5, color: G.cyan }}><FileText size={10} />Has notes</span>}
-              {task.history && task.history.length > 0 && (
-                <button onClick={onViewHistory} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: G.cyan, cursor: "pointer", fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", padding: 0 }}>
-                  <ListTree size={10} />History ({task.history.length})
-                </button>
-              )}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 2, flexDirection: "column" as const }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              {/* Pause / Resume Autopulse */}
-              {(task as any).isAutopulse && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleAutopulse?.();
-                  }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "9px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                    cursor: "pointer", border: "1px solid rgba(201,169,110,0.3)",
-                    background: "rgba(201,169,110,0.07)", color: "#c9a96e",
-                    fontFamily: "inherit", whiteSpace: "nowrap" as const,
-                  }}
-                  title={(task as any).autopulsePaused ? "Resume Autopulse" : "Pause Autopulse"}
-                >
-                  {(task as any).autopulsePaused ? <><Zap size={11} />Resume</> : <>⏸ Pause</>}
-                </button>
-              )}
-              <button onClick={onReview}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: hovered ? `linear-gradient(135deg,${G.cyan},#60efff)` : "rgba(255,255,255,0.05)", color: hovered ? "#001a26" : G.textSecondary, border: `1px solid ${hovered ? G.cyan : "rgba(255,255,255,0.10)"}`, borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap" as const, boxShadow: hovered ? `0 0 20px ${G.cyan}55` : "none" }}>
-                <Eye size={12} />Review<ChevronRight size={11} />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="g-btn-delete"
-                style={{ padding: "9px 12px" }}
-                title="Delete task"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-            {/* Reassign button — always available on review tasks */}
-            <button
-              className="g-btn-reassign"
-              onClick={e => { e.stopPropagation(); onReassign(); }}
-              title="Reassign this task to a different doer"
-              style={{ width: "100%", fontSize: 11 }}
-            >
-              <Share2 size={11} />Reassign Doer
-            </button>
-          </div>
-        </div>
-      </div>
     );
   };
 
