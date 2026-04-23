@@ -9,20 +9,22 @@ import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import webpush from "web-push";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
-// Node 20 has fetch built-in — no polyfill needed.
+// Node 20 has fetch built-in – no polyfill needed.
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // CLOUDINARY
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-console.log("Cloudinary: ✔ Configured");
+console.log("Cloudinary: ✓ Configured");
 
 // ── WEB PUSH (VAPID) ──────────────────────────────────────────────────────────
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -31,9 +33,9 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
   );
-  console.log("✔ Web Push (VAPID) configured");
+  console.log("✓ Web Push (VAPID) configured");
 } else {
-  console.warn("⚠ VAPID keys not set — push notifications disabled.");
+  console.warn("⚠ VAPID keys not set - push notifications disabled.");
 }
 
 const app        = express();
@@ -42,15 +44,16 @@ const httpServer = createServer(app);
 httpServer.setTimeout(300_000);
 httpServer.keepAliveTimeout = 120_000;
 
-// ── ALLOWED ORIGINS ───────────────────────────────────────────────────────────
+// ── ALLOWED ORIGINS ──────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   "https://marketing1-delta.vercel.app",
   "https://roswaltsmartcue.com",
   "https://www.roswaltsmartcue.com",
   "http://localhost:3000",
+  "http://192.168.1.5",
 ];
 
-// ── SOCKET.IO ─────────────────────────────────────────────────────────────────
+// ── SOCKET.IO ────────────────────────────────────────────────────────────────
 const io = new SocketServer(httpServer, {
   cors: { origin: ALLOWED_ORIGINS, credentials: true },
   transports: ["websocket", "polling"],
@@ -58,7 +61,7 @@ const io = new SocketServer(httpServer, {
 
 app.set("trust proxy", 1);
 
-// ── RATE LIMITERS ─────────────────────────────────────────────────────────────
+// ── RATE LIMITERS ────────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -88,22 +91,22 @@ app.use(cors({
 }));
 
 app.use((req, _res, next) => {
-  console.log(`[${req.method}] ${req.path} — origin: ${req.headers.origin ?? "none"}`);
+  console.log(`[${req.method}] ${req.path} - origin: ${req.headers.origin ?? "none"}`);
   next();
 });
 
-// ── BODY PARSERS (registered ONCE at 100 mb) ──────────────────────────────────
+// ── BODY PARSERS (registered ONCE at 100 mb) ──────────────────────────────
 app.use(express.json({ limit: "250mb" }));
 app.use(express.urlencoded({ limit: "250mb", extended: true }));
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // ANTHROPIC CLIENT
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("✘ ANTHROPIC_API_KEY is not set — exiting.");
+  console.error("✗ ANTHROPIC_API_KEY is not set - exiting.");
   process.exit(1);
 }
-console.log("✔ ANTHROPIC_API_KEY is configured");
+console.log("✓ ANTHROPIC_API_KEY is configured");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
@@ -116,7 +119,7 @@ async function callAnthropicWithRetry(fn, maxRetries = 4) {
         err?.status === 529 || err?.status === 503 ||
         err?.error?.error?.type === "overloaded_error";
       if (isOverloaded && attempt <= maxRetries) {
-        console.warn(`[RETRY] Anthropic overloaded — attempt ${attempt}/${maxRetries}, retrying in ${delay}ms`);
+        console.warn(`[RETRY] Anthropic overloaded - attempt ${attempt}/${maxRetries}, retrying in ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
         delay *= 2;
       } else { throw err; }
@@ -124,14 +127,14 @@ async function callAnthropicWithRetry(fn, maxRetries = 4) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MONGODB — with auto-reconnect
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+// MONGODB – with auto-reconnect
+// ════════════════════════════════════════════════════════════════════════════════
 const MONGO_URI = process.env.MONGO_URI;
 
 function connectMongo() {
   if (!MONGO_URI) {
-    console.warn("⚠ MONGO_URI not set — running in-memory mode.");
+    console.warn("⚠ MONGO_URI not set - running in-memory mode.");
     return;
   }
   mongoose.connect(MONGO_URI, {
@@ -141,16 +144,16 @@ function connectMongo() {
     maxIdleTimeMS:            30_000,
     connectTimeoutMS:         20_000,
   })
-    .then(() => console.log("✔ MongoDB connected"))
+    .then(() => console.log("✓ MongoDB connected"))
     .catch(err => {
-      console.error("✘ MongoDB connection error:", err.message);
-      console.log("🔄 Retrying MongoDB connection in 10s…");
+      console.error("✗ MongoDB connection error:", err.message);
+      console.log("📄 Retrying MongoDB connection in 10s...");
       setTimeout(connectMongo, 10_000);
     });
 }
 
 mongoose.connection.on("disconnected", () => {
-  console.warn("⚠ MongoDB disconnected — reconnecting…");
+  console.warn("⚠ MongoDB disconnected - reconnecting...");
   setTimeout(connectMongo, 5_000);
 });
 
@@ -160,9 +163,9 @@ mongoose.connection.on("error", err => {
 
 connectMongo();
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // SCHEMAS
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const projectSchema = new mongoose.Schema({
   name:               { type: String, required: true, trim: true },
   description:        { type: String, default: "" },
@@ -175,6 +178,7 @@ const projectSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const taskSchema = new mongoose.Schema({
+  _id:             { type: String, default: () => String(Date.now()) },
   id:              { type: String, index: true },
   title:           { type: String, required: true },
   description:     { type: String, default: "" },
@@ -189,7 +193,7 @@ const taskSchema = new mongoose.Schema({
   adminComments:   { type: String },
   reminderCount:        { type: Number,  default: 0    },
   lastReminderAt:       { type: String,  default: null },
-  // ── Autopulse ────────────────────────────────────────────────────────────
+  // ── Autopulse ────────────────────────────────────────────────────────
   isAutopulse:          { type: Boolean, default: false },
   autopulseCycleDays:   { type: Number,  default: 7    },
   autopulseParentId:    { type: String,  default: null },
@@ -273,11 +277,11 @@ const chatPresenceSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 
-// ── SystemSettings — singleton document, controls system-wide toggles ─────────
+// ── SystemSettings – singleton document, controls system-wide toggles ──
 const systemSettingsSchema = new mongoose.Schema(
   {
     _id:          { type: String, default: "singleton" },
-    voiceEnabled: { type: Boolean, default: false },  // OFF by default — Supremo controls this
+    voiceEnabled: { type: Boolean, default: false },  // OFF by default – Supremo controls this
   },
   { timestamps: true }
 );
@@ -287,7 +291,7 @@ systemSettingsSchema.statics.getSingleton = async function () {
   return doc;
 };
 
-// ── Models (guard against OverwriteModelError on hot-reload) ─────────────────
+// ── Models (guard against OverwriteModelError on hot-reload) ──────────────
 const Project          = mongoose.models.Project          || mongoose.model("Project",          projectSchema);
 const Task             = mongoose.models.Task             || mongoose.model("Task",             taskSchema);
 const User             = mongoose.models.User             || mongoose.model("User",             userSchema);
@@ -297,18 +301,18 @@ const ChatMessage      = mongoose.models.ChatMessage      || mongoose.model("Cha
 const ChatPresence     = mongoose.models.ChatPresence     || mongoose.model("ChatPresence",     chatPresenceSchema);
 const SystemSettings   = mongoose.models.SystemSettings   || mongoose.model("SystemSettings",   systemSettingsSchema);
 
-// ── In-memory fallbacks ───────────────────────────────────────────────────────
+// ── In-memory fallbacks ──────────────────────────────────────────────────
 let inMemoryProjects     = [];
 let inMemoryUsers        = [];
 let inMemoryChatMessages = [];
 let inMemoryChatPresence = [];
 
-// ── DB readiness helper ───────────────────────────────────────────────────────
+// ── DB readiness helper ──────────────────────────────────────────────────
 const dbReady = () => mongoose.connection.readyState === 1;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // TEAM DIRECTORY
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const TEAM_DIRECTORY = {
   "prathamesh.chile@roswalt.com":  { name: "Prathamesh Chile",  phone: "9XXXXXXXXX" },
   "samruddhi.shivgan@roswalt.com": { name: "Samruddhi Shivgan", phone: "9XXXXXXXXX" },
@@ -332,17 +336,17 @@ const TEAM_DIRECTORY = {
   "pushkaraj.gore@roswalt.com":    { name: "Pushkaraj Gore",    phone: "9321181236" },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // WHATSAPP – stubbed
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 async function sendWhatsApp(phone, message) {
-  console.log(`[WA STUB] ${phone}: ${message.slice(0, 60)}…`);
+  console.log(`[WA STUB] ${phone}: ${message.slice(0, 60)}...`);
   return false;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // WEB PUSH HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 async function sendPushToSubscription(subscription, payload) {
   try {
     await webpush.sendNotification(subscription, JSON.stringify(payload));
@@ -393,9 +397,9 @@ function broadcastTaskNotification(eventData) {
   io.emit("task_notification", eventData);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // TAT MONITOR
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 function getDelayString(deadline, now) {
   const diffMs      = now.getTime() - deadline.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
@@ -408,7 +412,7 @@ function getDelayString(deadline, now) {
 
 async function runTATMonitor() {
   if (!dbReady()) {
-    console.log("[TAT] Skipping — DB not ready");
+    console.log("[TAT] Skipping - DB not ready");
     return;
   }
   try {
@@ -443,7 +447,7 @@ async function runTATMonitor() {
       const doerName    = doer?.name  || doerEmail.split("@")[0];
       const adminName   = admin?.name || adminEmail.split("@")[0];
 
-      // ── DM to doer — opens SmartAssist when clicked ──────────────────────
+      // ── DM to doer – opens SmartAssist when clicked ────────────────────
       if (doerEmail) {
         const dmChannelId = "dm_" + [doerEmail, adminEmail || doerEmail].sort().join("__");
         const dmMsg = {
@@ -475,7 +479,7 @@ async function runTATMonitor() {
         io.to(`channel:${dmChannelId}`).emit("new_message", dmMsg);
       }
 
-      // ── DM to admin — awareness notification ──────────────────────────────
+      // ── DM to admin – awareness notification ──────────────────────────
       if (adminEmail && adminEmail !== doerEmail) {
         const adminDmChannelId = "dm_" + [adminEmail, adminEmail].sort().join("__");
         // Use a system-wide notification channel for admin
@@ -494,7 +498,7 @@ async function runTATMonitor() {
           },
           type:          "system_notification",
           notifType:     "task_reminder",
-          text:          `🔴 TAT Breach #${reminderCount}: "${task.title}" assigned to ${doerName} is overdue by ${delayDuration}.`,
+          text:          `🚩 TAT Breach #${reminderCount}: "${task.title}" assigned to ${doerName} is overdue by ${delayDuration}.`,
           taskId,
           taskTitle:     task.title,
           delayDuration,
@@ -516,7 +520,7 @@ async function runTATMonitor() {
 
       if (task.assignedTo) {
         await sendPushToUser(task.assignedTo, {
-          title:   `⚠ Task Overdue — Reminder #${reminderCount}`,
+          title:   `⚠ Task Overdue - Reminder #${reminderCount}`,
           body:    `"${task.title}" was due ${delayDuration}. Please submit immediately.`,
           url:     dashboardUrl,
           taskId:  task.id || String(task._id),
@@ -526,7 +530,7 @@ async function runTATMonitor() {
       }
       if (task.assignedBy) {
         await sendPushToUser(task.assignedBy, {
-          title:   `🔴 TAT Breach — ${task.title}`,
+          title:   `🚩 TAT Breach - ${task.title}`,
           body:    `Assigned to ${doer?.name ?? task.assignedTo} · Overdue by ${delayDuration}`,
           url:     dashboardUrl,
           taskId:  task.id || String(task._id),
@@ -535,21 +539,21 @@ async function runTATMonitor() {
         });
       }
 
-      console.log(`📲 TAT reminder #${reminderCount} → "${task.title}"`);
+      console.log(`🚲 TAT reminder #${reminderCount} → "${task.title}"`);
       alertCount++;
     }
 
-    if (alertCount === 0) console.log(`✔ TAT check – ${tasks.length} tasks scanned, no breaches`);
+    if (alertCount === 0) console.log(`✓ TAT check - ${tasks.length} tasks scanned, no breaches`);
   } catch (err) {
-    console.error("✘ TAT monitor error:", err.message);
+    console.error("✗ TAT monitor error:", err.message);
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AUTOPULSE CRON — runs every 6 hours, fires next recurring task instance
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+// AUTOPULSE CRON – runs every 6 hours, fires next recurring task instance
+// ════════════════════════════════════════════════════════════════════════════════
 async function runAutopulseCron() {
-  if (!dbReady()) { console.log("[Autopulse] Skipping — DB not ready"); return; }
+  if (!dbReady()) { console.log("[Autopulse] Skipping - DB not ready"); return; }
   try {
     const todayStr = new Date().toISOString().split("T")[0];
 
@@ -605,7 +609,7 @@ async function runAutopulseCron() {
         history: [{
           id:        "hist_ap_" + Date.now(),
           timestamp: now,
-          action:    `Auto-assigned (Autopulse #${generation}) — recurring from "${task.title}"`,
+          action:    `Auto-assigned (Autopulse #${generation}) – recurring from "${task.title}"`,
           by:        task.assignedBy ?? "system",
           to:        task.assignedTo,
         }],
@@ -626,7 +630,7 @@ async function runAutopulseCron() {
           day: "numeric", month: "short", year: "numeric"
         });
         await sendPushToUser(task.assignedTo, {
-          title: "⚡ Autopulse — New Recurring Task",
+          title: "⚡ Autopulse - New Recurring Task",
           body:  `${task.title} · Due: ${dueDateFormatted}`,
           url:   dashboardUrl,
           taskId: newId,
@@ -658,9 +662,9 @@ async function runAutopulseCron() {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // MIDDLEWARE HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const requireRole = (...roles) => (req, res, next) => {
   if (!roles.includes(req.body?.callerRole ?? ""))
     return res.status(403).json({ message: "Access denied." });
@@ -678,9 +682,9 @@ const validateProject = (req, res, next) => {
   next();
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // FILE UPLOAD (Cloudinary)
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const storage = multer.memoryStorage();
 const upload  = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 
@@ -702,9 +706,9 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // PROJECT ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/projects", async (req, res) => {
   try {
     if (dbReady()) return res.json(await Project.find().sort({ createdAt: -1 }));
@@ -757,9 +761,9 @@ app.put("/api/projects/:id", requireRole("superadmin", "supremo"), validateProje
   } catch (e) { res.status(500).json({ message: "Failed to update project." }); }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // TASK ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/tasks", async (req, res) => {
   try {
     const callerEmail = (req.query.email ?? "").toLowerCase();
@@ -780,9 +784,10 @@ app.get("/api/tasks", async (req, res) => {
 
 app.post("/api/tasks", async (req, res) => {
   try {
-    const data    = { ...req.body, id: req.body.id || String(Date.now()) };
-    const created = await Task.create(data);
-    const obj     = created.toObject();
+    const taskId   = req.body.id || String(Date.now());
+    const data     = { ...req.body, _id: taskId, id: taskId };
+    const created  = await Task.create(data);
+    const obj      = created.toObject();
     if (!obj.id) obj.id = String(obj._id);
 
     broadcastTaskNotification({
@@ -806,29 +811,25 @@ app.post("/api/tasks", async (req, res) => {
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
-
-// GET single task by ID — returns full document including attachments, scoreData, completionNotes
+// GET single task by ID – returns full document including attachments, scoreData, completionNotes
 app.get("/api/tasks/:id", async (req, res) => {
   try {
     let t = await Task.findOne({ id: req.params.id }).lean();
-    if (!t) t = await Task.findById(req.params.id).lean();
+    if (!t) {
+      try {
+        t = await Task.findById(req.params.id).lean();
+      } catch (castErr) {
+        // Ignore CastError from findById with string ID – task simply not found
+        if (castErr.name !== 'CastError') throw castErr;
+      }
+    }
     if (!t) return res.status(404).json({ message: "Task not found." });
     if (!t.id) t.id = String(t._id);
     res.json(t);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// GET single task by ID — returns full document including attachments, scoreData, completionNotes
-app.get("/api/tasks/:id", async (req, res) => {
-  try {
-    let t = await Task.findOne({ id: req.params.id }).lean();
-    if (!t) t = await Task.findById(req.params.id).lean();
-    if (!t) return res.status(404).json({ message: "Task not found." });
-    if (!t.id) t.id = String(t._id);
-    res.json(t);
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-// ⚠️ /all MUST stay above /:id
+// ⚠ /all MUST stay above /:id
 app.delete("/api/tasks/all", async (req, res) => {
   try {
     const r = await Task.deleteMany({});
@@ -839,7 +840,14 @@ app.delete("/api/tasks/all", async (req, res) => {
 app.put("/api/tasks/:id", async (req, res) => {
   try {
     let t = await Task.findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { new: true, runValidators: false });
-    if (!t) t = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    if (!t) {
+      try {
+        t = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+      } catch (castErr) {
+        // Ignore CastError from findByIdAndUpdate with string ID
+        if (castErr.name !== 'CastError') throw castErr;
+      }
+    }
     if (!t) return res.status(404).json({ message: "Task not found." });
     const obj = t.toObject();
     if (!obj.id) obj.id = String(obj._id);
@@ -855,20 +863,20 @@ app.put("/api/tasks/:id", async (req, res) => {
       const base = { url: process.env.FRONTEND_URL || "/", taskId: obj.id, tag: `status-${obj.id}`, icon: "/favicon.png", type: "task_status_changed" };
 
       if (newStatus === "in-review") {
-        const adminMsg = { ...base, title: "👁 Task Submitted for Review", body: `${obj.title} needs your review.` };
+        const adminMsg = { ...base, title: "👍 Task Submitted for Review", body: `${obj.title} needs your review.` };
         if (obj.assignedBy) await sendPushToUser(obj.assignedBy, adminMsg);
         await sendPushToRole(["superadmin", "supremo"], adminMsg, obj.assignedBy);
       }
       if (newStatus === "admin-approved") {
-        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "✅ Task Approved by Admin", body: `${obj.title} — awaiting final sign-off.` });
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "✅ Task Approved by Admin", body: `${obj.title} – awaiting final sign-off.` });
         await sendPushToRole(["superadmin", "supremo"], { ...base, title: "📋 Ready for Final Approval", body: `${obj.title} needs your final review.` }, obj.assignedBy);
       }
       if (newStatus === "superadmin-approved") {
-        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "🏆 Task Fully Approved!", body: `${obj.title} — great work!` });
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "🏆 Task Fully Approved!", body: `${obj.title} – great work!` });
         if (obj.assignedBy) await sendPushToUser(obj.assignedBy, { ...base, title: "✅ Final Approval Done", body: `${obj.title} received full approval.` });
       }
       if (newStatus === "rejected") {
-        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "↩ Task Needs Rework", body: `${obj.title} — check admin comments.` });
+        if (obj.assignedTo) await sendPushToUser(obj.assignedTo, { ...base, title: "↩ Task Needs Rework", body: `${obj.title} – check admin comments.` });
       }
 
       // ── Autopulse: schedule next instance when superadmin fully approves ──
@@ -892,15 +900,22 @@ app.put("/api/tasks/:id", async (req, res) => {
 app.delete("/api/tasks/:id", async (req, res) => {
   try {
     let t = await Task.findOneAndDelete({ id: req.params.id });
-    if (!t) t = await Task.findByIdAndDelete(req.params.id);
+    if (!t) {
+      try {
+        t = await Task.findByIdAndDelete(req.params.id);
+      } catch (castErr) {
+        // Ignore CastError from findByIdAndDelete with string ID
+        if (castErr.name !== 'CastError') throw castErr;
+      }
+    }
     if (!t) return res.status(404).json({ message: "Task not found." });
     res.json({ success: true, message: `Task "${t.title}" deleted.` });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // USER ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/users", async (req, res) => {
   try {
     if (dbReady()) {
@@ -1015,9 +1030,9 @@ app.delete("/api/users/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // ASSISTANCE TICKET ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/tickets", async (req, res) => {
   try {
     if (dbReady()) {
@@ -1029,7 +1044,7 @@ app.get("/api/tickets", async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// POST /api/tickets/dedup-cleanup — one-time cleanup: keeps newest ticket per taskId,
+// POST /api/tickets/dedup-cleanup – one-time cleanup: keeps newest ticket per taskId,
 // marks all older duplicates as resolved so they stop showing in admin queue
 app.post("/api/tickets/dedup-cleanup", async (req, res) => {
   try {
@@ -1088,9 +1103,9 @@ app.put("/api/tickets/:id", async (req, res) => {
   } catch (e) { res.status(400).json({ message: e.message }); }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // WEB PUSH ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/push/vapid-public-key", (req, res) => {
   if (!process.env.VAPID_PUBLIC_KEY)
     return res.status(503).json({ message: "Push notifications not configured." });
@@ -1159,9 +1174,9 @@ app.post("/api/push/broadcast", async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // AI ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.post("/api/draft-notes", async (req, res) => {
   const { notes } = req.body;
   if (!notes) return res.status(400).json({ success: false, message: "Notes are required" });
@@ -1211,17 +1226,17 @@ app.post("/api/review-attachments", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // SCORE CONTENT
 // FIX: max_tokens raised to 8000 so the JSON is never truncated mid-response.
 //      System prompt tightened to demand compact notes (no long sentences) so
 //      the response stays well within the token budget.
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.post("/api/score-content", async (req, res) => {
-  // Compact system prompt — same rubric, shorter output per criterion
+  // Compact system prompt – same rubric, shorter output per criterion
   const systemPrompt = req.body.systemPrompt ||
     "You are an expert visual content reviewer for a real estate marketing team. " +
-    "Review the provided image(s) and respond ONLY with a raw JSON object — " +
+    "Review the provided image(s) and respond ONLY with a raw JSON object – " +
     "no markdown, no code fences, no preamble, no explanation outside the JSON. " +
     "Keep every note/feedback field to ONE concise sentence (max 20 words). " +
     "Required JSON shape: { " +
@@ -1245,11 +1260,11 @@ app.post("/api/score-content", async (req, res) => {
     const cleanBase64 = rawImage.includes(",") ? rawImage.split(",")[1] : rawImage;
     userContent = [
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: cleanBase64 } },
-      { type: "text", text: "Score and review this image. Reply with JSON only — no markdown fences." },
+      { type: "text", text: "Score and review this image. Reply with JSON only – no markdown fences." },
     ];
   }
 
-  // Normalise every image block through Buffer — guarantees clean standard base64
+  // Normalise every image block through Buffer – guarantees clean standard base64
   for (const block of userContent) {
     if (block.type === "image" && block?.source?.data) {
       let data = block.source.data;
@@ -1267,7 +1282,7 @@ app.post("/api/score-content", async (req, res) => {
       // Remove ALL non-base64 characters
       data = data.replace(/[^A-Za-z0-9+/=]/g, "");
 
-      // Re-encode through Buffer — definitive clean-up
+      // Re-encode through Buffer – definitive clean-up
       try {
         data = Buffer.from(data, "base64").toString("base64");
       } catch (e) {
@@ -1279,7 +1294,7 @@ app.post("/api/score-content", async (req, res) => {
         return res.status(400).json({ success: false, message: "Image data is empty after processing. Please re-upload." });
       }
 
-      // ── SIZE GUARD: reject images over ~5MB ──────────────────────────────
+      // ── SIZE GUARD: reject images over ~5MB ────────────────────────────
       if (data.length > 6_900_000) {
         const sizeMB = (data.length * 0.75 / 1_048_576).toFixed(1);
         console.warn(`[score-content] Image too large: ${data.length} chars (~${sizeMB}MB). Rejecting.`);
@@ -1320,7 +1335,7 @@ app.post("/api/score-content", async (req, res) => {
     const rawText = message.content.map(b => b.type === "text" ? b.text : "").join("").trim();
     console.log("[score-content] Raw AI response (first 500 chars):", rawText.slice(0, 500));
 
-    // Strip markdown fences — handles ```json, ```, and trailing ```
+    // Strip markdown fences – handles ```json, ```, and trailing ```
     let clean = rawText
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
@@ -1389,9 +1404,9 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // ELEVENLABS TTS
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.post("/api/tts", async (req, res) => {
   try {
     const { text, voiceId } = req.body;
@@ -1429,7 +1444,7 @@ app.post("/api/tts", async (req, res) => {
       if (status === "quota_exceeded" || response.status === 429) {
         console.warn("[TTS] ElevenLabs quota exceeded");
         return res.status(402).json({
-          message: "Voice narration is temporarily unavailable — ElevenLabs credit quota has been reached. Please top up at elevenlabs.io or try again later.",
+          message: "Voice narration is temporarily unavailable – ElevenLabs credit quota has been reached. Please top up at elevenlabs.io or try again later.",
           detail: message,
         });
       }
@@ -1447,9 +1462,9 @@ app.post("/api/tts", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // ACTIVITY LOG ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const activitySchema = new mongoose.Schema({
   id:         { type: String, index: true },
   timestamp:  { type: String, default: () => new Date().toISOString() },
@@ -1496,9 +1511,9 @@ app.get("/api/activity", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SYSTEM SETTINGS — voice toggle (controlled by Supremo only via frontend)
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+// SYSTEM SETTINGS – voice toggle (controlled by Supremo only via frontend)
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/api/settings/voice", async (req, res) => {
   try {
     if (!dbReady()) return res.json({ voiceEnabled: false });
@@ -1527,9 +1542,9 @@ app.patch("/api/settings/voice", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // HEALTH
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 app.get("/health", (_req, res) => {
   res.json({
     status:           "ok",
@@ -1541,9 +1556,9 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // CHAT REST ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 function normMsg(m) {
   const obj = m.toObject ? m.toObject() : m;
   if (!obj.id) obj.id = String(obj._id);
@@ -1672,18 +1687,18 @@ app.post("/api/chat/meeting", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // SOCKET.IO
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MEETING QUEUE — in-memory (per session)
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+// MEETING QUEUE – in-memory (per session)
+// ════════════════════════════════════════════════════════════════════════════════
 const meetingQueue    = {};  // sessionId → [{ userId, userName, email, socketId, joinedAt }]
 const supremoSockets  = {};  // sessionId → socketId of supremo
 
 
-// GET /api/meeting/active-session — staff polls this to discover active sessions
+// GET /api/meeting/active-session – staff polls this to discover active sessions
 app.get("/api/meeting/active-session", (req, res) => {
   // Return the first active session (there's typically only one)
   const sessionId = Object.keys(supremoSockets)[0] || null;
@@ -1692,14 +1707,14 @@ app.get("/api/meeting/active-session", (req, res) => {
   res.json({ active: true, sessionId, queueLength: queue.length });
 });
 
-// REST fallback — GET /api/meeting/queue?sessionId=xxx
+// REST fallback – GET /api/meeting/queue?sessionId=xxx
 app.get("/api/meeting/queue", (req, res) => {
   const { sessionId } = req.query;
   if (!sessionId) return res.json([]);
   res.json(meetingQueue[sessionId] || []);
 });
 
-// REST — POST /api/meeting/promise-score
+// REST – POST /api/meeting/promise-score
 app.post("/api/meeting/promise-score", express.json(), async (req, res) => {
   try {
     const { sessionId, userId, userName, email, score, comment } = req.body;
@@ -1713,7 +1728,7 @@ app.post("/api/meeting/promise-score", express.json(), async (req, res) => {
   }
 });
 
-// ── PROMISE SCORE ─────────────────────────────────────────────────────────────
+// ── PROMISE SCORE ────────────────────────────────────────────────────────────
 const promiseScoreSchema = new mongoose.Schema({
   userId:    { type: String, required: true, index: true },
   week:      { type: Number, required: true },
@@ -1831,7 +1846,7 @@ io.on("connection", (socket) => {
   });
 
 
-  // ── MEETING: Supremo starts session ─────────────────────────────────────
+  // ── MEETING: Supremo starts session ──────────────────────────────────
   socket.on("meeting:supremo-start", ({ sessionId, name }) => {
     supremoSockets[sessionId] = socket.id;
     meetingQueue[sessionId]   = [];
@@ -1841,7 +1856,7 @@ io.on("connection", (socket) => {
     console.log(`[Meeting] Supremo started session: ${sessionId}`);
   });
 
-  // ── MEETING: Staff joins queue ────────────────────────────────────────────
+  // ── MEETING: Staff joins queue ───────────────────────────────────────
   socket.on("meeting:join-queue", ({ sessionId, userId, userName, email }) => {
     if (!meetingQueue[sessionId]) meetingQueue[sessionId] = [];
     // Remove if already in queue
@@ -1858,7 +1873,7 @@ io.on("connection", (socket) => {
     console.log(`[Meeting] ${userName} joined queue for session ${sessionId}`);
   });
 
-  // ── MEETING: Staff leaves queue ───────────────────────────────────────────
+  // ── MEETING: Staff leaves queue ──────────────────────────────────────
   socket.on("meeting:leave-queue", ({ sessionId, userId }) => {
     if (meetingQueue[sessionId]) {
       meetingQueue[sessionId] = meetingQueue[sessionId].filter(e => e.userId !== userId);
@@ -1868,18 +1883,18 @@ io.on("connection", (socket) => {
     socket.emit("meeting:queue-left");
   });
 
-  // ── MEETING: WebRTC offer (supremo → staff) ───────────────────────────────
+  // ── MEETING: WebRTC offer (supremo → staff) ──────────────────────────
   socket.on("meeting:offer", ({ to, offer, sessionId }) => {
     const entry = (meetingQueue[sessionId] || []).find(e => e.userId === to);
     if (entry?.socketId) io.to(entry.socketId).emit("meeting:offer", { from: socket.id, offer, sessionId });
   });
 
-  // ── MEETING: WebRTC answer (staff → supremo) ──────────────────────────────
+  // ── MEETING: WebRTC answer (staff → supremo) ─────────────────────────
   socket.on("meeting:answer", ({ to, answer }) => {
     io.to(to).emit("meeting:answer", answer);
   });
 
-  // ── MEETING: ICE candidates ───────────────────────────────────────────────
+  // ── MEETING: ICE candidates ──────────────────────────────────────────
   socket.on("meeting:ice-candidate", ({ to, candidate, sessionId }) => {
     // `to` can be a socketId (supremo sends userId, we resolve; staff sends supremo socketId directly)
     const entry = meetingQueue[sessionId]
@@ -1889,7 +1904,7 @@ io.on("connection", (socket) => {
     if (targetSocket) io.to(targetSocket).emit("meeting:ice-candidate", { candidate });
   });
 
-  // ── MEETING: Promise score (staff submits) ────────────────────────────────
+  // ── MEETING: Promise score (staff submits) ────────────────────────────
   socket.on("meeting:promise-score", ({ sessionId, userId, userName, email, score, comment }) => {
     const entry = { userId, userName, email, score: Number(score), comment: comment || "", submittedAt: new Date().toISOString() };
     const supSocket = supremoSockets[sessionId];
@@ -1897,12 +1912,12 @@ io.on("connection", (socket) => {
     socket.emit("meeting:score-submitted");
   });
 
-  // ── MEETING: End call ──────────────────────────────────────────────────────
+  // ── MEETING: End call ────────────────────────────────────────────────
   socket.on("meeting:end-call", ({ sessionId }) => {
     io.to(`meeting:${sessionId}`).emit("meeting:call-ended");
   });
 
-  // ── MEETING: Supremo ends session ─────────────────────────────────────────
+  // ── MEETING: Supremo ends session ────────────────────────────────────
   socket.on("meeting:supremo-end", ({ sessionId }) => {
     io.to(`meeting:${sessionId}`).emit("meeting:session-ended");
     delete meetingQueue[sessionId];
@@ -1928,11 +1943,11 @@ io.on("connection", (socket) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 // GRACEFUL SHUTDOWN
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 function gracefulShutdown(signal) {
-  console.log(`\n[${signal}] Shutting down gracefully…`);
+  console.log(`\n[${signal}] Shutting down gracefully...`);
   httpServer.close(async () => {
     console.log("HTTP server closed.");
     try {
@@ -1958,10 +1973,134 @@ process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ATTACHMENT ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const attachmentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadsDir = path.join(__dirname, '../uploads/attachments');
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.params.taskId}-${Date.now()}${ext}`);
+  }
+});
+
+const attachmentUpload = multer({ storage: attachmentStorage, limits: { fileSize: 2048 * 1024 * 1024 } });
+
+app.post('/api/tasks/:taskId/attachments', attachmentUpload.single('file'), async (req, res) => {
+  console.log('[UPLOAD] Started - taskId:', req.params.taskId);
+  try {
+    if (!req.file) {
+      console.log('[UPLOAD] No file received');
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    console.log('[UPLOAD] File saved as:', req.file.filename);
+    
+    const att = {
+      fileName: req.file.filename,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedBy: req.user?.email || 'unknown',
+      uploadedAt: new Date(),
+      path: `/api/attachments/${req.file.filename}`
+    };
+    
+    let task = await Task.findOneAndUpdate(
+      { id: req.params.taskId },
+      { $push: { attachments: att } },
+      { new: true }
+    );
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    
+    console.log('[UPLOAD] Success - saved attachment for task:', req.params.taskId);
+    res.json({ success: true, attachment: att });
+  } catch (err) {
+    console.error('[UPLOAD ERROR]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/tasks/:taskId/attachments', async (req, res) => {
+  try {
+    let task = await Task.findOne({ id: req.params.taskId }).select('attachments');
+    if (!task) {
+      task = await Task.findById(req.params.taskId).select('attachments');
+    }
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json(task.attachments || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:taskId/attachments/:attachmentId', async (req, res) => {
+  try {
+    const uploadsDir = path.join(__dirname, '../uploads/attachments');
+    let task = await Task.findOne({ id: req.params.taskId });
+    if (!task) {
+      task = await Task.findById(req.params.taskId);
+    }
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    const att = task.attachments.find(a => a.fileName === req.params.attachmentId);
+    if (!att) return res.status(404).json({ error: 'Attachment not found' });
+    const fp = path.join(uploadsDir, att.fileName);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    let updated;
+    if (task.id) {
+      updated = await Task.findOneAndUpdate(
+        { id: req.params.taskId },
+        { $pull: { attachments: { fileName: req.params.attachmentId } } },
+        { new: true }
+      );
+    } else {
+      updated = await Task.findByIdAndUpdate(
+        req.params.taskId,
+        { $pull: { attachments: { fileName: req.params.attachmentId } } },
+        { new: true }
+      );
+    }
+    res.json({ success: true, task: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attachments/:filename', (req, res) => {
+  try {
+    const uploadsDir = path.join(__dirname, '../uploads/attachments');
+    const fp = path.join(uploadsDir, req.params.filename);
+    const normalizedPath = path.normalize(fp);
+    const normalizedDir = path.normalize(uploadsDir);
+    if (!normalizedPath.startsWith(normalizedDir)) return res.status(403).json({ error: 'Access denied' });
+    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'File not found' });
+    res.download(fp);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // START SERVER
-// ─────────────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
 const PORT = process.env.PORT || 5000;
+
+// ── SERVE REACT FRONTEND ──────────────────────────────────────────
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+
+app.use(express.static(join(__dirname, '../build')));
+app.get('/{*path}', (req, res) => {
+  res.sendFile(join(__dirname, '../build', 'index.html'));
+});
+// ─────────────────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
   console.log("=".repeat(60));
   console.log("  SmartCue Server + Socket.io running on port " + PORT);
@@ -1982,9 +2121,9 @@ httpServer.listen(PORT, () => {
   console.log("  GET/PATCH            /api/settings/voice");
   console.log("  GET                  /health");
   console.log("=".repeat(60));
-  console.log("ElevenLabs:", process.env.ELEVEN_LABS_API_KEY ? "✔" : "✗ Missing");
-  console.log("Daily.co:  ", process.env.DAILY_API_KEY       ? "✔" : "✗ Missing (mock links)");
-  console.log("MongoDB:   ", MONGO_URI                        ? "✔ Connecting…" : "✗ In-memory mode");
+  console.log("ElevenLabs:", process.env.ELEVEN_LABS_API_KEY ? "✓" : "✗ Missing");
+  console.log("Daily.co:  ", process.env.DAILY_API_KEY       ? "✓" : "✗ Missing (mock links)");
+  console.log("MongoDB:   ", MONGO_URI                        ? "✓ Connecting..." : "✗ In-memory mode");
 
   const SELF_URL = process.env.RAILWAY_STATIC_URL
     ? `https://${process.env.RAILWAY_STATIC_URL}/health`
@@ -1995,15 +2134,13 @@ httpServer.listen(PORT, () => {
   }, 300_000);
 
   setTimeout(() => {
-    console.log("⏱  TAT monitor started");
+    console.log("⏱ TAT monitor started");
     runTATMonitor();
     setInterval(runTATMonitor, 14_400_000);
 
-    // ── Autopulse cron — runs every 6 hours (21_600_000ms) ─────────────────
+    // ── Autopulse cron – runs every 6 hours (21_600_000ms) ────────────────
     console.log("⚡ Autopulse cron started");
     runAutopulseCron();
     setInterval(runAutopulseCron, 21_600_000);
   }, 5_000);
 });
-
-
